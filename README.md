@@ -33,20 +33,22 @@ claude mcp add supabase --scope user -- npx -y @supabase/mcp-server-supabase@lat
 
 Fără MCP-ul Supabase conectat, skill-urile se opresc cu „Supabase MCP nu e conectat".
 
-### 2. (doar pentru `pontaj`) numele tău, în variabila `TT_MEMBER`
+### 2. (doar pentru `pontaj`) cine ești — te întreabă o dată, singur
 
-`pontaj` scrie orele pe numele din `TT_MEMBER`. Setează-l o dată cu numele tău **exact**
-așa cum apare pe pagina Pontaj:
+Nu trebuie să setezi nimic. **Prima dată** când rulezi `/pontaj`, skill-ul îți arată lista
+de membri (din `tt_members`) și te întreabă care ești; reține alegerea pe mașina ta în
+`~/.claude/team-tracker-member.json` și **nu mai întreabă niciodată**.
 
+Opțional, dacă vrei să-l fixezi din start fără întrebare, setează `TT_MEMBER`:
 ```powershell
-setx TT_MEMBER "Popa"          # Windows (redeschide terminalul după)
+setx TT_MEMBER "Popa"          # Windows (redeschide terminalul)
 ```
 ```bash
-export TT_MEMBER="Popa"        # Mac/Linux (pune-l în ~/.zshrc / ~/.bashrc)
+export TT_MEMBER="Popa"        # Mac/Linux
 ```
 
-Dacă `TT_MEMBER` nu e setat, `pontaj` te întreabă o dată pe ce nume să te ponteze
-(nu pontează pe nimeni „by default").
+Schimbi identitatea mai târziu: rulezi o dată cu nume explicit („ponteaza pe numele lui X"),
+sau `node <plugin>/skills/pontaj/scripts/member.mjs set "AltNume"`, ori ștergi fișierul de mai sus.
 
 ---
 

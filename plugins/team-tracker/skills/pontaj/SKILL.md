@@ -1,6 +1,6 @@
 ---
 name: pontaj
-description: Use when the user wants to log (pontaj / pontat) their own work hours on the team-tracker dashboard — or invokes "/pontaj". Resolves who to log as from the TT_MEMBER environment variable (asks once if unset), resolves the current project from the working directory, summarizes what was worked on in the CURRENT chat session (git diff + the conversation), computes the hours automatically from the chat session's active duration (rounded to 0.5h, idle gaps excluded) unless you state the hours explicitly, and inserts ONE row into the Supabase table tt_work_logs (member from TT_MEMBER, project_id from cwd) which the team-tracker "Pontaj" page renders. Triggers on "ponteaza", "ponteaza-ma", "pontaj", "pontează ce am lucrat", "ponteaza orele", "pontaj pe proiectul asta", "trece-mi orele", "log my hours", "log my time", "clock my work", "add a worklog", "ponteaza azi", "ponteaza X ore". Use it even when the user only says "ponteaza" with no other detail — that is the whole point of this skill.
+description: Use when the user wants to log (pontaj / pontat) their own work hours on the team-tracker dashboard — or invokes "/pontaj". On the FIRST run it asks which team member you are (picked from the live tt_members list) and remembers the choice on this machine, so it never asks again; an explicit name in the invocation or the TT_MEMBER env var overrides. Resolves the current project from the working directory, summarizes what was worked on in the CURRENT chat session (git diff + the conversation), computes the hours automatically from the chat session's active duration (rounded to 0.5h, idle gaps excluded) unless you state the hours explicitly, and inserts ONE row into the Supabase table tt_work_logs (member = remembered identity, project_id from cwd) which the team-tracker "Pontaj" page renders. Triggers on "ponteaza", "ponteaza-ma", "pontaj", "pontează ce am lucrat", "ponteaza orele", "pontaj pe proiectul asta", "trece-mi orele", "log my hours", "log my time", "clock my work", "add a worklog", "ponteaza azi", "ponteaza X ore". Use it even when the user only says "ponteaza" with no other detail — that is the whole point of this skill.
 ---
 
 # Pontaj
@@ -9,7 +9,7 @@ Turn the work done in the **current chat session** into one time-log entry for *
 
 ## Why this skill exists
 
-A team member jumps between several apps in the same day and wants a frictionless way to record their hours without opening team-tracker and filling the form by hand. Running `/pontaj` (or just saying "ponteaza ce am lucrat") should: figure out who they are, figure out which project this folder belongs to, write a short honest summary of what was worked on in this session, work out the hours from how long the chat actually ran, and insert the row directly. No questions, no wizard — fully unattended once `TT_MEMBER` is set. The one thing it can't measure is effort vs. wall-clock, so the chat duration is taken as *active* time (idle gaps clamped) and an explicit number in the invocation always overrides it.
+A team member jumps between several apps in the same day and wants a frictionless way to record their hours without opening team-tracker and filling the form by hand. Running `/pontaj` (or just saying "ponteaza ce am lucrat") should: figure out who they are, figure out which project this folder belongs to, write a short honest summary of what was worked on in this session, work out the hours from how long the chat actually ran, and insert the row directly. The **only** question it ever asks is on the very first run — "which team member are you?" — and it remembers the answer from then on. After that it's fully unattended. The one thing it can't measure is effort vs. wall-clock, so the chat duration is taken as *active* time (idle gaps clamped) and an explicit number in the invocation always overrides it.
 
 The Pontaj page in team-tracker reads `tt_work_logs` and groups by member / project / category to answer "cine, cât și la ce a lucrat". So the row this skill writes has to use the **exact** member name and a category from the page's fixed list, or it lands in the wrong bucket / a stray "Other".
 
@@ -17,7 +17,8 @@ The Pontaj page in team-tracker reads `tt_work_logs` and groups by member / proj
 
 | Item | Value |
 |------|-------|
-| Member name to log under | **resolved from the `TT_MEMBER` environment variable** — see Step 0b. Exact casing matters; it must match how the Pontaj page groups (i.e. the name in `tt_members`). Never default to a hardcoded name. |
+| Member name to log under | **resolved + remembered** — see Step 0b. First run picks from the live `tt_members` list and stores the choice via `scripts/member.mjs`; later runs read it back. An explicit name in the invocation or the `TT_MEMBER` env var overrides. Never default to a hardcoded name. |
+| Member store (remembers who you are) | `~/.claude/team-tracker-member.json`, managed by `scripts/member.mjs` (`get` / `set "Name"`). Per-user, per-machine. |
 | Project source root (what we summarize) | the current working directory — **resolved in Step 0** |
 | Supabase project id (holds tt_* tables) | `ntjzghsbrzkvpkniotaj` |
 | Table | `public.tt_work_logs` |
@@ -29,7 +30,7 @@ The Pontaj page in team-tracker reads `tt_work_logs` and groups by member / proj
 | `work_date` | a `date`; defaults to today (`CURRENT_DATE`) |
 | Default language for the description | Romanian |
 
-This skill runs **fully unattended** once `TT_MEMBER` is set — it asks nothing and inserts directly. It only stops for input when `TT_MEMBER` is missing (Step 0b) or when the transcript can't be read at all (Step 3 fallback).
+This skill runs **fully unattended** after the first run — it asks nothing and inserts directly. It only stops for input on the very first run (Step 0b — "which member are you?", remembered afterwards) or when the transcript can't be read at all (Step 3 fallback).
 
 ## tt_work_logs — schema you write to
 
@@ -77,23 +78,41 @@ If no row matches, abort:
 
 ## Step 0b — Resolve who to log as (member)
 
-The member name is **per-person** and must never be guessed. Resolve it in this order:
+The member name is **per-person** and must never be guessed. The principle: **ask at most once, ever** — on the first run pick the member from the live list and remember it; every run after reads the remembered value silently. Resolve in this order, stopping at the first that yields a name:
 
-1. **Explicit override in the invocation** wins — if the user named someone ("ponteaza pe numele lui Popa"), use that name verbatim.
-2. **The `TT_MEMBER` environment variable.** Read it:
+1. **Explicit override in the invocation** — if the user named someone ("ponteaza pe numele lui Popa"), use that name verbatim **for this run only** (do NOT overwrite the remembered identity).
+2. **The `TT_MEMBER` environment variable** (for power users who prefer to set it themselves):
    ```bash
    printf '%s' "$TT_MEMBER"          # bash
    ```
    ```powershell
    $env:TT_MEMBER                     # PowerShell
    ```
-   If it is set and non-empty, use it **verbatim** (exact casing) as `<member>`.
-3. **If `TT_MEMBER` is unset/empty and no name was given**, do NOT default to any name. Ask once and stop:
-   > "Pe ce nume să te pontez pe Pontaj? (rulează o dată `setx TT_MEMBER \"NumeleTău\"` pe Windows — sau `export TT_MEMBER=NumeleTău` pe Mac/Linux — ca să nu te mai întreb)"
+   If set and non-empty, use it verbatim (exact casing) as `<member>`.
+3. **The remembered choice on this machine** — run:
+   ```bash
+   node "<skill_dir>/scripts/member.mjs" get
+   ```
+   If it prints a non-empty name, that's `<member>`. Done — ask nothing.
+4. **First-run setup (nothing remembered yet) — this is the ONLY time the skill asks who you are.** Fetch the live member list, let the user pick, then persist it:
+   1. Query the Supabase MCP for the roster:
+      ```sql
+      SELECT name FROM tt_members ORDER BY name;
+      ```
+   2. Ask once, presenting the names as a numbered list:
+      > "E prima dată — care ești dintre membri?
+      > 1. <name>
+      > 2. <name>
+      > …
+      > Răspunde cu numărul sau numele."
+   3. Map the answer to one of the listed names (exact casing from `tt_members`). If the user gives a name not in the list, confirm the spelling before storing (the Pontaj page groups by exact string).
+   4. Persist it so the skill never asks again:
+      ```bash
+      node "<skill_dir>/scripts/member.mjs" set "<chosen name>"
+      ```
+   5. Use `<chosen name>` as `<member>` for this run.
 
-   Use the answer as `<member>` for this run.
-
-The name must match exactly what the Pontaj page uses to group (the `tt_members` name) — if unsure, the user should tell you the exact spelling.
+The remembered name must match exactly what the Pontaj page groups on (`tt_members.name`) — picking from the queried list guarantees that. The store lives at `~/.claude/team-tracker-member.json`. To change identity later: run once with an explicit name, or `node "<skill_dir>/scripts/member.mjs" set "NewName"`, or delete that file to be asked again.
 
 ## Step 1 — Gather what was worked on (current session only)
 
@@ -193,7 +212,9 @@ No "anything else?" epilogue — the row is the deliverable and the user can see
 
 | Mistake | Why it hurts | Fix |
 |---|---|---|
-| Defaulting `member` to a hardcoded name when `TT_MEMBER` is unset | Logs the work under the wrong person — everyone's hours pile onto one name. | Resolve from `TT_MEMBER` / explicit override; if missing, ask (Step 0b). Never guess. |
+| Defaulting `member` to a hardcoded name | Logs the work under the wrong person — everyone's hours pile onto one name. | Resolve via Step 0b (remembered choice / `TT_MEMBER` / explicit); on the first run ask from the `tt_members` list and persist it. Never guess. |
+| Re-asking who you are when a name is already remembered | The user set it up once; asking again is friction they explicitly rejected. | Always try `member.mjs get` first; only ask when it returns empty. |
+| Overwriting the remembered identity on a one-off override | "ponteaza pe numele lui Popa" is for that run, not a permanent identity change. | An explicit invocation name is used for the run only; never `member.mjs set` it. |
 | Hardcoding `project_id` (e.g. assuming team-tracker = 2) | The live `tt_projects` list drifts (ids get added/removed). A stale id files the pontaj under the wrong app or a deleted project. | Always resolve from cwd in Step 0. |
 | Writing the name in the wrong casing (`edy` vs `Edy`) | `member` is free TEXT; the Pontaj page groups by exact string, so a casing variant splits one person's hours into a phantom second person. | Use the exact casing from `TT_MEMBER` / `tt_members`. |
 | A free-form `category` like "coding" or "QA" | The page's category breakdown only knows the 7 fixed values; anything else falls outside the chips. | Map to one of `Development/Testing/Content/Design/Research/Meeting/Other`. |
@@ -202,7 +223,7 @@ No "anything else?" epilogue — the row is the deliverable and the user can see
 | Using the raw first→last span as the hours | A chat left open over lunch or overnight would log 5h/18h of "work". | Use the script's `hours` (built on `active_hours`, idle gaps clamped), never `raw_hours`. |
 | Not escaping `'` in the description | SQL syntax error; the insert fails. | Double single quotes (`'` → `''`). |
 | Inserting with `project_id = NULL` | Row exists but is invisible on the per-project Pontaj view. | Step 0 must resolve a real id before Step 4. |
-| Asking for confirmation / asking for hours when the script succeeded | The user chose fully-auto; any prompt is friction they explicitly rejected. | Only prompt on the Step 0b (no `TT_MEMBER`) or Step 3 fallback. Otherwise insert silently. |
+| Asking for confirmation / asking for hours when the script succeeded | The user chose fully-auto; any prompt is friction they explicitly rejected. | Only prompt on the first-run Step 0b identity pick or the Step 3 fallback. Otherwise insert silently. |
 | Logging the whole day / since-last-pontaj instead of this session | Scope is the current chat session; pulling in unrelated commits double-counts. | Summarize only this session's work (conversation + this session's git changes). |
 | Inventing work when nothing was done | A fake pontaj corrupts the hours data. | If there's no session work and no git change, ask the user what to log. |
 | A vague description ("work", "diverse") | Useless on the Pontaj page; the person won't remember what it was. | Name the concrete features/fixes/pages in 1–3 sentences. |
@@ -213,5 +234,5 @@ No "anything else?" epilogue — the row is the deliverable and the user can see
 Stop and tell the user (one sentence) when:
 - The Supabase MCP isn't connected / `execute_sql` errors out → "Supabase MCP nu e conectat — reconecteaza-l si ruleaza din nou."
 - Step 0 can't resolve the cwd to a `tt_projects` row (see the Step 0 abort message).
-- `TT_MEMBER` is unset and the user didn't give a name (see the Step 0b prompt).
+- It's the first run and the user won't pick a member, so no identity can be resolved (see the Step 0b first-run prompt).
 - There's nothing to log and the user didn't say what to pontaj (see the Step 1 prompt).
