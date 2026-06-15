@@ -1,0 +1,17 @@
+{
+  "name": "team-tracker",
+  "owner": {
+    "name": "Edy",
+    "email": "lakiedward03@gmail.com"
+  },
+  "metadata": {
+    "description": "Skill-uri Claude Code pentru fluxul team-tracker (Supabase): pontaj, test plans, bugs, features."
+  },
+  "plugins": [
+    {
+      "name": "team-tracker",
+      "source": "./plugins/team-tracker",
+      "description": "Pontaj + QA/bugs/features workflows peste Supabase team-tracker (tt_* tables)."
+    }
+  ]
+}

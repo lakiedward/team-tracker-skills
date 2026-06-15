@@ -1,0 +1,10 @@
+{
+  "name": "team-tracker",
+  "description": "Skill-uri team-tracker: pontaj (ore de lucru), scriere + rulare planuri de test (human/AI), rezolvare pași failed, rezolvare bug-uri (tt_bugs), triaj/implementare features (tt_features). Toate scriu/citesc Supabase project ref ntjzghsbrzkvpkniotaj.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Edy",
+    "email": "lakiedward03@gmail.com"
+  },
+  "keywords": ["team-tracker", "pontaj", "supabase", "qa", "testing", "bugs", "features"]
+}
