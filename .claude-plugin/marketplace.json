@@ -4,9 +4,6 @@
     "name": "Edy",
     "email": "lakiedward03@gmail.com"
   },
-  "metadata": {
-    "description": "Skill-uri Claude Code pentru fluxul team-tracker (Supabase): pontaj, test plans, bugs, features."
-  },
   "plugins": [
     {
       "name": "team-tracker",
