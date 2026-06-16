@@ -14,6 +14,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `resolving-failed-test-plans` | Rezolvă pașii failed din planuri și le arhivează. |
 | `resolving-tt-bugs` | Rezolvă bug-urile Open/In Progress din `tt_bugs`. |
 | `resolving-tt-features` | Triază și implementează features din `tt_features`. |
+| `triage` | Pune ordine în tot ce e de făcut, pe **toate** proiectele: rankează backlog-ul (bug+feature+test), semnalează duplicate/stale/done-nearhivat și aplică curățenia sigură la confirmare. Mod `--digest` pentru rezumatul zilnic. |
 
 ---
 
@@ -91,5 +92,5 @@ următorul start de Claude (sau prin `/plugin marketplace update team-tracker`).
 .claude-plugin/marketplace.json          # catalogul (un singur plugin)
 plugins/team-tracker/
   .claude-plugin/plugin.json             # manifest plugin
-  skills/<nume>/SKILL.md                 # cele 7 skill-uri (+ scripts/ unde e cazul)
+  skills/<nume>/SKILL.md                 # cele 8 skill-uri (+ scripts/ unde e cazul)
 ```
