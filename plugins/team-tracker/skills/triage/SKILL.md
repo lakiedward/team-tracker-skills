@@ -39,7 +39,7 @@ safe here precisely because triage only writes to the shared tracker tables, nev
 | Stale threshold | `updated_at` older than **60 days** (flag for review) |
 | Archive-done threshold | done item `updated_at` older than **30 days** (candidate to archive) |
 | Default priority | `Medium` (applied to active bugs/features with no priority) |
-| Writes allowed on confirm | set default priority; archive old done items. **Nothing else is automatic.** |
+| Writes allowed on confirm | set default priority; archive old done items; stamp `tt_triage_marks`. **Nothing else is automatic.** |
 | Never auto | merge/delete duplicates, delete stale, change titles/descriptions, touch app code |
 
 Do not ask the user to confirm any of these constants. If the Supabase MCP isn't connected, stop with a one-line error.
@@ -174,6 +174,30 @@ Aplic curățenia sigură (prioritate Medium unde lipsește + arhivare done vech
 Then **stop and wait**. The user invoked triage to SEE the order first; never apply writes before an explicit "da".
 (Exception: `--digest` mode, below, is read-only and stops here without the apply prompt.)
 
+## Stamp provenance (tt_triage_marks)
+
+Both flows record **who last ordered each active item** into `tt_triage_marks` (PK `(source_type, source_id)`), so the
+Focus board can badge each card with who ordered it. It's a single self-contained upsert over the same active set as
+Step 1 — only the `<BY>` literal changes: `routine` in `--digest`, `triage` on a manual apply.
+
+```sql
+INSERT INTO tt_triage_marks (source_type, source_id, triaged_by, triaged_at)
+SELECT 'bug', b.id::text, '<BY>', now() FROM tt_bugs b
+  WHERE NOT b.is_archived AND b.status IN ('Open','In Progress')
+UNION ALL
+SELECT 'feature', f.id::text, '<BY>', now() FROM tt_features f
+  WHERE NOT f.is_archived AND f.status IN ('Propus','Planificat','În Focus')
+UNION ALL
+SELECT 'test', tp.id::text, '<BY>', now() FROM tt_test_plans tp
+  WHERE NOT tp.is_archived
+    AND EXISTS (SELECT 1 FROM tt_test_items ti WHERE ti.test_plan_id = tp.id AND ti.result IN ('fail','pending'))
+ON CONFLICT (source_type, source_id)
+DO UPDATE SET triaged_by = EXCLUDED.triaged_by, triaged_at = EXCLUDED.triaged_at;
+```
+
+This is the **only** write `--digest` performs (provenance, not priority/archive). On a manual run it happens on "da",
+alongside the cleanup, with `<BY>` = `triage`. The `tt_triage_marks` table holds only the latest stamp per item.
+
 ## Step 4 — Apply on "da" (safe writes only)
 
 If the user confirms, apply exactly two kinds of write, each reported with the row count touched:
@@ -190,6 +214,10 @@ UPDATE tt_bugs        SET is_archived=true, updated_at=NOW() WHERE id = ANY(<bug
 UPDATE tt_features    SET is_archived=true, updated_at=NOW() WHERE id = ANY(<feature_ids_2b>);
 UPDATE tt_test_plans  SET is_archived=true, updated_at=NOW() WHERE id = ANY(<test_ids_2b>);
 ```
+
+Then run the **Stamp provenance** upsert with `<BY>` = `triage` — this claims every active item for this manual run, so
+their Focus cards show the "ordonat de /triage" badge. Always run it on "da", even if there was no priority/archive
+cleanup to apply.
 
 Setting priorities is what visibly reorders the Focus board — `cardsByColumn` sorts active columns by priority, so a
 bug bumped from missing→Medium (or the user later bumping it to Critical) rises immediately. There is no `order_index`
@@ -214,7 +242,9 @@ When invoked as `/triage --digest` (or the prompt says "digest"/"ce e de făcut 
   SELECT 'feature', id, title, priority, project_id FROM tt_features
     WHERE NOT is_archived AND created_at > NOW() - INTERVAL '24 hours';
   ```
-- Print: global **top ~10** + **"Noi în ultimele 24h"** + **Blocate**. NO clutter section, NO apply prompt, NO writes.
+- Print: global **top ~10** + **"Noi în ultimele 24h"** + **Blocate**. NO clutter section, NO apply prompt.
+- Then run the **Stamp provenance** upsert with `<BY>` = `routine`. This is the digest's ONLY write — it stamps who
+  ordered each active item, and never changes priority or archives anything.
 - This is what the scheduled daily routine runs. Keep it short — it's a morning glance, not a full audit.
 
 ## Mistakes to avoid
@@ -229,9 +259,10 @@ When invoked as `/triage --digest` (or the prompt says "digest"/"ce e de făcut 
 | Trying to set Focus order via `order_index` | The board sorts by priority, not order_index, for these cards | Adjust priority instead |
 | Editing app code to "fix" a ranked item | Out of scope; that's the resolving-* skills | triage organizes the tracker only |
 | Lowercase status strings (`open`, `fixed`) | DB uses titlecase; filters won't match | Use exact `Open`/`In Progress`/`Fixed`/`Propus`/`Gata` |
-| Running the apply writes in `--digest` mode | The digest is a read-only glance | `--digest` stops after printing; never writes |
+| Running priority/archive writes in `--digest` mode | The digest only stamps provenance, never reprioritizes | `--digest` writes ONLY the `tt_triage_marks` stamp; never priority/archive |
 
 ## When to self-abort
 
 Stop and report one sentence when: the Supabase MCP is disconnected; Step 1 returns zero active items (say so — nothing
-to order); or a write in Step 4 errors (report which table failed and that nothing further was applied).
+to order); or a write errors — including the `tt_triage_marks` stamp (report which table failed and that nothing further
+was applied).
