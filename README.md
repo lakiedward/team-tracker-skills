@@ -11,7 +11,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `writing-tester-test-plans` | Scrie un plan de test pentru un tester uman (tt_test_plans / tt_test_items). |
 | `writing-ai-test-plans` | Scrie un plan de test rulat automat de AI. |
 | `auto-running-test-plans` | Rulează automat planurile neatinse pe preview-ul local. |
-| `resolving-failed-test-plans` | Rezolvă pașii failed din planuri și le arhivează. |
+| `resolving-failed-test-plans` | Rezolvă pașii **failed și blocați** din planuri: pentru cei blocați vede de ce s-a blocat testerul, termină testul și repară dacă reiese un defect; apoi arhivează planul când totul e verde. |
 | `resolving-tt-bugs` | Rezolvă bug-urile Open/In Progress din `tt_bugs`. |
 | `resolving-tt-features` | Triază și implementează features din `tt_features`. |
 | `triage` | Pune ordine în tot ce e de făcut, pe **toate** proiectele: rankează backlog-ul (bug+feature+test), semnalează duplicate/stale/done-nearhivat și aplică curățenia sigură la confirmare. Mod `--digest` pentru rezumatul zilnic. |

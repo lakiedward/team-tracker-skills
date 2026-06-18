@@ -1,11 +1,11 @@
 ---
 name: resolving-failed-test-plans
-description: Use when the user asks to fix, repair, resolve, process, or sweep failed steps from team-tracker testing plans — or invokes "/resolving-failed-test-plans". Plans live in Supabase tables (tt_test_plans / tt_test_items), scoped per-project via project_id. Resolves the current project from the cwd, discovers every complete, non-archived plan with failed steps for that project, dispatches subagents to investigate each failure, designs a fix, implements it under the project's source root, verifies via Vite preview (or SQL impersonation for RLS / database steps), then archives the plan if every step now passes. Native-only steps (push, biometrics, Apple Sign-In native sheet) are marked blocked for human follow-up. Triggers on "rezolvă planuri failed", "fix failed test plans", "process failed plans", "sweep team-tracker plans", "archive resolved test plans", "rezolvă pașii failed din planuri", "fix team tracker testing plans".
+description: Use when the user asks to fix, resolve, process, or sweep failed OR blocked steps from team-tracker testing plans — or invokes "/resolving-failed-test-plans". Plans live in Supabase (tt_test_plans / tt_test_items), per-project via project_id; the skill resolves the project from the cwd. Failures get fixed under the project source root and verified via Vite preview or SQL impersonation. Blocked steps are not skipped: it diagnoses why the tester got stuck, finishes the test, and resolves any defect that surfaces; only un-completable blockers (native push/biometrics/Apple Sign-In sheet, credentials, product decisions) stay blocked for a human. Triggers on "rezolvă planuri failed/blocate", "rezolvă pașii blocați", "fix failed or blocked test plans", "unblock test plans", "sweep team-tracker plans", "fix team tracker testing plans".
 ---
 
 # Resolving Failed Test Plans
 
-End-to-end sweep over team-tracker testing plans (which describe BetRO behavior and are stored in the BetRO Supabase database, not markdown files). Find the ones with failed steps, fix them on the BetRO codebase with specialized subagents, verify via the most reliable channel for that step, and archive what is fully green. Plans that turn out to be blocked stay where they are so the user can handle them manually.
+End-to-end sweep over team-tracker testing plans (which describe app behavior and are stored in the team-tracker Supabase database, not markdown files). Find the ones with **failed or blocked** steps, fix them on the current project's codebase with specialized subagents, verify via the most reliable channel for that step, and archive what is fully green. **Blocked steps are not left alone:** the skill reads *why* the tester got stuck, drives the step to completion through the supported channels (the block usually means the tester couldn't run it, not that the code is broken), and — if finishing it exposes a real defect — resolves that defect like any failure. Only blockers the skill genuinely cannot clear (native shell, missing credentials, product decisions, a real second device) stay blocked so the user can handle them manually.
 
 ## Why this skill exists
 
@@ -15,12 +15,14 @@ The user runs a separate React app called **team-tracker** (sibling of the proje
 
 **Both plan types:** plans now carry a `test_type` of `'human'` (written by `/writing-tester-test-plans`, run by a human tester) or `'ai'` (written by `/writing-ai-test-plans`, run by `/auto-running-test-plans`). **This skill resolves BOTH** — it does NOT filter by `test_type`. A failed step is a failed step regardless of who ran it. The one rule that stays exactly as before: a plan is only processed when it is **complete** — every item is non-`pending` (`skip-incomplete` otherwise). `test_type` is read only to label each plan in the reports.
 
-Working through these failures one by one in the main thread blows the context window and loses parallelism. This skill industrializes the loop:
+**Failed and blocked are both in scope.** A `fail` means the behavior was exercised and was wrong. A `blocked` means the tester (a human, or the `/auto-running-test-plans` runner) *could not finish the step at all*, so its real outcome is still unknown — `blocked` is **not** a verdict that the code is broken. This skill now picks up both: it resolves failures as before, **and** for each blocked step it diagnoses the blocker, finishes the test, and resolves any defect that completion reveals. A step stays `blocked` at the end only when the skill genuinely cannot drive it (native shell, real credentials, product decision, a second physical device).
 
-1. Query the DB once, classify all candidate plans.
-2. Delegate the heavy lifting (investigation, fix design, implementation) to subagents — main thread keeps a clean orchestration view.
-3. Verify via the channel that matches the step: **Vite preview for UI-visible work, SQL impersonation for RLS / database work**. Native-only behavior (push notifications, Apple Sign-In iOS sheet, Capacitor plugins, biometrics) cannot be verified by this skill — mark such steps `blocked` with a clear reason instead.
-4. Archive only when all steps pass; leave blocked plans alone so the user can finish them.
+Working through these failures and blockers one by one in the main thread blows the context window and loses parallelism. This skill industrializes the loop:
+
+1. Query the DB once, classify all candidate plans — anything with a failed **or blocked** step is in scope.
+2. Delegate the heavy lifting (investigation, fix design, implementation) to subagents — main thread keeps a clean orchestration view. For blocked steps the investigation first answers *why the tester got stuck*.
+3. Verify via the channel that matches the step: **Vite preview for UI-visible work, SQL impersonation for RLS / database work**. For a blocked step this run is its **first real execution** — a clean pass clears the block, a failure reveals a defect to fix. Native-only behavior (push notifications, Apple Sign-In iOS sheet, Capacitor plugins, biometrics) cannot be verified by this skill — mark such steps `blocked` with a clear reason instead.
+4. Archive only when all steps pass; leave the residual blocked steps (the ones the skill couldn't clear) alone so the user can finish them.
 
 ## Constants
 
@@ -104,8 +106,7 @@ SELECT
   CASE
     WHEN total_items = 0                                  THEN 'skip-empty'
     WHEN pending_count > 0                                THEN 'skip-incomplete'
-    WHEN fail_count > 0                                   THEN 'process'
-    WHEN blocked_count > 0 AND fail_count = 0             THEN 'skip-blocked-only'
+    WHEN fail_count > 0 OR blocked_count > 0              THEN 'process'  -- failed AND blocked steps are both worked
     WHEN pass_count = total_items                         THEN 'all-green-should-archive'
     ELSE 'unknown'
   END AS class
@@ -119,19 +120,37 @@ Map the result rows to classes:
 |-------|------|--------|
 | `skip-empty` | Plan with zero items. | Drop silently. |
 | `skip-incomplete` | At least one `pending` item — tester not done. | Drop silently. The user wants only **complete** plans. |
-| `skip-blocked-only` | All non-`pass` items are `blocked`; no `fail`. | Drop with a one-line note in the final report. |
 | `all-green-should-archive` | Every item `pass`, but plan still flagged `is_archived = FALSE`. | Add to a "quick archive" sub-queue — handled inline in Step 4 with a single UPDATE. No fix work needed. |
-| `process` | Complete, non-archived, has at least one `fail` item. | Add to the main work queue. |
+| `process` | Complete, non-archived, has at least one `fail` **or `blocked`** item. | Add to the main work queue. Failed steps get fixed; blocked steps get diagnosed and finished (see Step 3). |
 
 After classification, print a compact table to the user — id, test_type, title, fail/blocked counts, class — so they see the scope (and which plans are human vs AI). Two lines: the table, then "Starting work on N plans" and proceed. Do not stop for confirmation; the user invoked the skill explicitly.
 
-For each `process` plan, fetch the item-level detail (description, expected_result, notes, result, tested_at) in one SQL call. The notes column is where the tester documented the failure — frequently it already contains the root-cause hypothesis and screenshots; mine it before dispatching subagents.
+For each `process` plan, fetch the item-level detail (description, expected_result, notes, result, tested_at) for **every `fail` and `blocked` item** in one SQL call. The notes column is where the tester documented what happened — for a `fail` it often holds the root-cause hypothesis and screenshots; for a `blocked` it holds *the reason they stopped* (the blocker). Mine it before dispatching subagents: the blocker reason decides whether the skill can finish the step or must leave it blocked.
 
 ## Step 3 — Process each plan
 
 Iterate the `process` queue **sequentially** — plans may touch overlapping code. **Do parallelize the subagent calls within a single plan** when they're independent.
 
-For each plan, for each `fail` item:
+For each plan, for each `fail` **or `blocked`** item:
+
+### 3·triage — Is this a `fail` or a `blocked`? (do this first)
+
+- **`fail`** → the behavior was exercised and was wrong. Run 3a–3e exactly as before; this is the skill's original flow, unchanged.
+- **`blocked`** → the tester could **not finish the step**, so its true outcome is unknown. First read the item `notes` — that is where they recorded *why* they stopped — and classify the blocker:
+
+  | Blocker (from the notes / your read of the step) | Skill can clear it? | What to do |
+  |---|---|---|
+  | Tester didn't know how to reach a screen, which control to use, or what data to enter | **Yes** | Drive the step yourself via the matching channel (run 3a→3d). The verification run **is** the step's first real execution. |
+  | Step depended on an earlier step that failed | **Usually** | Resolve that upstream `fail` first (it's another item in this same plan), then run this step. |
+  | "Necesită al doilea cont" / "2 device-uri" / RLS / cross-account visibility | **Yes** | Finish it via **SQL impersonation** — the supported single-device replica of the cross-user path. |
+  | Transient / "nu mergea atunci" / a precondition or seed data wasn't set up | **Yes** | Set up the precondition (seed via SQL), then run the step. |
+  | Native shell: push/FCM, Face ID, biometrics, Apple Sign-In native sheet, share sheet, file picker, OS deep link | **No** | Keep `blocked`; refine the reason. The native shell isn't in the browser DOM. |
+  | Needs real credentials, a paid third-party, a product decision, or infra access the skill lacks | **No** | Keep `blocked`; refine the reason. |
+
+  If the blocker is **clearable**, run 3a–3d to *finish the test*, then let its real outcome decide the update (3e):
+  - Behaves correctly when driven to completion → mark `pass` **with evidence**. Never flip a `blocked` to `pass` without actually running it.
+  - Completion exposes a real defect → it is effectively a `fail`: design and apply a fix (3b–3c), re-verify (3d), then `pass`.
+  - You genuinely cannot drive it with the supported channels → keep `blocked` (3e) with a one-line refined reason stating what a human or device must do next.
 
 ### 3a. Investigation — dispatch in parallel
 
@@ -140,13 +159,13 @@ Send these two subagents in the **same message**:
 - **`feature-dev:code-explorer`** — "Trace the code path involved in this failed step in the `<project_name>` repo at `<source_root>`. Plan title: `<title>`. Step description: `<verbatim>`. Expected result: `<verbatim>`. Tester notes (often contains root-cause hypothesis): `<verbatim>`. Map the relevant files under `<source_root>` (look in `src/`, `supabase/functions/`, `supabase/migrations/`, or whatever subdirs the project uses). Report under 350 words: which files, what runs, what likely broke, and the smallest reproducer. **For RLS / database steps, do NOT trust migration grep alone — verify `pg_policy` and `pg_class.relrowsecurity` live via SQL before claiming a table has no RLS.**"
 - **`Explore`** — "Find any recent changes around `<feature area>` in the `<project_name>` repo at `<source_root>`. Search git log for the last 14 days and grep for symbols mentioned in the failed step. Under 150 words: changed files, suspect commits."
 
-The `Explore` agent finds the surface area; the `code-explorer` agent traces semantics. Both share the failed step context. The italicized clause above exists because a previous run took a code-explorer's "tickets has no RLS" claim at face value and shipped a half-fix; the tickets table did have RLS, defined in an unrelated migration.
+The `Explore` agent finds the surface area; the `code-explorer` agent traces semantics. Both share the failed (or blocked) step context. **For a `blocked` item**, append to both prompts: *the tester could not finish this step; the blocker reason from their notes is `<verbatim>`; tell me how to complete the step and whether the underlying behavior actually works once it runs.* The italicized clause above exists because a previous run took a code-explorer's "tickets has no RLS" claim at face value and shipped a half-fix; the tickets table did have RLS, defined in an unrelated migration.
 
 ### 3b. Design the fix — dispatch one subagent (or do it inline if the path is obvious)
 
 Once 3a returns, if the fix path is non-trivial, dispatch **`feature-dev:code-architect`**:
 
-> "Based on this investigation: `<paste explorer + code-explorer outputs>`. Design the smallest fix that makes the failed step pass. Files involved: `<list>`. Report under 300 words with: 1) Root cause in one sentence, 2) Files to change with line ranges, 3) Exact code/text changes (not pseudo — final SQL bodies, final edited TS lines), 4) Whether this risks regressing other steps in the same plan, 5) Verification strategy (preview, SQL impersonation, or device)."
+> "Based on this investigation: `<paste explorer + code-explorer outputs>`. Design the smallest fix that makes the step pass (for a blocked item, the defect that surfaced once the step was driven to completion). Files involved: `<list>`. Report under 300 words with: 1) Root cause in one sentence, 2) Files to change with line ranges, 3) Exact code/text changes (not pseudo — final SQL bodies, final edited TS lines), 4) Whether this risks regressing other steps in the same plan, 5) Verification strategy (preview, SQL impersonation, or device)."
 
 If the architect reports that the root cause is **unknown**, **requires credentials**, **requires a product decision**, or **needs infrastructure access**: mark the item as `blocked` (Step 3e) with a one-line reason. **Do not attempt the fix.**
 
@@ -173,6 +192,8 @@ Pick the verification channel based on the step content. **Only two channels are
 
 **Native-only steps are NOT verifiable by this skill.** If a failed step describes behavior that lives in the native shell (push notifications, Apple Sign-In iOS sheet, Face ID, biometrics, Capacitor plugins, share sheet, file picker, OS-level deep links), mark it `blocked` with reason `"Needs real device; preview cannot reproduce native behavior."` instead of trying. The user follow-up for these is a manual run on a phone or a different skill.
 
+**For a `blocked` item, this verification is the step's first real execution** — the tester never got a clean result, so its outcome is the source of truth. A clean pass clears the block (→ `pass` at 3e). A failure means there is a real defect: loop back to 3b–3c, fix it, then re-verify here. If the supported channels cannot drive the step at all (native shell, real credentials, product decision), it stays `blocked` (3e) with the refined reason from the 3·triage taxonomy — do not guess a `pass`.
+
 For each verification, capture concrete evidence: a console log snippet, a `body.innerText` slice, an `INSERT ... RETURNING` row, or a screenshot path. The evidence is what you paste into the item's `notes` column at 3e.
 
 If verification fails after up to 3 retry cycles, classify the item as `blocked` with a reason and move on. Do not enter an infinite retry loop.
@@ -185,7 +206,7 @@ On verification success, UPDATE the item:
 UPDATE tt_test_items
 SET
   result = 'pass',
-  notes = notes || E'\n\n--- Resolved <YYYY-MM-DD> (Claude Code automation) ---\n<one-paragraph fix summary including: which files/migrations touched, the verification channel used, a verbatim slice of the evidence>',
+  notes = notes || E'\n\n--- Resolved <YYYY-MM-DD> (Claude Code automation) ---\n<one-paragraph summary including: whether this was a `fail` or a previously-`blocked` step — and if blocked, what the blocker was and how you unblocked/finished it; which files/migrations touched; the verification channel used; a verbatim slice of the evidence>',
   tested_by = 'Claude Code (automation)',
   tested_at = now(),
   updated_at = now()
@@ -193,13 +214,13 @@ WHERE id = <item_id>
 RETURNING id, test_plan_id, result, tested_at;
 ```
 
-On verification failure / blocked path:
+On verification failure, or a blocker the skill genuinely cannot clear:
 
 ```sql
 UPDATE tt_test_items
 SET
   result = 'blocked',
-  notes = notes || E'\n\n--- Blocked <YYYY-MM-DD> (Claude Code automation) ---\n<one-sentence reason: needs credentials / product decision / infrastructure / cannot reproduce on single device without N>',
+  notes = notes || E'\n\n--- Blocked <YYYY-MM-DD> (Claude Code automation) ---\n<one-sentence refined reason: WHY the skill cannot finish it and what a human/device must do next — native shell / needs credentials / product decision / infrastructure / true second physical device>',
   tested_at = now(),
   updated_at = now()
 WHERE id = <item_id>
@@ -210,7 +231,7 @@ Do not edit any markdown file — the plan does not live in a file. Do not touch
 
 ## Step 4 — Archive or keep
 
-After processing every `fail` item in a plan, re-aggregate:
+After processing every `fail` and `blocked` item in a plan, re-aggregate:
 
 ```sql
 SELECT
@@ -230,7 +251,7 @@ FROM tt_test_items WHERE test_plan_id = <plan_id>;
   RETURNING id, title, is_archived;
   ```
 
-- **At least one item is blocked → do not archive.** Leave the plan with the new mix. Mark its `TodoWrite` entry completed but tag the activeForm with "(blocked — left for user)" so the final summary surfaces it.
+- **At least one item is still blocked → do not archive.** These are the residual blockers the skill could not clear (native shell, credentials, product decision, real second device) — every clearable block should already be `pass` by now. Leave the plan with the new mix. Mark its `TodoWrite` entry completed but tag the activeForm with "(blocked — left for user)" so the final summary surfaces it.
 
 For the `all-green-should-archive` sub-queue from Step 2, run the same archive UPDATE — no investigation, no fix, no verification needed. These plans were missed by an earlier sweep or by a tester who marked everything green but did not flip the archive flag.
 
@@ -242,21 +263,21 @@ After every plan is processed, print a single compact summary in the main thread
 Test plan sweep — <YYYY-MM-DD>
 
 Archived (N):
-  - #<id>  [<test_type>]  <title>  (fixed: K items)    [or "(all-green pickup)" for the sub-queue]
+  - #<id>  [<test_type>]  <title>  (resolved: F fails fixed, B blocks cleared)   [or "(all-green pickup)" for the sub-queue]
   - ...
 
 Left blocked (M):
-  - #<id>  [<test_type>]  <title>  (Q blocked: <one-line reason aggregated>)
+  - #<id>  [<test_type>]  <title>  (Q still blocked: <one-line refined reason aggregated>)
   - ...
 
-Skipped (incomplete, blocked-only, empty): K
+Skipped (incomplete, empty): K
 ```
 
 That's the deliverable. No epilogue, no offer to "do anything else" — the user knows what to do with the blocked list.
 
 ## Subagent dispatch reference
 
-Always brief the subagent like a colleague walking in cold. Include: failed step description verbatim, expected_result verbatim, tester notes verbatim (this often holds the root cause), where to look (paths under `<source_root>/` — the project resolved in Step 0), and the response length limit. The subagent has zero memory of this conversation.
+Always brief the subagent like a colleague walking in cold. Include: the step description verbatim (whether it's `fail` or `blocked`), expected_result verbatim, tester notes verbatim (the root-cause hypothesis for a `fail`, the blocker reason for a `blocked`), where to look (paths under `<source_root>/` — the project resolved in Step 0), and the response length limit. The subagent has zero memory of this conversation.
 
 Launch independent investigations as multiple `Agent` tool calls in **one message** so they run concurrently. Wait for both before dispatching the architect step.
 
@@ -269,6 +290,7 @@ Launch independent investigations as multiple `Agent` tool calls in **one messag
 | Edge function / API response | Direct call via `execute_sql` or fetch from preview | Deterministic, isolated |
 | Push notification, biometrics, share sheet, native Apple Sign-In sheet, Face ID | **NOT supported** — mark `blocked` | Requires native shell; this skill does not drive real devices |
 | "2 device-uri" / "al doilea cont" steps with a single device | SQL impersonation (read **and** write) | The only single-device replica that actually exercises the cross-user policy path |
+| `blocked` step (tester got stuck — not a native/credential blocker) | Same channel as the step's behavior (preview or SQL impersonation); this run **is** the step's first real execution | A tester's `blocked` usually means *they* couldn't drive it, not that the code is broken — finish it before concluding |
 
 ## Mistakes to avoid
 
@@ -279,6 +301,9 @@ Launch independent investigations as multiple `Agent` tool calls in **one messag
 | Trusting a code-explorer "no RLS" claim without verifying `pg_policy` and `relrowsecurity` | Migration grep misses policies created in unrelated migrations. | After any RLS-related fix, query `pg_policy` directly to confirm the live state. |
 | Designing an INSERT policy that JOINs a table with its own RLS | The JOIN is evaluated in the subscriber's context and gets blocked. | Wrap the visibility check in a SECURITY DEFINER helper; have the policy call the helper. |
 | Trying to verify a native-only behavior in preview | The native shell (push, biometrics, OAuth sheets) is not in the browser DOM; you'll get a misleading false fail. | Detect native-only keywords (push, FCM, biometric, Face ID, Apple Sign-In native, share sheet) early and mark the step `blocked` with the right reason instead. |
+| Leaving a tester's `blocked` step untouched | Finishing those steps is the whole point of this update. A `blocked` from a human or the AI runner usually means *they* got stuck, not that the behavior is broken. | Read the notes for the blocker, then drive the step to completion via preview/SQL (3·triage) before concluding anything. |
+| Flipping a `blocked` step to `pass` without running it | `blocked` means it was never cleanly executed; a rubber-stamp `pass` ships a plan that lies about state. | Actually complete the step and capture evidence first — same bar as a `fail`. |
+| Burning retry cycles on a native / credential / product-decision blocker | Preview can't reach the native shell and you can't conjure credentials; the cycles are wasted. | Route via the 3·triage taxonomy: those blockers stay `blocked` with a refined reason, no retry loop. |
 | Using `preview_eval` to perform clicks | Bypasses React event handlers; gives false positives. | Use `preview_click` with a stable selector; reserve `preview_eval` for navigation and read-only inspection. |
 | Archiving a plan with any blocked item | The user explicitly wants blocked plans visible. | Archive only when zero blocked and zero pending. |
 | Looping forever on a stubborn step | Wastes time, won't converge. | 3 retry cycles max, then mark blocked and move on. |
@@ -294,7 +319,7 @@ Stop immediately and report to the user when any of these happen:
 - The Supabase MCP server is disconnected (or `execute_sql` errors out repeatedly).
 - The resolved `<source_root>` is missing or unreadable.
 - Step 0 cannot resolve the cwd to a `tt_projects` row.
-- The classification query returns zero `process` rows AND zero `all-green-should-archive` rows. (Empty work queue. Say so and stop.)
+- The classification query returns zero `process` rows (no plan has a failed or blocked step) AND zero `all-green-should-archive` rows. (Empty work queue. Say so and stop.)
 - The first plan's investigation subagent crashes with a tool-permission error you cannot work around.
 
 In each case, output a single sentence describing what blocked you and what the user needs to do.
