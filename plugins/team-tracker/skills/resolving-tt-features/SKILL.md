@@ -261,7 +261,34 @@ Blocate la implementare (K):
   - ...
 ```
 
-If anything was implemented, close with one line suggesting `/writing-tester-test-plans` so QA can cover the new functionality. Nothing else — the user sees live state in the team-tracker UI.
+Follow the summary with the testing recommendation (Step 6) — the last thing you print. Nothing else after it; the user sees live state in the team-tracker UI.
+
+## Step 6 — Recommend follow-up testing (final output)
+
+After the sweep summary, print ONE short recommendation: which test plan(s), if any, are worth writing for the features you just **implemented** (rows now `Gata`). Deferred/rejected proposals shipped no code, so they need no test. Reserve a **real human tester for the cases nothing else can exercise** — `/writing-tester-test-plans` (test_type `human`) is the expensive last resort; the default is `/writing-ai-test-plans` (test_type `ai`), which `/auto-running-test-plans` re-runs unattended.
+
+The signal is the verification channel each implemented feature used in 4c:
+
+| How the implemented feature was verified | Recommend | Why |
+|---|---|---|
+| Verified via **Vite preview** (any user-visible flow) or **SQL impersonation** (RLS, backend, cross-account) | **`/writing-ai-test-plans`** | The AI runner drives the same channel that proved the acceptance criteria — durable regression coverage at zero human cost. |
+| Has a facet in the **native shell** (push, biometrics, Apple Sign-In native sheet, Capacitor plugin, camera, share sheet), or needs a **real second device**, real money/credentials, or a **subjective visual / animation / UX-feel** judgment | **`/writing-tester-test-plans`** for that facet | Outside the browser DOM and SQL — only a person on a real device confirms it. The "ultra nevoie" case. |
+| A feature with both a normal web flow AND a native/subjective facet | **Ambele** — an AI plan for the web/DB part, a human plan only for the native/subjective part | Don't make a human re-test what the AI can run; don't pretend the AI reaches the native shell. |
+| Nothing was implemented this sweep (all Amânat/Respins), or the change is copy-only / already covered by an existing plan | **Niciun test nou** — say so | Nothing shipped, or a duplicate plan would just add QA noise. |
+
+**Default & tie-breaker:** the AI plan is the floor for any implemented feature with user-visible behavior reproducible in the browser or DB — even if you happened to verify it another way (tsc, a unit test, a one-off script). Escalate to a human tester only for a facet that genuinely can't be reached without a real device, real credentials, or a subjective judgment; recommend "niciun test nou" only when nothing shipped, or an existing plan already covers it.
+
+Then print exactly this block, in Romanian, as the final output of the run:
+
+```
+Recomandare testare:
+  → <AI | Uman | Ambele | Niciun test nou>
+  Motiv: <o propoziție, legată de canalul de verificare de mai sus>
+  De rulat: < /writing-ai-test-plans · /writing-tester-test-plans · ambele · — >
+  Acoperă: <feature #id-uri / zonele pe care planul trebuie să le acopere>
+```
+
+No epilogue after this block.
 
 ## Mistakes to avoid
 

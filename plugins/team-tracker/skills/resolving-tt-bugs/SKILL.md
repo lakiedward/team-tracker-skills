@@ -213,7 +213,34 @@ Left Open / Blocked (M):
 Skipped (status already Fixed/Closed): K
 ```
 
-That's the deliverable. No epilogue, no offer to "do anything else" — the user will look at team-tracker UI to see live state and decide on the blocked list.
+That's the sweep summary. Follow it immediately with the testing recommendation (Step 5) — that block is the last thing you print. No other epilogue, no offer to "do anything else"; the user reads live state in the team-tracker UI.
+
+## Step 5 — Recommend follow-up testing (final output)
+
+After the sweep summary, print ONE short recommendation: which test plan(s), if any, are worth writing for the bugs you just touched. Spend a **real human tester only when nothing else can exercise the behavior** — `/writing-tester-test-plans` (test_type `human`) is the expensive last resort. The default is `/writing-ai-test-plans` (test_type `ai`), because `/auto-running-test-plans` re-runs those unattended on every future sweep.
+
+You already computed the signal you need: the verification channel each bug used in 3d. Map it:
+
+| How the bug ended this sweep | Recommend | Why |
+|---|---|---|
+| Fixed + verified via **Vite preview** (UI, copy, navigation, AI output) or **SQL impersonation** (RLS, backend, cross-account) | **`/writing-ai-test-plans`** | The AI runner drives the exact channel that just proved the fix — durable regression coverage at zero human cost. |
+| Left `Open` as **native-only** (push/FCM, Face ID, biometrics, Apple Sign-In native sheet, Capacitor plugin, share sheet, camera, file picker), or needs a **real second device**, real money/credentials, or a **subjective visual / animation / UX-feel** judgment an AI can't make | **`/writing-tester-test-plans`** | Lives outside the browser DOM and SQL — only a person on a real device confirms it. This is the only "ultra nevoie" case. |
+| Both kinds appeared this sweep | **Ambele** — an AI plan for the web/DB fixes, a human plan only for the native/subjective ones | Don't make a human re-test what the AI can run; don't pretend the AI reaches the native shell. |
+| Only pure-internal fixes (refactor, config, dead code, no user-visible change), or fixes an existing plan already covers | **Niciun test nou** — say so explicitly | A duplicate plan just adds noise to the QA queue. |
+
+**Default & tie-breaker:** the AI plan is the floor for any fix that changed user-visible behavior and is reproducible in the browser or DB — even if you happened to verify it another way (tsc, a unit test, a one-off script). Escalate to a human tester only for behavior that genuinely can't be reached without a real device, real credentials, or a subjective judgment; recommend "niciun test nou" only when nothing user-visible changed, or an existing plan already covers it.
+
+Then print exactly this block, in Romanian, as the final output of the run:
+
+```
+Recomandare testare:
+  → <AI | Uman | Ambele | Niciun test nou>
+  Motiv: <o propoziție, legată de canalul de verificare de mai sus>
+  De rulat: < /writing-ai-test-plans · /writing-tester-test-plans · ambele · — >
+  Acoperă: <bug #id-uri / zonele pe care planul trebuie să le acopere>
+```
+
+No epilogue after this block.
 
 ## Subagent dispatch reference
 

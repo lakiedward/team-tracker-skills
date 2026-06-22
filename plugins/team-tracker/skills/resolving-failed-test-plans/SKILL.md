@@ -273,7 +273,32 @@ Left blocked (M):
 Skipped (incomplete, empty): K
 ```
 
-That's the deliverable. No epilogue, no offer to "do anything else" — the user knows what to do with the blocked list.
+That's the sweep summary. Follow it with the testing recommendation (Step 6) — the last thing you print. No other epilogue; the user knows what to do with the blocked list.
+
+## Step 6 — Recommend follow-up testing (final output)
+
+After the sweep summary, print ONE short recommendation: which test plan(s), if any, are worth writing for the code you changed while resolving these plans, and for what's still blocked. Reserve a **real human tester for what nothing else can exercise** — `/writing-tester-test-plans` (test_type `human`) is the expensive last resort; the default is `/writing-ai-test-plans` (test_type `ai`), which `/auto-running-test-plans` re-runs unattended.
+
+| What this sweep produced | Recommend | Why |
+|---|---|---|
+| Failed/blocked steps you **fixed + re-verified** via **Vite preview** or **SQL impersonation**, that the resolved plan can't auto-cover later (it was a `human` plan, or the fix touched behavior beyond the plan's steps) | **`/writing-ai-test-plans`** | An AI mirror lets `/auto-running-test-plans` guard the regression unattended next time, instead of waiting on a human re-run. |
+| **Residual `blocked` steps you could not clear** — native shell (push, biometrics, Apple Sign-In sheet), a **real second device**, real credentials, or a **subjective visual / UX** check | **`/writing-tester-test-plans`** (or a manual device run) | Exactly the steps outside the browser DOM and SQL — only a person on a real device finishes them. The "ultra nevoie" case. |
+| Both occurred this sweep | **Ambele** — an AI plan for the web/DB fixes, a human plan only for the residual native/subjective blockers | Don't make a human re-test what the AI can run; don't pretend the AI reaches the native shell. |
+| Everything was an all-green pickup (just archived), or the fixes are already covered by the resolved `ai` plan | **Niciun test nou** — say so | The existing `ai` plan already re-runs those steps; a duplicate adds QA noise. |
+
+**Default & tie-breaker:** the AI plan is the floor for any fix that changed user-visible behavior reproducible in the browser or DB and that the resolved plan won't auto-cover — even if you happened to verify it another way (tsc, a unit test, a one-off script). Escalate to a human tester only for a residual blocker that genuinely can't be reached without a real device, real credentials, or a subjective judgment; recommend "niciun test nou" only when it was an all-green pickup, or the resolved `ai` plan already covers it.
+
+Then print exactly this block, in Romanian, as the final output of the run:
+
+```
+Recomandare testare:
+  → <AI | Uman | Ambele | Niciun test nou>
+  Motiv: <o propoziție, legată de canalul de verificare de mai sus>
+  De rulat: < /writing-ai-test-plans · /writing-tester-test-plans · ambele · — >
+  Acoperă: <plan #id-uri / pașii sau zonele pe care planul trebuie să le acopere>
+```
+
+No epilogue after this block.
 
 ## Subagent dispatch reference
 
