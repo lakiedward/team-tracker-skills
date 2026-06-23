@@ -160,7 +160,7 @@ One `INSERT INTO tt_test_plans ... RETURNING id`, then one bulk `INSERT INTO tt_
 | `area` | One of: `AI`, `Bilete`, `Cote`, `Clasament`, `Notificari`, `Social`, `Cont`, `Plata`, `General`. Pick the dominant change. |
 | `priority` | `Low` / `Medium` / `High`. |
 | `test_type` | **`'ai'`** — mandatory for this skill. |
-| `effort` | How much reasoning a careful run needs: `low\|medium\|high\|max\|ultracode` (mirrors Claude Code effort; shown as a badge on the Focus card). UI-heavy / responsive / many-step plan → **at least `high`** (it must look right on mobile AND desktop). A simple copy/text check → `low`/`medium`. |
+| `effort` | How much reasoning a careful run needs: `low\|medium\|high\|xhigh\|max\|ultracode` (mirrors Claude Code effort; shown as a badge on the Focus card). UI-heavy / responsive / many-step plan → **at least `high`** (it must look right on mobile AND desktop). A simple copy/text check → `low`/`medium`. |
 | `is_archived` | `FALSE`. |
 | `created_by` | `'Claude Code'` (or what the user specified). |
 | `project_id` | `<project_id>` resolved in Step 0. **MANDATORY** — NULL plans are invisible in team-tracker. |
@@ -189,7 +189,7 @@ WITH new_plan AS (
     'AI',
     'High',
     'ai',          -- THIS is what routes the plan to /auto-running-test-plans and the "AI testing" toggle
-    'medium',      -- effort to run this plan well (low|medium|high|max|ultracode); UI/UX-heavy → at least 'high'
+    'medium',      -- effort to run this plan well (low|medium|high|xhigh|max|ultracode); UI/UX-heavy → at least 'high'
     'Claude Code',
     <project_id>   -- resolved in Step 0 from cwd
   )

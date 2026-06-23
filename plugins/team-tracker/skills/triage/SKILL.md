@@ -40,7 +40,7 @@ safe here precisely because triage only writes to the shared tracker tables, nev
 | Archive-done threshold | done item `updated_at` older than **30 days** (candidate to archive) |
 | Default priority | `Medium` (applied to active bugs/features with no priority) |
 | Writes allowed on confirm | set default priority; **backfill missing `effort`**; archive old done items; stamp `tt_triage_marks`. **Nothing else is automatic.** |
-| Effort backfill | only where `effort IS NULL`: `high` if title/description smells UI/UX (must look good on mobile+desktop), else `medium`. Never overwrites an effort a resolving/writing skill already set. Values: `low\|medium\|high\|max\|ultracode`. |
+| Effort backfill | only where `effort IS NULL`: `high` if title/description smells UI/UX (must look good on mobile+desktop), else `medium`. Never overwrites an effort a resolving/writing skill already set. Values: `low\|medium\|high\|xhigh\|max\|ultracode`. |
 | Never auto | merge/delete duplicates, delete stale, change titles/descriptions, touch app code |
 
 Do not ask the user to confirm any of these constants. If the Supabase MCP isn't connected, stop with a one-line error.

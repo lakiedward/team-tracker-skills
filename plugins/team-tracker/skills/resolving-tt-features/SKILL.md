@@ -112,7 +112,7 @@ The `description` field is the canonical brief — automated scan routines usual
 ## Effort level — assess and persist
 
 Every feature you triage and implement also gets an **effort level** written to `tt_features.effort`:
-`low · medium · high · max · ultracode`. It mirrors Claude Code's effort levels (tells whoever builds it how
+`low · medium · high · xhigh · max · ultracode`. It mirrors Claude Code's effort levels (tells whoever builds it how
 much reasoning to spend) and shows as a badge on the Focus card (a DB trigger mirrors `effort` →
 `tt_focus_tasks` automatically — you only write the source row). Derive it in triage (Step 3) from the
 evaluator's surface estimate + the UI/UX rule; confirm it at implementation (Step 4).
@@ -121,12 +121,13 @@ Pick the lowest level that honestly fits:
 - **low** — trivial: a copy change, one new field on an existing card.
 - **medium** — a small self-contained feature (S surface), clear path, no UI subtlety.
 - **high** — M/L surface or cross-cutting logic, OR **anything the user SEES** (UI/UX — the floor).
+- **xhigh** — large/subtle: an L surface with tricky logic, or UI/UX that's both visible and non-trivial (multiple screens/states, responsive).
 - **max** — complex: DB + backend + UI together, new screens, high regression risk.
 - **ultracode** — biggest: multi-subsystem feature, migration + RLS + UI at once.
 
 **Hard UI/UX rule:** any user-facing UI/UX (a screen, layout, component, styling, responsive behavior) →
 effort **at least `high`**, because it must look good on mobile AND desktop. Visual *and* complex →
-`max`/`ultracode`. Valid values only: `low|medium|high|max|ultracode`.
+`max`/`ultracode`. Valid values only: `low|medium|high|xhigh|max|ultracode`.
 
 ## Step 3 — Triage: evaluate every Propus feature
 
@@ -158,7 +159,7 @@ Print the recommendation table to the user — this is the deliverable the user 
 Triaj tt_features — proiect <slug> (id <project_id>)
 
 #<id> [<priority>/<type>] <title>
-  → Recomandare: <Implementează|Amână|Respinge> — <one-line rationale> (mărime: <S|M|L|XL> · efort: <low|medium|high|max|ultracode>)
+  → Recomandare: <Implementează|Amână|Respinge> — <one-line rationale> (mărime: <S|M|L|XL> · efort: <low|medium|high|xhigh|max|ultracode>)
 ...
 ```
 
@@ -178,8 +179,8 @@ For every triaged feature, append the evaluation to `description` (append-only, 
 UPDATE tt_features
 SET
   status = 'Planificat',
-  effort = '<low|medium|high|max|ultracode — per the Effort rubric>',
-  description = COALESCE(description, '') || E'\n\n--- Evaluat <YYYY-MM-DD> (Claude Code automation) ---\nRecomandare: Implementează — <rationale>. Mărime: <S|M|L>. Efort: <low|medium|high|max|ultracode>.',
+  effort = '<low|medium|high|xhigh|max|ultracode — per the Effort rubric>',
+  description = COALESCE(description, '') || E'\n\n--- Evaluat <YYYY-MM-DD> (Claude Code automation) ---\nRecomandare: Implementează — <rationale>. Mărime: <S|M|L>. Efort: <low|medium|high|xhigh|max|ultracode>.',
   updated_at = NOW()
 WHERE id = <feature_id> AND project_id = <project_id>
 RETURNING id, status, effort;
@@ -237,7 +238,7 @@ On verified success:
 UPDATE tt_features
 SET
   status = 'Gata',
-  effort = '<low|medium|high|max|ultracode — confirm from what the build actually took>',
+  effort = '<low|medium|high|xhigh|max|ultracode — confirm from what the build actually took>',
   description = COALESCE(description, '') || E'\n\n--- Implementat <YYYY-MM-DD> (Claude Code automation) ---\n<one-paragraph summary: what was built, files touched with relative paths, verification channel used, a verbatim slice of the evidence>',
   updated_at = NOW()
 WHERE id = <feature_id> AND project_id = <project_id>

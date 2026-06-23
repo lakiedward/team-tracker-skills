@@ -162,7 +162,7 @@ Compose one `INSERT INTO tt_test_plans ... RETURNING id` followed by one bulk `I
 | `description` | 2–3 plain-Romanian sentences telling the tester what changed and why. No jargon. This is the "Ce am modificat" block. |
 | `area` | One of: `AI`, `Bilete`, `Cote`, `Clasament`, `Notificari`, `Social`, `Cont`, `Plata`, `General`. Pick the one that best matches the dominant change. New areas allowed if none fit. |
 | `priority` | `Low` / `Medium` / `High`. `High` for security/data fixes or release blockers; `Medium` is the default; `Low` for cosmetic polish. |
-| `effort` | How much reasoning a careful run needs: `low\|medium\|high\|max\|ultracode` (mirrors Claude Code effort; shown as a badge on the Focus card). UI-heavy / multi-screen / responsive plan → **at least `high`** (must look right on mobile AND desktop). A single simple check → `low`/`medium`. |
+| `effort` | How much reasoning a careful run needs: `low\|medium\|high\|xhigh\|max\|ultracode` (mirrors Claude Code effort; shown as a badge on the Focus card). UI-heavy / multi-screen / responsive plan → **at least `high`** (must look right on mobile AND desktop). A single simple check → `low`/`medium`. |
 | `is_archived` | `FALSE`. |
 | `created_by` | `'Claude Code'` (or whatever the user wrote in their request, like `'PM'`). |
 | `project_id` | `<project_id>` resolved in **Step 0** from the cwd. **MANDATORY** — team-tracker scopes its view by selected project tab (`projectScopedPlans` in `TestingView.tsx`) and hides any row with `project_id IS NULL`. Plans without it exist in the DB but are invisible to the tester. |
