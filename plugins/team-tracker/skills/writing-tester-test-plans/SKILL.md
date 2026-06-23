@@ -162,6 +162,7 @@ Compose one `INSERT INTO tt_test_plans ... RETURNING id` followed by one bulk `I
 | `description` | 2–3 plain-Romanian sentences telling the tester what changed and why. No jargon. This is the "Ce am modificat" block. |
 | `area` | One of: `AI`, `Bilete`, `Cote`, `Clasament`, `Notificari`, `Social`, `Cont`, `Plata`, `General`. Pick the one that best matches the dominant change. New areas allowed if none fit. |
 | `priority` | `Low` / `Medium` / `High`. `High` for security/data fixes or release blockers; `Medium` is the default; `Low` for cosmetic polish. |
+| `effort` | How much reasoning a careful run needs: `low\|medium\|high\|max\|ultracode` (mirrors Claude Code effort; shown as a badge on the Focus card). UI-heavy / multi-screen / responsive plan → **at least `high`** (must look right on mobile AND desktop). A single simple check → `low`/`medium`. |
 | `is_archived` | `FALSE`. |
 | `created_by` | `'Claude Code'` (or whatever the user wrote in their request, like `'PM'`). |
 | `project_id` | `<project_id>` resolved in **Step 0** from the cwd. **MANDATORY** — team-tracker scopes its view by selected project tab (`projectScopedPlans` in `TestingView.tsx`) and hides any row with `project_id IS NULL`. Plans without it exist in the DB but are invisible to the tester. |
@@ -198,13 +199,14 @@ These are what separate a plan a tester can run from one they can't.
 
 ```sql
 WITH new_plan AS (
-  INSERT INTO tt_test_plans (title, description, area, priority, test_type, created_by, project_id)
+  INSERT INTO tt_test_plans (title, description, area, priority, test_type, effort, created_by, project_id)
   VALUES (
     'RETEST: Sub-text categorii Pronostic AI in romana (BET-139/140/141)',
     'Am corectat textele de sub butoanele Cota 2 / Echilibrat / Surprize din tab-ul Pronostic AI: nu mai apar cuvinte englezesti (bet builder, single, combo, upside, Over 2.5, GG). Trebuie sa apara doar romana.',
     'AI',
     'High',
     'human',      -- this skill writes human plans (Real user testing toggle); use writing-ai-test-plans for 'ai'
+    'high',       -- effort to run this plan well; UI text across multiple screens → at least 'high' (mobile + desktop)
     'Claude Code',
     <project_id>  -- resolved in Step 0 from cwd (e.g. 1 for BetRO, 7 for Culcush). Without this the plan is invisible in team-tracker.
   )
@@ -246,7 +248,7 @@ After insertion, print a 3-line summary to the user:
 ```
 Plan creat în Supabase (BetRO): tt_test_plans #<id>
 Titlu: <title>
-Pași: <N> | Area: <area> | Prioritate: <priority>
+Pași: <N> | Area: <area> | Prioritate: <priority> | Efort: <effort>
 Trimite testerului link-ul din team-tracker. Dupa ce marcheaza pass/fail/blocked, ruleaza /resolving-failed-test-plans.
 ```
 

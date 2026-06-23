@@ -39,7 +39,8 @@ safe here precisely because triage only writes to the shared tracker tables, nev
 | Stale threshold | `updated_at` older than **60 days** (flag for review) |
 | Archive-done threshold | done item `updated_at` older than **30 days** (candidate to archive) |
 | Default priority | `Medium` (applied to active bugs/features with no priority) |
-| Writes allowed on confirm | set default priority; archive old done items; stamp `tt_triage_marks`. **Nothing else is automatic.** |
+| Writes allowed on confirm | set default priority; **backfill missing `effort`**; archive old done items; stamp `tt_triage_marks`. **Nothing else is automatic.** |
+| Effort backfill | only where `effort IS NULL`: `high` if title/description smells UI/UX (must look good on mobile+desktop), else `medium`. Never overwrites an effort a resolving/writing skill already set. Values: `low\|medium\|high\|max\|ultracode`. |
 | Never auto | merge/delete duplicates, delete stale, change titles/descriptions, touch app code |
 
 Do not ask the user to confirm any of these constants. If the Supabase MCP isn't connected, stop with a one-line error.
@@ -111,6 +112,14 @@ UNION ALL
 SELECT 'feature', id, title, project_id FROM tt_features
   WHERE NOT is_archived AND status IN ('Propus','Planificat','În Focus') AND (priority IS NULL OR priority = '');
 
+-- a2) Missing effort (active bugs/features/tests) — count for the report; backfilled on "da"
+SELECT 'bug' AS kind, count(*) FROM tt_bugs
+  WHERE NOT is_archived AND status IN ('Open','In Progress') AND effort IS NULL
+UNION ALL SELECT 'feature', count(*) FROM tt_features
+  WHERE NOT is_archived AND status IN ('Propus','Planificat','În Focus') AND effort IS NULL
+UNION ALL SELECT 'test', count(*) FROM tt_test_plans
+  WHERE NOT is_archived AND effort IS NULL;
+
 -- b) Done not archived, older than 30 days (candidates to archive)
 SELECT 'bug' AS kind, id, title, updated_at FROM tt_bugs
   WHERE NOT is_archived AND status = 'Fixed'  AND updated_at < NOW() - INTERVAL '30 days'
@@ -164,11 +173,12 @@ Blocate (nu pot avansa): <count>
 
 Curățenie:
    • Fără prioritate: K        → propun Medium
+   • Fără efort: E             → propun backfill (medium; high la UI/UX)
    • Done de arhivat (>30z): A → propun arhivare
    • Stale (>60z): S          → DOAR raport (decizi tu)
    • Posibile duplicate: D    → DOAR raport (decizi tu): #x ~ #y …
 
-Aplic curățenia sigură (prioritate Medium unde lipsește + arhivare done vechi)? da / nu
+Aplic curățenia sigură (prioritate Medium + efort backfill unde lipsesc + arhivare done vechi)? da / nu
 ```
 
 Then **stop and wait**. The user invoked triage to SEE the order first; never apply writes before an explicit "da".
@@ -200,7 +210,7 @@ alongside the cleanup, with `<BY>` = `triage`. The `tt_triage_marks` table holds
 
 ## Step 4 — Apply on "da" (safe writes only)
 
-If the user confirms, apply exactly two kinds of write, each reported with the row count touched:
+If the user confirms, apply exactly three kinds of write, each reported with the row count touched:
 
 ```sql
 -- Default priority where missing
@@ -208,6 +218,15 @@ UPDATE tt_bugs     SET priority='Medium', updated_at=NOW()
   WHERE NOT is_archived AND status IN ('Open','In Progress') AND (priority IS NULL OR priority='');
 UPDATE tt_features SET priority='Medium', updated_at=NOW()
   WHERE NOT is_archived AND status IN ('Propus','Planificat','În Focus') AND (priority IS NULL OR priority='');
+
+-- Backfill effort where missing: UI/UX-smelling items must look good on mobile+desktop → 'high', else 'medium'.
+-- Only touches effort IS NULL; never overwrites a level a resolving/writing skill already set.
+UPDATE tt_bugs SET effort = CASE WHEN (title || ' ' || COALESCE(description,'')) ~* '(\[ui\]|ui/ux| ux |design|layout|responsive|mobil|ecran|buton|culoare|font|stil|vizual|icon)' THEN 'high' ELSE 'medium' END, updated_at=NOW()
+  WHERE NOT is_archived AND status IN ('Open','In Progress') AND effort IS NULL;
+UPDATE tt_features SET effort = CASE WHEN type='Design' OR (title || ' ' || COALESCE(description,'')) ~* '(\[ui\]|ui/ux| ux |design|layout|responsive|mobil|ecran|buton|culoare|font|stil|vizual|icon)' THEN 'high' ELSE 'medium' END, updated_at=NOW()
+  WHERE NOT is_archived AND status IN ('Propus','Planificat','În Focus') AND effort IS NULL;
+UPDATE tt_test_plans SET effort = CASE WHEN (title || ' ' || COALESCE(description,'')) ~* '(\[ui\]|ui/ux| ux |design|layout|responsive|mobil|ecran|buton|culoare|font|stil|vizual)' THEN 'high' ELSE 'medium' END, updated_at=NOW()
+  WHERE NOT is_archived AND effort IS NULL;
 
 -- Archive old done items (the exact ids from Step 2b — pass them explicitly so nothing else is touched)
 UPDATE tt_bugs        SET is_archived=true, updated_at=NOW() WHERE id = ANY(<bug_ids_2b>);
@@ -228,7 +247,7 @@ may have unique screenshots or a different platform), so triage never deletes or
 user explicitly says "arhivează și stale" / "închide duplicatul #x", do that one targeted write — but only on explicit
 instruction, never as part of the default apply.
 
-Print a one-line confirmation of what changed (`Prioritate setată: K · Arhivate: A`), then stop. The user looks at the
+Print a one-line confirmation of what changed (`Prioritate setată: K · Efort backfill: E · Arhivate: A`), then stop. The user looks at the
 Focus board for the live result.
 
 ## `--digest` mode (read-only, for the daily routine)

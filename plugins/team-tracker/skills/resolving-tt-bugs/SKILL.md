@@ -108,6 +108,24 @@ The `description` field on each row is the canonical brief — it usually alread
 
 The `image_urls` JSONB column may contain signed screenshots URLs from `bug-screenshots` Supabase storage; pass any such URLs verbatim into subagent prompts so they can WebFetch them for visual context.
 
+## Effort level — assess and persist
+
+Alongside the fix, give every bug you process an **effort level** and write it to `tt_bugs.effort`:
+`low · medium · high · max · ultracode`. It mirrors Claude Code's effort levels, so it tells whoever works
+the item next how much reasoning to spend, and it shows as a badge on the Focus card (a DB trigger mirrors
+`effort` → `tt_focus_tasks` automatically — you only write the source row). Judge it from the investigation (3a–3b).
+
+Pick the lowest level that honestly fits:
+- **low** — trivial/mechanical: a copy/string change, a one-line guard, a config value.
+- **medium** — localized change in one area, clear path, no UI subtlety, easily verified.
+- **high** — cross-cutting / multi-file logic, OR **anything the user SEES** (UI/UX — the floor).
+- **max** — complex: DB + backend + UI together, ambiguous root cause, high regression risk.
+- **ultracode** — biggest: multi-subsystem, migration + RLS + UI at once.
+
+**Hard UI/UX rule:** if the bug touches anything visible to the user (a screen, layout, component, styling,
+responsive behavior), effort is **at least `high`** — it must look good on mobile AND desktop. Visual *and*
+structurally complex → `max`/`ultracode`. Valid values only: `low|medium|high|max|ultracode`.
+
 ## Step 3 — Process each bug
 
 Iterate sequentially by `priority_rank ASC, created_at ASC` — bugs often touch overlapping code, and a Critical/High fix may invalidate the assumptions of a Medium one. **Do parallelize subagents within a single bug** when their work is independent.
@@ -175,10 +193,11 @@ On verification success, UPDATE the bug:
 UPDATE tt_bugs
 SET
   status = 'Fixed',
+  effort = '<low|medium|high|max|ultracode — per the Effort rubric>',
   description = description || E'\n\n--- Resolved <YYYY-MM-DD> (Claude Code automation) ---\n<one-paragraph fix summary including: root cause in one sentence, files/migrations touched with relative paths, verification channel used, a verbatim slice of the evidence>',
   updated_at = NOW()
 WHERE id = <bug_id>
-RETURNING id, status, updated_at;
+RETURNING id, status, effort, updated_at;
 ```
 
 On verification failure / blocked path (rolls back the In Progress flip if you want a clean trail, OR just appends a note and leaves it Open):
@@ -187,6 +206,7 @@ On verification failure / blocked path (rolls back the In Progress flip if you w
 UPDATE tt_bugs
 SET
   status = 'Open',
+  effort = '<low|medium|high|max|ultracode — per the Effort rubric; the investigation still gives an estimate>',
   description = description || E'\n\n--- Blocked <YYYY-MM-DD> (Claude Code automation) ---\n<one-sentence reason: needs credentials / product decision / infrastructure / native shell / cannot reproduce>\nWhat I tried: <one-paragraph summary of investigation>',
   updated_at = NOW()
 WHERE id = <bug_id>
@@ -203,7 +223,7 @@ After every bug is processed, print a single compact summary in the main thread:
 tt_bugs sweep — <YYYY-MM-DD> — project <slug> (id <project_id>)
 
 Fixed (N):
-  - #<id> [<priority>] <title>  →  <one-line what changed>
+  - #<id> [<priority>] [efort: <effort>] <title>  →  <one-line what changed>
   - ...
 
 Left Open / Blocked (M):

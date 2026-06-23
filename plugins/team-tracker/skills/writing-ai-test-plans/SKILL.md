@@ -160,6 +160,7 @@ One `INSERT INTO tt_test_plans ... RETURNING id`, then one bulk `INSERT INTO tt_
 | `area` | One of: `AI`, `Bilete`, `Cote`, `Clasament`, `Notificari`, `Social`, `Cont`, `Plata`, `General`. Pick the dominant change. |
 | `priority` | `Low` / `Medium` / `High`. |
 | `test_type` | **`'ai'`** — mandatory for this skill. |
+| `effort` | How much reasoning a careful run needs: `low\|medium\|high\|max\|ultracode` (mirrors Claude Code effort; shown as a badge on the Focus card). UI-heavy / responsive / many-step plan → **at least `high`** (it must look right on mobile AND desktop). A simple copy/text check → `low`/`medium`. |
 | `is_archived` | `FALSE`. |
 | `created_by` | `'Claude Code'` (or what the user specified). |
 | `project_id` | `<project_id>` resolved in Step 0. **MANDATORY** — NULL plans are invisible in team-tracker. |
@@ -181,13 +182,14 @@ One `INSERT INTO tt_test_plans ... RETURNING id`, then one bulk `INSERT INTO tt_
 
 ```sql
 WITH new_plan AS (
-  INSERT INTO tt_test_plans (title, description, area, priority, test_type, created_by, project_id)
+  INSERT INTO tt_test_plans (title, description, area, priority, test_type, effort, created_by, project_id)
   VALUES (
     'AI-RUN: Sub-text categorii Pronostic AI in romana',
     'Verifica automat ca textele de sub butoanele Cota 2 / Echilibrat / Surprize din tab-ul Pronostic AI nu mai contin cuvinte englezesti. Pregatire: porneste pe ecranul unui meci viitor cu cote.',
     'AI',
     'High',
     'ai',          -- THIS is what routes the plan to /auto-running-test-plans and the "AI testing" toggle
+    'medium',      -- effort to run this plan well (low|medium|high|max|ultracode); UI/UX-heavy → at least 'high'
     'Claude Code',
     <project_id>   -- resolved in Step 0 from cwd
   )
@@ -218,7 +220,7 @@ Atomicity is not strictly required; if the item insert fails, delete the plan ro
 ```
 Plan AI creat în Supabase: tt_test_plans #<id>  (test_type = 'ai')
 Titlu: <title>
-Pași: <N> | Area: <area> | Prioritate: <priority> | Proiect: <project_slug>
+Pași: <N> | Area: <area> | Prioritate: <priority> | Efort: <effort> | Proiect: <project_slug>
 Apare în team-tracker pe toggle-ul "AI testing". Ruleaza /auto-running-test-plans ca sa-l execute, apoi /resolving-failed-test-plans pentru fail-uri.
 ```
 
