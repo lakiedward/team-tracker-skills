@@ -20,8 +20,9 @@ lansează Workflow-uri per rundă, face merge la worktree-uri verificate, și ra
 | `<proiect>` | Slug-ul din `projects.json` (ex. `betro`) | **obligatoriu** |
 | `--dry-run` | Citește board-ul și printează lista de muncă; nu lansează nimic, nu scrie nimic | absent |
 | `--max-rounds N` | Numărul maxim de runde de lucru | `6` |
+| `--only <kind>:<id>` | Procesează un singur item (`bug:42` sau `feature:17`); sare dry-run-ul și execută end-to-end | absent |
 
-Exemplu: `/orchestrate betro --dry-run` · `/orchestrate betro` · `/orchestrate betro --max-rounds 3`
+Exemplu: `/orchestrate betro --dry-run` · `/orchestrate betro` · `/orchestrate betro --max-rounds 3` · `/orchestrate betro --only bug:42` · `/orchestrate betro --only feature:17`
 
 ## Constante
 
@@ -212,15 +213,166 @@ Pentru a rula efectiv: /orchestrate <slug>  (sau /orchestrate <slug> --max-round
 
 ---
 
-## Fazele 2–4 (Milestone B, C, D — neimplementate încă)
+## Modul `--only <kind>:<id>` — un singur item end-to-end (Milestone B)
 
-Fazele de execuție (lansare flotă, merge worktree-uri, buclă de runde, raport final, pâlnie de întrebări,
-guvernare) vor fi adăugate în Milestone B–D. Înainte ca acestea să existe în fișier, invocarea fără
-`--dry-run` trebuie să printeze:
+Dacă flag-ul `--only <kind>:<id>` este prezent (ex. `--only bug:42` sau `--only feature:17`),
+**nu rulezi dry-run-ul** și nu lansezi o flotă completă. Execuți exact un item, verifici rezultatul,
+scrii testele, și scrii în DB. Flow-ul complet de mai jos.
+
+### Pas B1 — Resolve & validare
+
+Execută Faza 0 și Faza 1 normal (resolve din `projects.json`, ping Supabase, citire board).
+Extrage `kind` și `id` din argumentul `--only`:
+- `kind` ∈ `bug` | `feature`; orice altceva → abort: "`kind` invalid; acceptat: `bug` sau `feature`."
+- `id` trebuie să fie un număr întreg pozitiv; altfel → abort.
+
+Verifică că itemul există în lista de muncă construită în Faza 1. Dacă nu apare (statusul nu e acționabil
+sau itemul are `SKIP_TAG`) → abort cu un singur rând explicativ.
+
+### Pas B2 — Alege skill-ul muncitor
+
+| `kind` | `worker_skill` |
+|---|---|
+| `bug` | `resolving-tt-bugs` |
+| `feature` | `resolving-tt-features` |
+
+### Pas B3 — Dispatch subagent muncitor (un singur Agent)
+
+Lansează **un singur subagent** (`Agent` tool) cu promptul de mai jos. Muncitorul trebuie să fie
+instruit să ruleze în **Orchestrator target mode** (secțiunea dedicată din SKILL.md-ul skill-ului
+ales) și să întoarcă EXCLUSIV JSON-ul structurat ca ultimul mesaj.
+
+Promptul subagentului:
 
 ```
-Dispecer — modul de execuție completă nu este încă implementat (Milestone B+).
-Rulează cu --dry-run pentru a vedea lista de muncă.
+Rulează skill-ul <worker_skill> în ORCHESTRATOR TARGET MODE pentru un singur item.
+
+TARGET_PROJECT_ID=<project_id>
+TARGET_SOURCE_ROOT=<repo_path>
+TARGET_ITEM_ID=<id>
+
+Item: [<kind> #<id>] <title>
+Descriere (brief canonic):
+<description verbatim — copiată exact din rândul DB>
+
+Instrucțiuni speciale:
+- Sari peste Step 0 și Step 2 din flow-ul normal; folosește parametrii TARGET_* de mai sus.
+- Procesează exclusiv rândul cu id=<id>.
+- La final, întoarce DOAR JSON-ul structurat din contractul skill-ului (nu adăuga text în afara JSON-ului).
+- Dacă acțiunea necesită o migrare DB / ștergere de date / push la remote / trimitere în afara sistemului
+  → întoarce outcome="blocked" cu o întrebare clară despre acea acțiune ireversibilă (nu executa).
+```
+
+Notă: în Milestone B nu se creează worktree-uri — `TARGET_SOURCE_ROOT` este repo-ul direct (`repo_path`).
+Câmpurile `worktree` și `branch` din JSON pot lipsi sau fi goale.
+
+### Pas B4 — Citește rezultatul (JSON contract)
+
+Muncitorul întoarce un JSON cu cheile:
+
+```
+item_id · outcome · verify_channel · test_recommendation · effort · summary · question
+```
+
+Parsează JSON-ul. Dacă muncitorul n-a returnat un JSON valid → tratează ca `outcome="blocked"` cu
+`question="Muncitorul nu a returnat JSON valid; verifică manual."`.
+
+### Pas B5 — Pasul de teste (înainte de write-back)
+
+Execută pasul de teste **înainte de a marca itemul gata** — diff-ul trebuie să fie vizibil pentru
+skill-ul de scris teste, care operează pe același `TARGET_SOURCE_ROOT`.
+
+Mapează `test_recommendation`:
+
+| `test_recommendation` | Acțiune |
+|---|---|
+| `"ai"` | Dispatch un subagent care rulează `/writing-ai-test-plans` scopat pe item (`TARGET_ITEM_ID`, `TARGET_PROJECT_ID`, `TARGET_SOURCE_ROOT`). Instruiește-l să scrie un plan de test AI pentru modificările aduse de acest item. |
+| `"human"` | Dispatch un subagent care rulează `/writing-tester-test-plans` cu același scoping. |
+| `"both"` | Dispatch ambele subagente (unul pentru AI, unul pentru uman), în același mesaj (paralel). |
+| `"none"` | Nu lansa niciun subagent de testare. |
+
+Subagentul de testare primește: `TARGET_PROJECT_ID`, `TARGET_SOURCE_ROOT`, `TARGET_ITEM_ID`, titlul
+și descrierea itemului, și instrucția că fix-ul este deja aplicat în `TARGET_SOURCE_ROOT`.
+Asteaptă finalizarea subagentului/subagentelor de testare înainte de a continua la write-back.
+
+### Pas B6 — Write-back sau Park
+
+**Dacă `outcome = "fixed"` (bug) sau `outcome = "done"` (feature):**
+
+Execută SQL-ul DONE corespunzător din `reference/board-queries.md`, interpolând:
+- `:id` → `item_id`
+- `:effort` → valoarea `effort` din JSON
+- `:date` → data curentă `YYYY-MM-DD`
+- `:summary` → valoarea `summary` din JSON
+
+Pentru bug:
+```sql
+UPDATE tt_bugs SET status='Fixed', effort=:effort,
+  description = description || E'\n\n--- Rezolvat :date (Dispecer) ---\n:summary', updated_at=NOW()
+WHERE id=:id;
+```
+
+Pentru feature (trigger-ul `trg_sync_focus_on_feature_done` mută automat cardul pe `deployed`):
+```sql
+UPDATE tt_features SET status='Gata', effort=:effort,
+  description = description || E'\n\n--- Rezolvat :date (Dispecer) ---\n:summary', updated_at=NOW()
+WHERE id=:id;
+```
+
+**Dacă `outcome = "blocked"`:**
+
+Pasul de teste NU se execută pentru un item blocat (nimic nu s-a implementat).
+
+Execută SQL-ul PARK din `reference/board-queries.md`:
+
+1. Append notă pe rândul sursă (`tt_bugs` sau `tt_features`, după `kind`):
+```sql
+UPDATE :table SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
+```
+Unde `:reason` = valoarea `question` din JSON.
+
+2. Asigură rândul focus și marchează blocat (`ensureFocusRow`):
+   - Citește `focus_task_id` de pe rândul sursă.
+   - Dacă `focus_task_id IS NULL` → INSERT în `tt_focus_tasks` cu
+     `source_type='bug'|'feature'`, `source_id=:id`, `title=<titlul itemului>`,
+     `project_id=<project_id>`, `status='focus'`, `priority=<prioritatea itemului>`;
+     apoi UPDATE rândul sursă să seteze `focus_task_id=<noul id>`.
+   - Execută:
+     ```sql
+     UPDATE tt_focus_tasks SET is_blocked=true, blocked_reason=:reason WHERE id=<focus_task_id>;
+     ```
+
+### Pas B7 — Raport final (mod `--only`)
+
+Printează un raport concis:
+
+```
+Dispecer — --only <kind>:<id> — <slug> — <YYYY-MM-DD>
+
+[<kind> #<id>] <titlu>
+  Status:  <Fixed | Gata | Blocat>
+  Outcome: <fixed | done | blocked>
+  Efort:   <effort>
+  Canal:   <verify_channel>
+  Teste:   <test_recommendation> → <ce s-a lansat>
+  Rezumat: <summary>
+  <dacă blocked> Întrebare pentru user: <question>
+```
+
+---
+
+## Fazele 2–4 complete (Milestone C, D — neimplementate încă)
+
+Fazele de execuție completă (flotă de muncitori, worktree-uri izolate, merge secvențial, buclă de runde,
+pâlnie de întrebări, raport final complet, guvernare) vor fi adăugate în Milestone C–D.
+Înainte ca acestea să existe în fișier, invocarea fără `--dry-run` și fără `--only` trebuie să printeze:
+
+```
+Dispecer — modul de execuție completă (flotă) nu este încă implementat (Milestone C+).
+Opțiuni disponibile acum:
+  /orchestrate <slug> --dry-run          — citește board-ul și printează lista de muncă
+  /orchestrate <slug> --only bug:<id>    — rezolvă un singur bug end-to-end
+  /orchestrate <slug> --only feature:<id> — implementează un singur feature end-to-end
 ```
 
 ---
