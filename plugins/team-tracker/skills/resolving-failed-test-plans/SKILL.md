@@ -348,3 +348,112 @@ Stop immediately and report to the user when any of these happen:
 - The first plan's investigation subagent crashes with a tool-permission error you cannot work around.
 
 In each case, output a single sentence describing what blocked you and what the user needs to do.
+
+---
+
+## Orchestrator target mode (single item)
+
+Această secțiune se activează **exclusiv** când invocarea primește toți cei trei parametri:
+`TARGET_PROJECT_ID`, `TARGET_SOURCE_ROOT`, și `TARGET_ITEM_ID` (pasați de Dispecer).
+Dacă oricare lipsește, skill-ul rulează flow-ul normal de sweep de mai sus (neschimbat).
+
+Aici `TARGET_ITEM_ID` este **`test_plan_id`-ul unui singur plan** — procesezi toate itemele `fail` și
+`blocked` ale ACELUI plan, exact ca în sweep, dar pentru un singur plan în loc de toate.
+
+### Parametri primiți de la Dispecer
+
+| Parametru | Tip | Descriere |
+|---|---|---|
+| `TARGET_PROJECT_ID` | number | `project_id` al proiectului; înlocuiește rezolvarea din Step 0 |
+| `TARGET_SOURCE_ROOT` | string | Calea absolută a repo-ului sursă **sau a worktree-ului** izolat; înlocuiește cwd-ul din Step 0. Acest skill MODIFICĂ cod (repară defecte), deci primește un worktree ca bug-urile/feature-urile — toate `Edit`/`Write`/`Glob`/`git` se fac în această cale. |
+| `TARGET_ITEM_ID` | number | `id`-ul exact al **planului** (`tt_test_plans.id`) de procesat; înlocuiește clasificarea în masă din Step 2 |
+| `TARGET_PREVIEW_SERVER_ID` | string | (opțional) `serverId`-ul unui preview deja pornit; dacă e dat, **nu porni și nu opri preview-ul** — lease-ul e deținut de Dispecer |
+
+### Modificări față de flow-ul normal
+
+**Sari peste Step 0** — nu mai detectezi proiectul din cwd. Folosești direct:
+- `<project_id>` = `TARGET_PROJECT_ID`
+- `<source_root>` = `TARGET_SOURCE_ROOT` (worktree-ul — toate fix-urile aterizează aici)
+
+**Sari peste clasificarea în masă din Step 2** — nu mai rulezi query-ul peste toate planurile.
+Rulezi aceeași clasificare dar **filtrată pe un singur plan** (adaugă `AND p.id = <TARGET_ITEM_ID>`):
+
+```sql
+WITH plan_stats AS (
+  SELECT
+    p.id, p.title, p.area, p.priority, p.test_type, p.created_by, p.created_at,
+    COUNT(i.id)                                                   AS total_items,
+    SUM(CASE WHEN i.result = 'pending' THEN 1 ELSE 0 END)         AS pending_count,
+    SUM(CASE WHEN i.result = 'pass'    THEN 1 ELSE 0 END)         AS pass_count,
+    SUM(CASE WHEN i.result = 'fail'    THEN 1 ELSE 0 END)         AS fail_count,
+    SUM(CASE WHEN i.result = 'blocked' THEN 1 ELSE 0 END)         AS blocked_count
+  FROM tt_test_plans p
+  LEFT JOIN tt_test_items i ON i.test_plan_id = p.id
+  WHERE p.is_archived = FALSE
+    AND p.project_id = <TARGET_PROJECT_ID>
+    AND p.id = <TARGET_ITEM_ID>
+  GROUP BY p.id, p.title, p.area, p.priority, p.test_type, p.created_by, p.created_at
+)
+SELECT id, title, area, priority, test_type, created_by, created_at,
+       total_items, pending_count, pass_count, fail_count, blocked_count
+FROM plan_stats;
+```
+
+Dacă rândul nu există, e arhivat, are iteme `pending` (plan incomplet), sau nu are niciun `fail`/`blocked`
+→ întoarce imediat JSON cu `outcome="blocked"`,
+`question="Planul #<id> nu există / e incomplet / nu are pași failed sau blocked în DB."`.
+
+**Step 3 (3·triage, 3a–3d) și Step 4 (re-agregare) sunt identice** cu flow-ul normal — procesezi toate
+itemele `fail`/`blocked` ale planului cu aceeași calitate de investigație, același canal de verificare,
+și aceeași logică de retry (max 3 cicluri). Toate edit-urile de cod se fac în `TARGET_SOURCE_ROOT` (worktree-ul).
+
+**În target mode scrii itemele planului ca de obicei (Step 3e: `tt_test_items.result='pass'`/`'blocked'` cu
+notă + evidență) — Dispecerul NU deține write-back-ul la nivel de item de test. DAR NU arhiva planul (Step 4)
+și NU printa raportul Step 5; arhivarea/raportarea le gestionează Dispecerul după ce face merge la worktree.**
+
+**Preview (dacă necesar):** dacă `TARGET_PREVIEW_SERVER_ID` este dat, **refolosește-l direct** — nu chema
+`preview_start`/`preview_stop`; lease-ul e al Dispecerului și e serializat pe rundă. Dacă lipsește și un pas
+cere verificare pe preview, pornește preview-ul normal (Step 1 pct. 3) — ești în modul standalone.
+
+**Nu printa raportul Step 5/6** (tabelul de sweep + recomandarea). În loc de raport, **întoarce un JSON
+structurat ca ULTIM mesaj** (vezi mai jos).
+
+### Output structurat — ultimul mesaj
+
+Întoarce **exact** acest JSON ca ultimul mesaj (fără text în afara blocului JSON):
+
+```json
+{
+  "item_id": <TARGET_ITEM_ID>,
+  "outcome": "done|blocked",
+  "verify_channel": "preview|sql|none",
+  "test_recommendation": "none",
+  "effort": "<low|medium|high|xhigh|max|ultracode>",
+  "summary": "<un paragraf: ce pași failed/blocked s-au rezolvat, ce fișiere/migrări s-au atins, canalul de verificare, o felie de dovadă>",
+  "question": "<dacă outcome=blocked: întrebarea concretă pentru user — ce blocaj rezidual rămâne; altfel câmpul lipsește sau e șir gol>"
+}
+```
+
+Valori valide:
+- `outcome`: `"done"` când **toți** pașii `fail`/`blocked` ai planului au fost rezolvați și sunt acum `pass`
+  (planul e gata de arhivat — dar arhivarea o face Dispecerul după merge); `"blocked"` dacă a rămas cel puțin
+  un blocaj rezidual pe care skill-ul nu-l poate clarifica (native shell, credențiale, decizie de produs,
+  al doilea device fizic) SAU dacă fix-ul cere o acțiune ireversibilă (vezi mai jos). Notă: planurile de test
+  folosesc `"done"` (nu `"fixed"` care e specific bug-urilor).
+- `verify_channel`: canalul folosit efectiv în 3d (`"preview"`, `"sql"`, sau `"none"` dacă n-a ajuns la verificare).
+- `test_recommendation`: **întotdeauna `"none"`** — testele nu nasc alte teste. Nu recomanda planuri de test
+  pentru un skill care rezolvă planuri de test.
+- `effort`: nivelul de efort estimat pentru reparațiile făcute (din investigație), pe scala efortului.
+- `summary`: rezumatul compactat (ce pași s-au reparat + fișiere/migrări + canal + dovadă), max 3 propoziții.
+- `question`: prezent și non-gol **doar** când `outcome="blocked"` — întrebarea precisă pentru user.
+
+**Reguli de incertitudine → park:** dacă un fix cere o acțiune **ireversibilă** (migrare DB / ștergere de
+date / push la remote / trimitere în afara sistemului), sau e prea vag / are mai multe interpretări, sau
+skill-ul și-a epuizat cele max 3 cicluri de retry, sau ai încredere mică — NU ghici și NU executa acțiunea
+ireversibilă: întoarce `outcome="blocked"` cu o `question` clară.
+
+**Câmpurile `worktree` și `branch`** (Milestone C, worktree-uri izolate): dacă promptul Dispecerului îți dă
+o cale de worktree și un branch `orch/<id>` (și-ți cere explicit să le incluzi), emite-le **verbatim** în JSON
+(`worktree="<calea>"`, `branch="orch/<id>"`). În modul standalone fără worktree (`TARGET_SOURCE_ROOT` = chiar
+repo-ul), lasă-le goale sau omite-le. Promptul Dispecerului poate cere și un câmp boolean `needs_preview` —
+setează-l `true` dacă verificarea cere preview UI (Dispecerul o serializează), altfel `false`.

@@ -330,3 +330,106 @@ In each case, output a single sentence describing what blocked you and what the 
 - `/resolving-failed-test-plans` takes plans (human OR AI) where at least one item is `fail` and tries to fix the underlying code, then re-verifies (also via preview).
 
 The three together cover: write → auto-execute → fix-and-archive. Each one only does its narrow slice. None of them depend on a real device by default — when a step truly needs a device (native-only features), it is marked `blocked` for human follow-up.
+
+---
+
+## Orchestrator target mode (single item)
+
+Această secțiune se activează **exclusiv** când invocarea primește toți cei trei parametri:
+`TARGET_PROJECT_ID`, `TARGET_SOURCE_ROOT`, și `TARGET_ITEM_ID` (pasați de Dispecer).
+Dacă oricare lipsește, skill-ul rulează flow-ul normal (alege planuri neatinse din coadă, neschimbat).
+
+Aici `TARGET_ITEM_ID` este **`test_plan_id`-ul unui singur plan AI neatins** — rulezi exact ACEL plan
+(toți pașii lui `pending`), în loc să iei primul din coadă.
+
+**Acest skill NU editează cod în worktree.** Spre deosebire de bug/feature/failed-test-plans, el doar
+**RULEAZĂ** un plan pe preview și scrie rezultatele per item în DB. De aceea Dispecerul îl marchează
+`no_worktree:true`: nu i se creează worktree izolat și rezultatul lui **nu se merge-uiește** niciodată.
+`TARGET_SOURCE_ROOT` este aici doar rădăcina proiectului pentru a citi `.claude/launch.json` și a scrie
+evidența — nu modifici niciun fișier sursă acolo.
+
+### Parametri primiți de la Dispecer
+
+| Parametru | Tip | Descriere |
+|---|---|---|
+| `TARGET_PROJECT_ID` | number | `project_id` al proiectului; înlocuiește rezolvarea din Step 0 |
+| `TARGET_SOURCE_ROOT` | string | Rădăcina proiectului (NU un worktree — nu se editează cod); pentru `.claude/launch.json` și dir-ul de evidență. Înlocuiește cwd-ul din Step 0. |
+| `TARGET_ITEM_ID` | number | `id`-ul exact al **planului** (`tt_test_plans.id`) de rulat; înlocuiește căutarea în coadă din Step 2 |
+| `TARGET_PREVIEW_SERVER_ID` | string | (opțional) `serverId`-ul unui preview deja pornit; dacă e dat, **nu porni și nu opri preview-ul** — lease-ul e deținut de Dispecer |
+
+### Modificări față de flow-ul normal
+
+**Sari peste Step 0** — folosești direct `<project_id>` = `TARGET_PROJECT_ID`,
+`<source_root>` = `TARGET_SOURCE_ROOT`, `<project_slug>` derivat din proiect.
+
+**Sari peste căutarea în coadă din Step 2** — nu mai cauți „primul plan AI neatins". Validezi că planul
+țintă este chiar neatins (toate itemele `pending`, AI, ne-arhivat), filtrând pe un singur plan:
+
+```sql
+SELECT
+  p.id, p.title, p.area, p.priority, p.description, p.test_type, p.is_archived,
+  COUNT(i.id)                                                   AS total_items,
+  SUM(CASE WHEN i.result = 'pending' THEN 1 ELSE 0 END)         AS pending_count
+FROM tt_test_plans p
+LEFT JOIN tt_test_items i ON i.test_plan_id = p.id
+WHERE p.project_id = <TARGET_PROJECT_ID>
+  AND p.id = <TARGET_ITEM_ID>
+GROUP BY p.id, p.title, p.area, p.priority, p.description, p.test_type, p.is_archived;
+```
+
+Validează: `is_archived = false`, `test_type = 'ai'`, `total_items > 0`, și
+`pending_count = total_items` (nimeni nu l-a început). Dacă oricare cade
+→ întoarce imediat JSON cu `outcome="blocked"`,
+`question="Planul #<id> nu există / nu e AI / e arhivat / a fost deja început (nu mai e neatins)."`.
+
+**Step 3 (încărcare iteme + pre-flight bailouts), Step 4 (execută fiecare item pe preview), Step 5
+(re-agregare + eventual arhivare) sunt identice** cu flow-ul normal — rulezi planul pas cu pas pe preview,
+scrii `result`/`notes` per item cu evidență, exact ca în sweep.
+
+**Item write-back rămâne al tău:** scrii `tt_test_items.result` (`pass`/`fail`/`blocked`) cu notă + evidență
+(Step 4f) și, dacă toți pașii trec, poți arhiva planul (Step 5) — la fel ca în sweep. Acest skill nu produce
+un diff de cod, deci nu există merge pe care Dispecerul să-l facă; rezultatul lui informează doar runda
+următoare (pașii `fail` apar pentru `/resolving-failed-test-plans`).
+
+**Preview (lease):** dacă `TARGET_PREVIEW_SERVER_ID` este dat, **refolosește-l direct** — nu chema
+`preview_start`/`preview_stop`; lease-ul e al Dispecerului. Dacă lipsește, pornește preview-ul normal
+(Step 1 pct. 2) — ești în modul standalone.
+
+**Nu printa raportul Step 6** (tabelul de sweep). În loc de raport, **întoarce un JSON structurat ca ULTIM
+mesaj** (vezi mai jos).
+
+### Output structurat — ultimul mesaj
+
+Întoarce **exact** acest JSON ca ultimul mesaj (fără text în afara blocului JSON):
+
+```json
+{
+  "item_id": <TARGET_ITEM_ID>,
+  "outcome": "done|blocked",
+  "verify_channel": "preview",
+  "test_recommendation": "none",
+  "effort": "low",
+  "summary": "<un paragraf: câți pași pass/fail/blocked, ce s-a observat, dacă planul a fost arhivat>",
+  "question": "<dacă outcome=blocked: de ce nu s-a putut rula planul; altfel câmpul lipsește sau e șir gol>",
+  "no_worktree": true
+}
+```
+
+Valori valide:
+- `outcome`: `"done"` când planul a fost rulat până la capăt (rezultatele sunt scrise în DB — indiferent dacă
+  toți pașii au trecut sau unii au picat; „done" înseamnă **rularea s-a terminat**, nu „toate pass").
+  `"blocked"` doar când planul nu a putut fi rulat deloc (planul țintă nu e neatins/AI/ne-arhivat per
+  validarea de mai sus, sau toate itemele au căzut în pre-flight bailout: multi-cont / native / cross-device,
+  sau preview-ul a fost ne-responsiv). Notă: planurile folosesc `"done"` (nu `"fixed"`).
+- `verify_channel`: **întotdeauna `"preview"`** — acest skill rulează exclusiv pe preview.
+- `test_recommendation`: **întotdeauna `"none"`** — testele nu nasc alte teste.
+- `effort`: **întotdeauna `"low"`** — e rulare, nu implementare; nu se schimbă cod.
+- `summary`: rezumatul compactat al rulării (counts pass/fail/blocked + observație + dacă s-a arhivat).
+- `question`: prezent și non-gol **doar** când `outcome="blocked"`.
+- `no_worktree`: **întotdeauna `true`** — semnalează Dispecerului că NU s-a creat worktree și că rezultatul
+  acestui item nu se merge-uiește (nu există diff de cod). Dispecerul sare peste merge pentru itemele
+  `no_worktree`.
+
+**Câmpurile `worktree` și `branch`:** acest skill **nu folosește worktree** — lasă-le mereu goale sau omite-le.
+Câmpul `needs_preview` poate fi setat `true` (rularea folosește preview), dar pentru că `no_worktree:true`
+Dispecerul nu serializează un stage de verificare separat pentru el — verificarea ESTE rularea însăși.
