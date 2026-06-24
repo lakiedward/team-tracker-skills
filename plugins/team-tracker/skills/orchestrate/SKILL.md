@@ -64,16 +64,36 @@ Dacă slug-ul există, extrage:
 git -C <repo_path> status --porcelain
 ```
 
-- Dacă directorul nu există → abort: "repo_path '<repo_path>' nu există pe disc."
-- Dacă comanda întoarce linii (modificări necommittuite) → abort: "Repo murdar: `<repo_path>` are
-  modificări necommittuite. Commit sau stash întâi, apoi reîncearcă."
-- Dacă e curat (output gol) → continuă.
+Interpretează rezultatul **după codul de ieșire, nu doar după stdout**:
+
+- **Comanda iese cu cod non-zero** (directorul lipsește sau calea nu este un repo git) → abort:
+  "repo lipsă / nu e repo git: `<repo_path>`. Verifică că `repo_path` din projects.json este corect."
+- **Comanda iese cu cod zero și stdout non-gol** (există modificări necommittuite) → abort:
+  "Repo murdar: `<repo_path>` are modificări necommittuite. Commit sau stash întâi, apoi reîncearcă."
+- **Comanda iese cu cod zero și stdout gol** → repo curat, continuă.
+
+Distincția dintre „director lipsă" și „repo curat" se face exclusiv prin codul de ieșire al comenzii
+— ambele returnează stdout gol, dar numai directorul lipsă/non-repo iese cu cod non-zero.
 
 Reține `project_id`, `repo_path`, `preview_name`, `preview_port` pentru restul rulării.
 
 ---
 
 ## Faza 1 — Citește board-ul
+
+**Pas 1 obligatoriu — ping Supabase MCP:** înainte de orice alt query, execută:
+
+```sql
+SELECT 1
+```
+
+prin `mcp__supabase-mcp-server__execute_sql` (project ref `ntjzghsbrzkvpkniotaj`). Dacă apelul
+eșuează sau conexiunea este deconectată → abort imediat cu un singur rând:
+
+> "Supabase MCP neconectat — reconectează și reia."
+
+Acest ping este **obligatoriu** — nu îl sări și nu îl condiționa de dubii. Numai după ce ping-ul
+reușește, continuă cu query-urile de mai jos.
 
 Rulează toate trei query-urile din `reference/board-queries.md` în **paralel** prin
 `mcp__supabase-mcp-server__execute_sql` (project ref `ntjzghsbrzkvpkniotaj`).
@@ -154,6 +174,9 @@ fără să creezi worktree-uri.
 
 **1. Tabel cu lista de muncă:**
 
+Coloana `Status` pentru rândurile de tip `testplan` este un șir sintetic (ex. `ai/3 pending`,
+`2 fail`), nu statusul brut din DB; bug-urile și feature-urile afișează statusul lor raw.
+
 ```
 Dispecer — dry-run — <slug> (project_id=<pid>) — <YYYY-MM-DD>
 
@@ -208,7 +231,7 @@ Rulează cu --dry-run pentru a vedea lista de muncă.
 |---|---|---|
 | Lowercase pe statusuri | DB-ul folosește exact `Open`, `In Progress`, `Propus`, `Planificat`, `În Focus`, `Gata`, `Fixed` — case-sensitive în filtre UI | Hardcodează valorile exacte |
 | `project_id` lipsă din query | Ai citi iteme din alte proiecte | Faza 0 îl rezolvă; include-l în FIECARE query |
-| A rula dry-run cu Supabase MCP deconectat | Query-urile eșuează silenți | Step 0: ping `execute_sql` cu `SELECT 1` dacă ai dubii |
+| A rula dry-run cu Supabase MCP deconectat | Query-urile eșuează silenți | Pas 1 din Faza 1: ping obligatoriu `SELECT 1` — nu condiționa de dubii |
 | A scrie în DB în dry-run | Dry-run-ul e promisiunea de „zero scrieri" | Faza 1 = SELECT-uri pure; niciun UPDATE/INSERT în dry-run |
 | Să sari SKIP_TAG check | Itemele `[manual]` sunt creative/intangibile; muncitorii nu le pot rezolva | Filtrează după 1d, înaintea oricărei alte procesări |
 | Abort silențios la repo murdar | Userul nu știe de ce nu s-a întâmplat nimic | Mesaj explicit cu calea repo-ului și ce să facă |

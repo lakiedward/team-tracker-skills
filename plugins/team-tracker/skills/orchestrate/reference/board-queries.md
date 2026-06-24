@@ -4,6 +4,10 @@ SQL-uri parametrizate pe `:pid` (`project_id`). Rulează toate prin `mcp__supaba
 (project ref `ntjzghsbrzkvpkniotaj`). Înlocuiește `:pid` cu valoarea numerică reală înainte de execuție
 (Supabase MCP nu suportă placeholder-uri — interpolează direct: `WHERE project_id = 1`).
 
+> **Notă SKIP_TAG:** rezultatele sunt post-filtrate în firul principal pentru a exclude itemele al căror
+> `title` sau `description` conține `SKIP_TAG=[manual]` (case-insensitive) — SQL-ul însuși nu filtrează
+> această etichetă.
+
 ---
 
 ## Citire board (Faza 1 — read-only)
@@ -52,6 +56,10 @@ Coloana derivată `testPlanColumn` (calculată în firul principal după query):
 - `test_type='ai' AND pending > 0` → muncă pentru `auto-running-test-plans`
 - `total > 0 AND fail=0 AND blocked=0 AND pending=0` → done; ignoră
 - altfel (total=0 sau netestat) → ignoră (plan gol / uman pending)
+
+**Tie-break categorie dublă:** când un test plan satisface simultan `fail+blocked > 0` ȘI
+`test_type='ai' AND pending > 0`, se încadrează **exclusiv** la `resolving-failed-test-plans` —
+problema activă (eșecuri/blocaje) are prioritate față de rularea pending.
 
 ---
 
