@@ -123,7 +123,7 @@ function implementPrompt(it) {
     // auto-running-test-plans: RULEAZĂ un plan, nu editează cod. Fără worktree, fără merge.
     // TARGET_SOURCE_ROOT e rădăcina proiectului doar ca să citească .claude/launch.json și să
     // scrie evidența — NU modifica niciun fișier sursă și NU face commit.
-    lines.push('Acest item RULEAZĂ un plan de test pe preview și scrie rezultate în DB — NU editează cod și NU creează worktree. Lucrează direct în repo_path (doar pentru .claude/launch.json și dir-ul de evidență); nu modifica fișiere sursă.')
+    lines.push('Acest item RULEAZĂ un plan de test pe preview și scrie rezultate în DB — NU editează cod și NU creează worktree. Rulează planul pe preview-ul proiectului; dacă portul implicit e ocupat, e cel mai probabil chiar dev server-ul live al proiectului (cod curent) — rulează planul pe el, NU edita launch.json-ul repo-ului live. Nu modifica fișiere sursă.')
     lines.push(`TARGET_SOURCE_ROOT=${args.repo_path}`)
   } else {
     // git=false: skill care POATE edita cod, dar fără izolare worktree → in-place serial.
@@ -188,8 +188,12 @@ function verifyPrompt(r, channel) {
   lines.push(`TARGET_ITEM_ID=${r.item_id}`)
   lines.push('')
   if (channel === 'preview') {
-    lines.push(`Ai LEASE-UL EXCLUSIV pe preview-ul ${args.preview_name}:${args.preview_port} pentru durata acestei verificări (ești singurul muncitor pe preview acum).`)
-    lines.push(`Pornește sau refolosește preview-ul ${args.preview_name} pe portul ${args.preview_port}, conduce verificarea UI din worktree-ul de mai sus, apoi (dacă l-ai pornit tu) lasă-l curat pentru următorul muncitor.`)
+    // Port DEDICAT orchestratorului — NU portul implicit al proiectului (poate fi ocupat de
+    // dev server-ul userului sau de alt worktree). Derivat din item_id (fără Date/Math.random).
+    const orchPort = 39000 + (Number(r.item_id) % 1000)
+    lines.push('Ai LEASE-UL EXCLUSIV pe preview pentru durata acestei verificări (ești singurul muncitor pe preview acum).')
+    lines.push(`PORT LIBER — NU folosi portul implicit al proiectului (${args.preview_port}); poate fi ocupat de dev server-ul userului sau de alt worktree. Folosește portul dedicat ${orchPort}: editează "${wt}/.claude/launch.json" și setează "port"=${orchPort} pe configul "${args.preview_name}" (și înlocuiește orice "--port <n>" din runtimeArgs cu ${orchPort}) ÎNAINTE de preview_start. Dacă e ocupat (EADDRINUSE), încearcă ${orchPort}+1 / +2 (max 3 încercări).`)
+    lines.push(`Pornește preview-ul "${args.preview_name}" (acum pe portul ${orchPort}) din worktree-ul de mai sus, condu verificarea UI, apoi OPREȘTE-l (lasă portul liber pentru următorul muncitor).`)
   } else {
     lines.push('Verifică prin SQL impersonation (RLS / stare DB). Nu atinge preview-ul — alți muncitori pot rula verificări SQL în paralel.')
   }

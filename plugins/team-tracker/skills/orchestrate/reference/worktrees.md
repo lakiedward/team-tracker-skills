@@ -53,6 +53,7 @@ cp "<repo_path>/.env.local" "C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slu
   proaspăt; folosește căi Windows cu backslash în argumentele `mklink` (`cmd //c` e felul în care Git Bash
   invocă cmd).
 - Muncitori paraleli care junctionează **același** `node_modules` e sigur — vite/tsc/lint doar **CITESC** ținta.
+- **Port preview worktree:** la verificarea-pe-preview, muncitorul folosește un port **DEDICAT** orchestratorului — `39000 + (item_id % 1000)` — **NU** portul implicit al proiectului (poate fi ocupat de dev server-ul userului sau de alt worktree). Îl scrie în `<wt>/.claude/launch.json` (câmpul `port` + orice `--port <n>` din runtimeArgs) **înainte** de `preview_start`; bump `+1`/`+2` la EADDRINUSE (max 3). Worktree-ul e disposable → editarea launch.json-ului lui e sigură și izolată. (Test-runnerele `auto-running-test-plans` rulează în repo_path, nu în worktree: dacă portul implicit e ocupat, e chiar dev server-ul live — îl folosesc, fără să editeze launch.json-ul real.)
 
 - Worktree-ul are propriul working tree → muncitorii paraleli nu se calcă pe fișiere.
 - `BETRO` (repo-ul sursă) **rămâne pe branch-ul lui** — `worktree add` nu schimbă HEAD-ul repo-ului principal.

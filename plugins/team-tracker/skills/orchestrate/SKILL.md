@@ -43,6 +43,7 @@ Cele globale sunt fixe:
 | `SKIP_TAG` | `[manual]` (case-insensitive) |
 | `SOFT_CAP` | `min(6, min(16, cores-2))` |
 | Worktrees root | `C:/Users/lakie/Desktop/.orch-worktrees` |
+| Port preview worktree | dedicat: `39000 + (item_id % 1000)` — **nu** portul implicit (poate fi ocupat de dev server-ul userului); scris în `.claude/launch.json` din worktree înainte de `preview_start`, bump la EADDRINUSE |
 
 Nu întreba userul despre aceste valori. Dacă Supabase MCP nu e conectat sau `projects.json` lipsește, abort
 cu o singură linie.
