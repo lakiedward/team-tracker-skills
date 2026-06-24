@@ -498,13 +498,21 @@ args = {
     kind: it.kind, id: it.id, title: it.title,
     description: <descrierea verbatim din Faza 1>,
     worker_skill: it.worker_skill,
+    // D1: marchează `no_worktree:true` pentru muncitorii care NU editează cod — adică
+    // `auto-running-test-plans` (rulează un plan, scrie rezultate în DB). Workflow-ul îl
+    // rulează FĂRĂ worktree și conductorul sare merge-ul pentru aceste iteme. Ceilalți trei
+    // muncitori (resolving-tt-bugs / resolving-tt-features / resolving-failed-test-plans)
+    // editează cod → `no_worktree` lipsește/false.
+    no_worktree: it.worker_skill === 'auto-running-test-plans' ? true : undefined,
   })),
 }
 ```
 
-Workflow-ul întoarce o listă de rezultate JSON (contractul cu 10 chei:
+Workflow-ul întoarce o listă de rezultate JSON (contractul:
 `item_id, outcome, verify_channel, test_recommendation, effort, summary, question, worktree, branch`,
-plus `needs_preview` și **`verified`**). Fiecare muncitor și-a creat worktree-ul, a implementat, a committuit;
+plus `needs_preview`, **`verified`**, și `no_worktree` pentru itemele test-runner). Fiecare muncitor cu
+worktree și-a creat worktree-ul, a implementat, a committuit; itemele `no_worktree` (auto-running-test-plans)
+au rulat un plan și au scris rezultate în DB, fără worktree;
 unele rezultate au trecut printr-un stage de verificare (SQL paralel / preview serial), altele NU.
 **`verified` spune adevărul**: e `true` DOAR pe rezultatele întoarse de un agent de verificare viu. Dacă
 verificatorul a murit, itemul degradează la „passthrough" și revine byte-identic cu un verde verificat, DAR cu
@@ -556,9 +564,10 @@ Asta rulează doar pentru proiecte `git=true` (cele cu worktree-uri). La `git=fa
 Procesează rezultatele întoarse **unul câte unul** (NICIODATĂ două merge-uri în paralel). Pentru fiecare rezultat
 `r`, **clasifică-l întâi după poarta de verificare**, NU doar după `outcome`:
 
-- **Item `no_worktree` (test-runner, ex. `auto-running-test-plans`)** — recunoaște-l după `r.no_worktree === true`
-  (sau worktree/branch goale). Acesta **NU se merge-uiește** (n-are diff de cod) și **nu are worktree de
-  curățat**. Muncitorul a scris deja rezultatele planului per item în DB în timpul rulării; tu **nu** faci
+- **Item `no_worktree` (test-runner, ex. `auto-running-test-plans`)** — recunoaște-l după `r.no_worktree === true`,
+  SAU după `worktree`/`branch` goale, SAU (cel mai sigur) după `worker_skill` al itemului trimis: tu știi din
+  `round_items` că itemul `r.item_id` a fost dat lui `auto-running-test-plans`. Acesta **NU se merge-uiește**
+  (n-are diff de cod) și **nu are worktree de curățat**. Muncitorul a scris deja rezultatele planului per item în DB în timpul rulării; tu **nu** faci
   write-back DONE pe vreun rând-sursă (planul nu se „termină" ca un bug). Dacă `r.outcome === 'done'`,
   contorizează-l ca „✅ rulat" în raport; dacă `r.outcome === 'blocked'` (planul nu s-a putut rula deloc),
   PARK normal (Pas C6, fără worktree). Nu intra în C5.2 pentru aceste iteme. Rezultatul lor informează doar
