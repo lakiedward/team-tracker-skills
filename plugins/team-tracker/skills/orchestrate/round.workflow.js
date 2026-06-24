@@ -84,6 +84,9 @@ const RESULT_SCHEMA = {
     worktree: { type: 'string' },
     branch: { type: 'string' },
     needs_preview: { type: 'boolean' },
+    // D1: `true` pe itemele care nu produc diff de cod (auto-running-test-plans) — rulează un
+    // plan și scriu rezultate în DB, fără worktree și fără merge. Conductorul sare merge-ul.
+    no_worktree: { type: 'boolean' },
     // Poarta de verificare model-C: `true` DOAR pe rezultate întoarse de un agent de
     // verificare (Stage 2a/2b). Passthrough (verifier mort) și itemele care n-au trecut
     // prin niciun stage de verificare poartă `false` → conductorul NU le face merge.
