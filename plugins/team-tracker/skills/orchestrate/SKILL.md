@@ -556,11 +556,17 @@ ceva înapoi:
 2. `returned = <rezultatele Workflow-ului>.map(r => r.item_id)`.
 3. Pentru fiecare `id ∈ sent` care **NU** e în `returned` (muncitorul lui a murit):
    - Worktree-ul orfan stă la calea deterministă `C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<id>`.
-   - Curăță-l (ignoră erorile dacă nu există — muncitorul putea muri înainte de `worktree add`):
+   - Curăță-l **în ordinea junction-first** (vezi `reference/worktrees.md` → CLEANUP). Muncitorul putea muri
+     **înainte** sau **după** `mklink //J node_modules`, deci scoate întâi junction-ul (inofensiv dacă nu există),
+     **abia apoi** worktree-ul (ignoră erorile — putea muri înainte chiar de `worktree add`):
      ```bash
+     cmd //c rmdir "C:\Users\lakie\Desktop\.orch-worktrees\<run_id>\<slug>-<id>\node_modules"   # scoate DOAR reparse point-ul junction-ului, NU ținta. NICIODATĂ 'rmdir /s' aici.
      git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<id>
      git -C <repo_path> branch -D orch/<id>
      ```
+   - **PERICOL:** NICIODATĂ nu rula `git worktree remove --force <wt>` cât timp junction-ul `node_modules` mai
+     există — un delete recursiv forțat ar putea traversa junction-ul și distruge `node_modules`-ul REAL al
+     proiectului. Întâi `rmdir` junction-ul (plain `rmdir`, **fără** `/s`), abia apoi `worktree remove`.
    - Raportează itemul în bucket-ul „picate" ca **„❌ Picat (muncitor mort) — reia"** (Pas C7).
 
 Asta rulează doar pentru proiecte `git=true` (cele cu worktree-uri). La `git=false` nu există worktree de curățat.
@@ -582,9 +588,13 @@ Procesează rezultatele întoarse **unul câte unul** (NICIODATĂ două merge-ur
   (`r.no_worktree !== true`). Numai atunci codul a fost efectiv verificat de un agent de verificare viu → treci
   la C5.2 (merge).
 - **Dacă** `r.outcome ∈ {fixed, done}` **DAR** `r.verified !== true` (verificatorul a murit și itemul a degradat
-  la passthrough, SAU `verify_channel:'none'` — n-a existat stage de verificare) → **NU face merge**. PARK-ează
-  itemul (Pas C6) cu `question="verificare lipsă/eșuată — reia"` și **PĂSTREAZĂ** worktree-ul + branch-ul. Un
-  verde neverificat nu aterizează niciodată.
+  la passthrough, SAU `verify_channel:'none'` — n-a existat o verificare reală pe preview/SQL) → **NU face merge**.
+  PARK-ează itemul (Pas C6) cu `question="verificare lipsă/eșuată — reia"` și **PĂSTREAZĂ** worktree-ul + branch-ul.
+  Un verde neverificat nu aterizează niciodată.
+  > **`verify_channel:'none'` ⇒ NICIODATĂ merge ⇒ PARK.** `verified:true` e legitim DOAR când
+  > `verify_channel ∈ {preview, sql}` ȘI acea verificare chiar a trecut (poarta o ridică numai un agent de
+  > verificare din Stage 2a/2b — vezi `round.workflow.js`). Grep / tsc / raționamentul muncitorului NU sunt
+  > verificare: un astfel de rezultat raportează corect `verify_channel:'none'` + `verified:false` și se parchează.
 - **Dacă** `r.outcome === 'blocked'` → PARK normal (Pas C6).
 
 > **Regulă pentru un Claude rece:** un `outcome:'fixed'`/`'done'` cu `verified:false` arată byte-identic cu un
@@ -604,11 +614,18 @@ Interpretează **codul de ieșire** (vezi `reference/worktrees.md`):
   1. **Write-back DONE** — execută SQL-ul DONE din `reference/board-queries.md` (`tt_bugs.status='Fixed'`
      pentru bug, `tt_features.status='Gata'` pentru feature), interpolând `:id=item_id`, `:effort=effort`,
      `:date=<azi>`, `:summary=summary`.
-  2. **CLEANUP worktree**:
+  2. **CLEANUP worktree** — **junction-first** (vezi `reference/worktrees.md` → CLEANUP). Scoate ÎNTÂI
+     junction-ul `node_modules`, ABIA APOI worktree-ul:
      ```bash
+     cmd //c rmdir "C:\Users\lakie\Desktop\.orch-worktrees\<run_id>\<slug>-<item_id>\node_modules"   # scoate DOAR reparse point-ul junction-ului, NU ținta. NICIODATĂ 'rmdir /s' aici.
      git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<item_id>
      git -C <repo_path> branch -D orch/<item_id>
      ```
+     > **PERICOL:** NICIODATĂ nu rula `git worktree remove --force <wt>` cât timp junction-ul `node_modules`
+     > mai există — un delete recursiv forțat ar putea traversa junction-ul și distruge `node_modules`-ul REAL
+     > al proiectului. Întâi `rmdir` junction-ul (plain `rmdir`, **fără** `/s`), abia apoi `worktree remove`.
+     > **Verificare de siguranță:** după cleanup confirmă că `<repo_path>/node_modules` încă există (junction-ul
+     > scos n-a atins ținta) — dacă a dispărut, OPREȘTE-TE și raportează.
 - **Cod non-zero (conflict):**
   1. **Abort** — nu lăsa repo-ul pe jumătate-merge-uit:
      ```bash
@@ -664,11 +681,16 @@ git -C <repo_path> rev-list --count HEAD..orch/<item_id>
 ```
 
 - **`0`** (branch fără commit-uri — tipic pentru un block la Stage 1) → **CLEANUP** worktree + branch (nimic de
-  reluat):
+  reluat), **junction-first** (vezi `reference/worktrees.md` → CLEANUP). Scoate ÎNTÂI junction-ul `node_modules`,
+  ABIA APOI worktree-ul:
   ```bash
+  cmd //c rmdir "C:\Users\lakie\Desktop\.orch-worktrees\<run_id>\<slug>-<item_id>\node_modules"   # scoate DOAR reparse point-ul junction-ului, NU ținta. NICIODATĂ 'rmdir /s' aici.
   git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<item_id>
   git -C <repo_path> branch -D orch/<item_id>
   ```
+  > **PERICOL:** NICIODATĂ nu rula `git worktree remove --force <wt>` cât timp junction-ul `node_modules` mai
+  > există — un delete recursiv forțat ar putea traversa junction-ul și distruge `node_modules`-ul REAL al
+  > proiectului. Întâi `rmdir` junction-ul (plain `rmdir`, **fără** `/s`), abia apoi `worktree remove`.
 - **`>0`** (branch cu commit-uri — verde neverificat, sau block la verificare după ce s-a implementat, sau
   conflict de merge) → **PĂSTREAZĂ** worktree-ul + branch-ul (regula PARK din `worktrees.md`). Munca trăiește
   acolo; raportul listează calea.

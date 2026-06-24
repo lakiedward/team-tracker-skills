@@ -110,6 +110,14 @@ function implementPrompt(it) {
   if (usesWorktree(it)) {
     lines.push('Prima ta acțiune: creează worktree-ul izolat și lucrează DOAR în el:')
     lines.push(`  git -C ${args.repo_path} worktree add -b ${branch} ${wt} HEAD`)
+    // Un worktree proaspăt NU are node_modules (gitignored) și NU are .env (gitignored) →
+    // fără ele nu poți rula vite preview / tsc / lint, deci nu poți VERIFICA fix-uri UI.
+    // Junction pe node_modules (partajat, doar citit de vite/tsc/lint — sigur în paralel; fără
+    // admin) + copiază .env din repo. `mklink /J` merge DOAR fiindcă `<wt>/node_modules` încă
+    // nu există într-un worktree proaspăt. Rulează-le imediat după `worktree add`:
+    lines.push(`  cmd //c mklink //J "${wt.replace(/\//g, '\\')}\\node_modules" "${args.repo_path.replace(/\//g, '\\')}\\node_modules"`)
+    lines.push(`  cp "${args.repo_path}/.env" "${wt}/.env" 2>/dev/null || true`)
+    lines.push(`  cp "${args.repo_path}/.env.local" "${wt}/.env.local" 2>/dev/null || true`)
     lines.push(`TARGET_SOURCE_ROOT=${wt}`)
   } else if (isTestRunner(it)) {
     // auto-running-test-plans: RULEAZĂ un plan, nu editează cod. Fără worktree, fără merge.
@@ -196,7 +204,13 @@ function verifyPrompt(r, channel) {
 // ============================================================================
 const impl = (await parallel(items.map((it) => () =>
   agent(implementPrompt(it), { label: `${it.kind}:${it.id}`, phase: 'Implement', schema: RESULT_SCHEMA })
-))).filter(Boolean)
+)))
+  .filter(Boolean)
+  // Poarta de verificare e a STAGE-ULUI 2: un rezultat de implementare (Stage 1) NU poate
+  // purta `verified:true` prin el însuși. Grep / tsc / raționament NU sunt verificare. Forțăm
+  // `verified:false` aici, la sursă — DOAR Stage 2a (SQL) / 2b (preview), sau test-runs (D1),
+  // pot ridica flag-ul mai jos. Un implement care își auto-raportează `verified:true` e ignorat.
+  .map((r) => ({ ...r, verified: false }))
 
 // Itemele blocate la implementare nu mai trec prin verificare.
 const blocked = impl.filter((r) => r.outcome === 'blocked')

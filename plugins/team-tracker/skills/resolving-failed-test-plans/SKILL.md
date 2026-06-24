@@ -440,7 +440,15 @@ Valori valide:
   un blocaj rezidual pe care skill-ul nu-l poate clarifica (native shell, credențiale, decizie de produs,
   al doilea device fizic) SAU dacă fix-ul cere o acțiune ireversibilă (vezi mai jos). Notă: planurile de test
   folosesc `"done"` (nu `"fixed"` care e specific bug-urilor).
-- `verify_channel`: canalul folosit efectiv în 3d (`"preview"`, `"sql"`, sau `"none"` dacă n-a ajuns la verificare).
+- `verify_channel`: canalul de verificare REAL folosit efectiv în 3d — `"preview"` (Vite preview a rulat și a
+  confirmat) sau `"sql"` (SQL impersonation a confirmat). **`"none"` în orice alt caz**: n-ai ajuns la verificare,
+  SAU ai „verificat" doar prin grep / tsc / citit cod / raționament. **Grep / tsc / raționamentul NU sunt
+  verificare** — dacă nu ai rulat efectiv preview-ul sau SQL-ul și acea verificare nu a trecut, `verify_channel="none"`.
+  **Fii onest:** dacă n-ai putut rula canalul real (ex. lipsă node_modules — deși Dispecerul ți-l junctionează
+  acum în worktree), raportează `verify_channel="none"`. Sub `verify_channel="none"`, Dispecerul lasă itemul
+  `verified:false` și NU îl merge-uiește (îl parchează „verificare lipsă/eșuată — reia"). `verified:true` e
+  legitim DOAR sub `verify_channel ∈ {preview, sql}` cu verificarea trecută — și e ridicat de Dispecer (Stage 2),
+  nu de tine. (Item write-back la nivel de `tt_test_items` rămâne al tău — independent de această poartă de merge.)
 - `test_recommendation`: **întotdeauna `"none"`** — testele nu nasc alte teste. Nu recomanda planuri de test
   pentru un skill care rezolvă planuri de test.
 - `effort`: nivelul de efort estimat pentru reparațiile făcute (din investigație), pe scala efortului.

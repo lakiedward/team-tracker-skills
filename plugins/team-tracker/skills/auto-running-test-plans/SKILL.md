@@ -421,7 +421,11 @@ Valori valide:
   `"blocked"` doar când planul nu a putut fi rulat deloc (planul țintă nu e neatins/AI/ne-arhivat per
   validarea de mai sus, sau toate itemele au căzut în pre-flight bailout: multi-cont / native / cross-device,
   sau preview-ul a fost ne-responsiv). Notă: planurile folosesc `"done"` (nu `"fixed"`).
-- `verify_channel`: **întotdeauna `"preview"`** — acest skill rulează exclusiv pe preview.
+- `verify_channel`: **întotdeauna `"preview"`** — acest skill rulează exclusiv pe preview, iar **rularea efectivă
+  a planului pe preview ESTE verificarea** (driverul DOM execută real pașii: snapshot/click/fill/eval/screenshot).
+  Spre deosebire de skill-urile care editează cod, aici nu există „verificare prin grep/tsc/raționament" — un
+  `outcome="done"` înseamnă că planul chiar a rulat pe preview, deci Dispecerul îl stampilează corect `verified:true`
+  (rularea e verificarea, D1). Dacă preview-ul n-a putut fi rulat deloc, `outcome="blocked"` (nu inventa un „done").
 - `test_recommendation`: **întotdeauna `"none"`** — testele nu nasc alte teste.
 - `effort`: **întotdeauna `"low"`** — e rulare, nu implementare; nu se schimbă cod.
 - `summary`: rezumatul compactat al rulării (counts pass/fail/blocked + observație + dacă s-a arhivat).

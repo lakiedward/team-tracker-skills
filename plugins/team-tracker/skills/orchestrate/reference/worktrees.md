@@ -38,6 +38,22 @@ pornit din `HEAD`-ul repo-ului sursă, materializat într-un worktree izolat:
 git -C <repo_path> worktree add -b orch/<itemId> C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slug>-<itemId> HEAD
 ```
 
+Imediat după `worktree add`, muncitorul **junctionează `node_modules`** și **copiază `.env`** din repo. Un
+worktree proaspăt NU are `node_modules` (gitignored) și nici `.env`/`.env.local` (gitignored) → fără ele
+muncitorul nu poate rula vite preview / tsc / lint, deci nu poate **VERIFICA** fix-urile UI (totul ar ajunge
+parcat). Junction-ul e partajat și folosit doar la **citire** de vite/tsc/lint (sigur și în paralel; fără admin):
+
+```bash
+cmd //c mklink //J "C:\Users\lakie\Desktop\.orch-worktrees\<runId>\<slug>-<itemId>\node_modules" "<repo_path-backslash>\node_modules"
+cp "<repo_path>/.env" "C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slug>-<itemId>/.env" 2>/dev/null || true
+cp "<repo_path>/.env.local" "C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slug>-<itemId>/.env.local" 2>/dev/null || true
+```
+
+- `mklink //J` (junction) merge **DOAR** fiindcă `<wt>/node_modules` încă **nu există** într-un worktree
+  proaspăt; folosește căi Windows cu backslash în argumentele `mklink` (`cmd //c` e felul în care Git Bash
+  invocă cmd).
+- Muncitori paraleli care junctionează **același** `node_modules` e sigur — vite/tsc/lint doar **CITESC** ținta.
+
 - Worktree-ul are propriul working tree → muncitorii paraleli nu se calcă pe fișiere.
 - `BETRO` (repo-ul sursă) **rămâne pe branch-ul lui** — `worktree add` nu schimbă HEAD-ul repo-ului principal.
 - Muncitorul lucrează **exclusiv** în `<...>/<slug>-<itemId>` și committuiește acolo:
@@ -76,14 +92,30 @@ Interpretează **codul de ieșire**:
 
 ---
 
-## CLEANUP (după merge reușit SAU abandon explicit)
+## CLEANUP (după merge reușit SAU abandon explicit) — **JUNCTION-FIRST (SAFETY-CRITICAL)**
+
+**Ordine obligatorie:** scoate ÎNTÂI junction-ul `node_modules`, ABIA APOI worktree-ul. Aceasta e **sursa unică
+de adevăr** pentru ordinea de cleanup — toți pașii conductorului (SKILL.md Pas C5.0 / C5.2 / C6) o referențiază.
 
 ```bash
+cmd //c rmdir "C:\Users\lakie\Desktop\.orch-worktrees\<runId>\<slug>-<itemId>\node_modules"   # scoate DOAR reparse point-ul junction-ului, NU ținta. NICIODATĂ 'rmdir /s' aici.
 git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slug>-<itemId>
 git -C <repo_path> branch -D orch/<itemId>
 ```
 
-- `worktree remove --force` șterge directorul worktree-ului (chiar dacă are fișiere netracked / build artefacts).
+> ## ⚠️ PERICOL — de ce junction-first
+> NICIODATĂ nu rula `git worktree remove --force <wt>` cât timp junction-ul `node_modules` **mai există**.
+> `worktree remove --force` face un delete **recursiv** al directorului worktree-ului; dacă junction-ul e încă
+> acolo, ștergerea ar putea **traversa junction-ul** și **distruge `node_modules`-ul REAL al proiectului** (ținta
+> junction-ului din `<repo_path>`). `rmdir` simplu (plain, **FĂRĂ** `/s`) pe un junction scoate **doar** reparse
+> point-ul — ținta rămâne neatinsă. De aceea: `rmdir` junction-ul ÎNTÂI, `worktree remove` ABIA APOI.
+>
+> **Verificare de siguranță (după cleanup):** confirmă că `<repo_path>/node_modules` **încă există**. Dacă a
+> dispărut, ceva a traversat junction-ul — OPREȘTE runda și raportează; nu mai curăța alte worktree-uri.
+
+- `rmdir` (plain) pe junction = scoate doar reparse point-ul; ținta (`<repo_path>/node_modules`) rămâne intactă.
+- `worktree remove --force` șterge directorul worktree-ului (chiar dacă are fișiere netracked / build artefacts) —
+  **numai după** ce junction-ul a fost scos.
 - `branch -D orch/<itemId>` șterge branch-ul de lucru — sigur **doar** după ce a fost merge-uit (sau abandonat).
 
 ---
@@ -120,15 +152,19 @@ git -C <repo_path> branch -D orch/<itemId>
 Un muncitor de implementare care **moare** nu apare în lista întoarsă de Workflow — dar și-a putut crea
 worktree-ul (prima lui acțiune) înainte să cadă, lăsându-l **orfan**. Conductorul reconciliază ID-urile trimise
 (`args.items`) cu cele întoarse; pentru fiecare `id` trimis dar neîntors, curăță worktree-ul orfan la **calea
-deterministă** (nu depinde de vreun rezultat — calea e funcție doar de `run_id`, `slug`, `id`):
+deterministă** (nu depinde de vreun rezultat — calea e funcție doar de `run_id`, `slug`, `id`), tot **junction-first**
+(vezi secțiunea CLEANUP de mai sus — muncitorul putea muri **după** ce a creat junction-ul):
 
 ```bash
+cmd //c rmdir "C:\Users\lakie\Desktop\.orch-worktrees\<runId>\<slug>-<itemId>\node_modules"   # scoate DOAR reparse point-ul junction-ului, NU ținta. NICIODATĂ 'rmdir /s' aici.
 git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slug>-<itemId>
 git -C <repo_path> branch -D orch/<itemId>
 ```
 
-Ignoră erorile ambelor comenzi — muncitorul putea muri **înainte** de `worktree add`, caz în care nu există nimic
-de șters. Vezi SKILL.md Pas C5.0.
+Ignoră erorile tuturor comenzilor — muncitorul putea muri **înainte** de `worktree add` (atunci nici junction-ul,
+nici worktree-ul nu există) sau **între** `worktree add` și `mklink` (atunci junction-ul lipsește, dar worktree-ul
+există). `rmdir`-ul junction-ului eșuează inofensiv dacă nu există. **Același PERICOL** ca la CLEANUP: niciodată
+`worktree remove --force` înaintea `rmdir`-ului junction-ului. Vezi SKILL.md Pas C5.0.
 
 ---
 
@@ -165,10 +201,16 @@ Disposable; **nu** atinge branch-ul real al BetRO:
 
 ```bash
 git -C C:/Users/lakie/Desktop/BETRO worktree add -b orch/test-0 C:/Users/lakie/Desktop/.orch-worktrees/t/betro-0 HEAD
+cmd //c mklink //J "C:\Users\lakie\Desktop\.orch-worktrees\t\betro-0\node_modules" "C:\Users\lakie\Desktop\BETRO\node_modules"   # junction
 git -C C:/Users/lakie/Desktop/BETRO worktree list
+# CLEANUP — junction-first (vezi secțiunea CLEANUP de mai sus):
+cmd //c rmdir "C:\Users\lakie\Desktop\.orch-worktrees\t\betro-0\node_modules"   # scoate DOAR junction-ul, NU ținta. NICIODATĂ 'rmdir /s'.
 git -C C:/Users/lakie/Desktop/BETRO worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/t/betro-0
 git -C C:/Users/lakie/Desktop/BETRO branch -D orch/test-0
+ls C:/Users/lakie/Desktop/BETRO/node_modules >/dev/null && echo "node_modules REAL intact"   # verificare de siguranță
 ```
 
-Așteptat: `worktree list` arată worktree-ul `betro-0`; după `remove` dispare; `BETRO` rămâne pe branch-ul
-lui original, neatins.
+Așteptat: `worktree list` arată worktree-ul `betro-0` (cu `node_modules` junction-at); după `rmdir`-ul
+junction-ului + `remove` worktree-ul dispare, dar `BETRO/node_modules` REAL **rămâne intact**; `BETRO` rămâne pe
+branch-ul lui original, neatins. **PERICOL:** nu inversa ordinea — `worktree remove` înainte de `rmdir`-ul
+junction-ului ar putea distruge `BETRO/node_modules`.
