@@ -52,6 +52,22 @@ function usesWorktree(it) {
   return HAS_GIT && !it.no_worktree
 }
 
+// D1 — cele 4 tipuri de muncitor, rutate după `it.worker_skill` (vine din triajul
+// conductorului, Faza 1). Conductorul setează deja `no_worktree:true` pe itemele
+// `auto-running-test-plans` (rulează planuri, nu editează cod). Aici derivăm un singur
+// adevăr: editează acest skill cod în worktree, sau doar rulează/raportează?
+//   - resolving-tt-bugs            → editează cod   (worktree, commit, merge)
+//   - resolving-tt-features        → editează cod   (worktree, commit, merge)
+//   - resolving-failed-test-plans  → POATE edita cod (worktree, commit, merge — ca bug/feature)
+//   - auto-running-test-plans      → DOAR rulează    (no_worktree, fără commit, fără merge)
+// `no_worktree` (oricum impus de conductor pentru auto-running) e singura sursă de adevăr
+// pentru „nu produce diff de cod" — îl folosim și ca să NU cerem commit pe astfel de iteme,
+// chiar dacă proiectul are git.
+const TEST_RUNNER_SKILL = 'auto-running-test-plans'
+function isTestRunner(it) {
+  return it.no_worktree === true || it.worker_skill === TEST_RUNNER_SKILL
+}
+
 // Contractul JSON al muncitorului — identic cu „Orchestrator target mode" din
 // skill-urile surori, + cheile worktree/branch adăugate în Milestone C.
 const RESULT_SCHEMA = {
@@ -92,9 +108,15 @@ function implementPrompt(it) {
     lines.push('Prima ta acțiune: creează worktree-ul izolat și lucrează DOAR în el:')
     lines.push(`  git -C ${args.repo_path} worktree add -b ${branch} ${wt} HEAD`)
     lines.push(`TARGET_SOURCE_ROOT=${wt}`)
+  } else if (isTestRunner(it)) {
+    // auto-running-test-plans: RULEAZĂ un plan, nu editează cod. Fără worktree, fără merge.
+    // TARGET_SOURCE_ROOT e rădăcina proiectului doar ca să citească .claude/launch.json și să
+    // scrie evidența — NU modifica niciun fișier sursă și NU face commit.
+    lines.push('Acest item RULEAZĂ un plan de test pe preview și scrie rezultate în DB — NU editează cod și NU creează worktree. Lucrează direct în repo_path (doar pentru .claude/launch.json și dir-ul de evidență); nu modifica fișiere sursă.')
+    lines.push(`TARGET_SOURCE_ROOT=${args.repo_path}`)
   } else {
-    // git=false sau item fără worktree (ex. test plans): lucrează in-place în repo.
-    lines.push('Proiect FĂRĂ worktree (git=false sau item care nu editează cod): lucrează direct în repo_path, fără să creezi worktree.')
+    // git=false: skill care POATE edita cod, dar fără izolare worktree → in-place serial.
+    lines.push('Proiect FĂRĂ git (worktree indisponibil): lucrează direct în repo_path, fără să creezi worktree.')
     lines.push(`TARGET_SOURCE_ROOT=${args.repo_path}`)
   }
 
@@ -119,7 +141,10 @@ function implementPrompt(it) {
   lines.push('Reguli de incertitudine (NU ghici): dacă itemul e prea vag / are mai multe interpretări / cere o acțiune ireversibilă (migrare DB, ștergere de date, push la remote, trimitere în afara sistemului) / skill-ul și-a epuizat cele max 3 cicluri de retry / ai încredere mică în corectitudine → întoarce outcome="blocked" cu o question clară pentru user.')
   lines.push('')
 
-  if (usesWorktree(it)) {
+  if (isTestRunner(it)) {
+    // Test runner: niciun commit — nu produce diff de cod, scrie doar rezultate în DB.
+    lines.push('NU face commit — acest item nu schimbă cod. Scrii doar rezultatele planului în DB (per item).')
+  } else if (usesWorktree(it)) {
     lines.push('La final, dacă ai schimbat ceva, COMMIT în worktree:')
     lines.push(`  git -C ${wt} add -A && git -C ${wt} commit -m "orch: ${it.kind} #${it.id}"`)
   } else if (HAS_GIT) {
@@ -173,10 +198,22 @@ const impl = (await parallel(items.map((it) => () =>
 // Itemele blocate la implementare nu mai trec prin verificare.
 const blocked = impl.filter((r) => r.outcome === 'blocked')
 
+// D1 — itemele `no_worktree` (auto-running-test-plans) RULEAZĂ planul direct în Stage 1:
+// rularea LOR ESTE verificarea. NU au worktree în care un verificator să intre și nu produc
+// diff de cod, deci NU trec prin Stage 2a/2b și NU se merge-uiesc. Le scoatem din pipeline-ul
+// de verificare aici și le stampilăm `verified:true` la final (un `done` de la un test-runner
+// este un rezultat real, nu un passthrough neverificat — altfel conductorul l-ar parca degeaba).
+// Cele blocate (planul nu s-a putut rula) rămân în `blocked` și cad în park, ca orice block.
+const noWtIds = new Set(items.filter((it) => it.no_worktree === true).map((it) => it.id))
+const isNoWorktreeResult = (r) => noWtIds.has(r.item_id)
+const testRuns = impl
+  .filter((r) => r.outcome !== 'blocked' && isNoWorktreeResult(r))
+  .map((r) => ({ ...r, verified: true }))
+
 // ============================================================================
 // Stage 2a — VERIFICARE SQL (paralel; n-au resursă comună)
 // ============================================================================
-const sqlItems = impl.filter((r) => r.outcome !== 'blocked' && r.verify_channel === 'sql' && !r.needs_preview)
+const sqlItems = impl.filter((r) => r.outcome !== 'blocked' && !isNoWorktreeResult(r) && r.verify_channel === 'sql' && !r.needs_preview)
 // `parallel` întoarce un array index-aliniat cu `sqlItems`, cu `null` pentru agenții
 // morți. Stampilăm `verified:true` DOAR pe pozițiile non-null și FORȚĂM `item_id` din
 // sursa `sqlItems[i].item_id` (nu avem încredere în id-ul ecou al agentului — fix și
@@ -197,7 +234,7 @@ const sqlVerified = sqlRaw
 // pe preview la un moment dat (preview-ul e single-tenant).
 // ============================================================================
 const previewItems = HAS_PREVIEW
-  ? impl.filter((r) => r.outcome !== 'blocked' && r.needs_preview === true)
+  ? impl.filter((r) => r.outcome !== 'blocked' && !isNoWorktreeResult(r) && r.needs_preview === true)
   : []
 const previewVerified = []
 for (const r of previewItems) {
@@ -219,6 +256,7 @@ for (const r of previewItems) {
 const verifiedIds = new Set([
   ...sqlVerified.map((r) => r.item_id),
   ...previewVerified.map((r) => r.item_id),
+  ...testRuns.map((r) => r.item_id), // test-runs sunt deja „verificate" prin rulare (D1)
 ])
 const blockedIds = new Set(blocked.map((r) => r.item_id))
 const passthrough = impl
@@ -230,7 +268,8 @@ const blockedOut = blocked.map((r) => ({ ...r, verified: false }))
 
 // ============================================================================
 // REZULTAT — fiecare item din `impl` apare EXACT o dată: blocate la implementare
-// + verificate SQL + verificate preview + restul (passthrough). Conductorul (firul
-// principal) face merge secvențial DOAR pe verzi cu `verified===true`; restul → PARK.
+// + verificate SQL + verificate preview + test-runs (no_worktree, verificate prin rulare)
+// + restul (passthrough). Conductorul (firul principal) face merge secvențial DOAR pe verzi
+// cu `verified===true` ȘI cu worktree (sare merge-ul pentru `no_worktree`); restul → PARK.
 // ============================================================================
-return [...blockedOut, ...sqlVerified, ...previewVerified, ...passthrough]
+return [...blockedOut, ...sqlVerified, ...previewVerified, ...testRuns, ...passthrough]
