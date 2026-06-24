@@ -416,19 +416,169 @@ Dispecer — --only <kind>:<id> — <slug> — <YYYY-MM-DD>
 
 ---
 
-## Fazele 2–4 complete (Milestone C, D — neimplementate încă)
+## Fazele 2–3 — O rundă completă (flotă, Milestone C)
 
-Fazele de execuție completă (flotă de muncitori, worktree-uri izolate, merge secvențial, buclă de runde,
-pâlnie de întrebări, raport final complet, guvernare) vor fi adăugate în Milestone C–D.
-Înainte ca acestea să existe în fișier, invocarea fără `--dry-run` și fără `--only` trebuie să printeze:
+Dacă invocarea **nu** are `--dry-run` și **nu** are `--only`, rulezi modul cu flotă: o rundă în care mai
+mulți muncitori lucrează în paralel, fiecare în worktree-ul lui, verificarea-pe-preview e serializată
+printr-un lease unic, iar tu (firul principal) faci merge secvențial la verzi și parchezi conflictele.
+
+> **Scope Milestone C: o singură rundă.** Bucla-până-se-golește (re-citește board-ul și repetă), pâlnia
+> de întrebări up-front și secțiunea de guvernare extinsă vin în Milestone D. În C: citește board-ul o
+> dată (Faza 1), rulează o rundă, raportează. Vezi nota de la sfârșitul acestei secțiuni.
+
+### Pas C0 — Generează `run_id` (în firul principal)
+
+Workflow-ul rulează în sandbox unde `Date.now()` / `Math.random()` / `new Date()` fără argumente **aruncă**
+— deci NU poate fabrica un id. **Tu** generezi `run_id` o singură dată, dintr-un timestamp Unix, și-l pasezi
+în `args` la lansarea Workflow-ului și (implicit, prin args) în prompturile muncitorilor:
+
+```bash
+date +%s
+```
+
+Reține rezultatul ca `run_id` (string, ex. `"1750762800"`). Worktree-urile rundei vor sta sub
+`C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/`.
+
+### Pas C1 — Grupare anti-conflict (înainte de fan-out)
+
+Două branch-uri care ating **același fișier** intră în conflict la merge. Ca să eviți asta:
+
+1. Pentru fiecare item din `work_items`, estimează **zona de cod** probabilă din `title` + `description`
+   (ex. „pagina de login" → zona auth/login; „export CSV pe raport" → zona reports/export; „culoare buton"
+   → zona UI/componenta respectivă). Folosește judecată — nu există o hartă exactă; grupează după
+   substantivele de feature/ecran/fișier menționate.
+2. **Itemele din aceeași zonă nu intră în aceeași rundă.** Dintr-un grup cu aceeași zonă, ia **un singur**
+   item în runda curentă; pe celelalte **amână-le** (în Milestone C, fără buclă, „amânat" = raportat ca
+   „amânat — coliziune de zonă cu #X; rulează din nou ca să-l prinzi"). În Milestone D, amânatele intră
+   automat în runda următoare.
+3. Itemele din **zone diferite** rulează în paralel (asta e câștigul flotei).
+4. **Plafonează la `SOFT_CAP`**: dacă rămân mai multe iteme independente decât `SOFT_CAP`, ia primele
+   `SOFT_CAP` (ordonate după prioritate din Faza 1) în runda curentă; restul → amânate.
+
+Rezultatul = `round_items` (lista plafonată, fără coliziuni interne) + `deferred` (amânatele).
+
+### Pas C2 — Per-proiect: `git=false` și `preview_name=null`
+
+- **`git = false`** (ex. `popicu_tips`): worktree-urile sunt indisponibile. Itemele rulează **in-place în
+  `repo_path`, SERIALIZAT** — nu poți edita în paralel același working tree. În acest caz **nu** lansa
+  Workflow-ul cu fan-out paralel; în schimb procesează `round_items` **unul câte unul** (ca în modul
+  `--only`, dar iterativ), fiecare cu `TARGET_SOURCE_ROOT = repo_path`. **Fără merge** (nu există branch
+  `orch/*` de merge-uit) — schimbarea e deja în repo. Sari Pasul C5 (merge) pentru aceste iteme.
+- **`preview_name = null`**: în `args` pasează `preview_name=null`, `preview_port=null`. Workflow-ul va
+  forța verificarea pe SQL și va parca itemele care cer obligatoriu UI. Nu există stage de preview.
+
+### Pas C3 — Lansează Workflow-ul rundei
+
+Pentru proiecte cu `git=true`, lansează `round.workflow.js` (tool-ul `Workflow`) cu:
+
+```js
+args = {
+  project_id:   <project_id>,
+  slug:         "<slug>",                 // basename worktree (ex. "betro")
+  repo_path:    "<repo_path>",
+  git:          <true|false>,
+  preview_name: <"vite-dev" | null>,
+  preview_port: <3000 | null>,
+  run_id:       "<run_id>",               // generat la Pas C0 — NU lăsa Workflow-ul să-l facă
+  soft_cap:     <SOFT_CAP>,
+  items: round_items.map(it => ({
+    kind: it.kind, id: it.id, title: it.title,
+    description: <descrierea verbatim din Faza 1>,
+    worker_skill: it.worker_skill,
+  })),
+}
+```
+
+Workflow-ul întoarce o listă de rezultate JSON (contractul cu 9 chei:
+`item_id, outcome, verify_channel, test_recommendation, effort, summary, question, worktree, branch`,
+plus `needs_preview`). Fiecare muncitor și-a creat worktree-ul, a implementat, a committuit, și (unde a
+fost cazul) a fost verificat — SQL în paralel, preview serial. **Nimic nu e încă merge-uit** — merge-ul e
+treaba ta, mai jos.
+
+### Pas C4 — Pasul de teste (pe verzi, în worktree, înainte de merge)
+
+Pentru fiecare rezultat cu `outcome ∈ {fixed, done}` (verde), execută **pasul de teste** (identic cu Pas B5),
+dar acum scopat pe **worktree-ul itemului** (`r.worktree`), nu pe `repo_path`:
+
+| `test_recommendation` | Acțiune |
+|---|---|
+| `"ai"` | Dispatch subagent `/writing-ai-test-plans` cu `TARGET_SOURCE_ROOT=r.worktree`, `TARGET_PROJECT_ID`, `TARGET_ITEM_ID`. |
+| `"human"` | Dispatch subagent `/writing-tester-test-plans` cu același scoping. |
+| `"both"` | Ambele (în paralel). |
+| `"none"` | Nimic. |
+
+Testele se scriu **în worktree** ca să intre în același merge ca fix-ul. Dacă skill-ul de teste committuiește,
+committuiește în `r.worktree`. Așteaptă finalizarea înainte de merge.
+
+> Pentru iteme `no_worktree` (ex. `auto-running-test-plans` în Milestone D) pasul de teste e `none` și
+> nu există merge.
+
+### Pas C5 — Merge secvențial al verzilor (firul principal)
+
+Procesează rezultatele verzi **unul câte unul** (NICIODATĂ două merge-uri în paralel). Pentru fiecare:
+
+```bash
+git -C <repo_path> merge --no-ff --no-edit orch/<item_id>
+```
+
+Interpretează **codul de ieșire** (vezi `reference/worktrees.md`):
+
+- **Cod zero (merge reușit):**
+  1. **Write-back DONE** — execută SQL-ul DONE din `reference/board-queries.md` (`tt_bugs.status='Fixed'`
+     pentru bug, `tt_features.status='Gata'` pentru feature), interpolând `:id=item_id`, `:effort=effort`,
+     `:date=<azi>`, `:summary=summary`.
+  2. **CLEANUP worktree**:
+     ```bash
+     git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<item_id>
+     git -C <repo_path> branch -D orch/<item_id>
+     ```
+- **Cod non-zero (conflict):**
+  1. **Abort** — nu lăsa repo-ul pe jumătate-merge-uit:
+     ```bash
+     git -C <repo_path> merge --abort
+     ```
+  2. **PARK** itemul (Pas C6) cu `question="conflict de merge pe <fișierele în conflict>; rezolvă manual"`.
+  3. **PĂSTREAZĂ** worktree-ul + branch-ul `orch/<item_id>` (NU face cleanup) — munca trăiește acolo.
+
+Ordinea merge-ului: după prioritate (verzii cu prioritate mai mare întâi), ca un eventual conflict să cadă
+pe itemul mai puțin prioritar.
+
+### Pas C6 — Park (blocked + conflicte)
+
+Pentru fiecare rezultat cu `outcome = 'blocked'` **și** pentru fiecare item picat la merge cu conflict:
+
+- Execută SQL-ul PARK din `reference/board-queries.md` (notă pe rândul sursă + `ensureFocusRow` →
+  `is_blocked=true`, `blocked_reason=question`). Vezi Pas B6 „blocked" pentru detaliile `ensureFocusRow`
+  (mapare status focus, INSERT dacă `focus_task_id IS NULL`, legare).
+- **PĂSTREAZĂ** worktree-ul + branch-ul (regula PARK din `worktrees.md`). NU face cleanup.
+- `:reason` = `question`-ul itemului (din JSON pentru blocked; „conflict de merge pe …" pentru conflicte).
+
+### Pas C7 — Raport de rundă
+
+Printează un raport concis al rundei:
 
 ```
-Dispecer — modul de execuție completă (flotă) nu este încă implementat (Milestone C+).
-Opțiuni disponibile acum:
-  /orchestrate <slug> --dry-run          — citește board-ul și printează lista de muncă
-  /orchestrate <slug> --only bug:<id>    — rezolvă un singur bug end-to-end
-  /orchestrate <slug> --only feature:<id> — implementează un singur feature end-to-end
+Dispecer — rundă (Milestone C) — <slug> (project_id=<pid>) — <YYYY-MM-DD> — run_id=<run_id>
+
+✅ Făcute & merge-uite (N):
+  - [<kind> #<id>] <titlu> → <summary>   (branch orch/<id> merge-uit, worktree curățat)
+⏸️ Parcate pentru tine (M):
+  - [<kind> #<id>] <titlu> → <question / motivul conflictului>   (worktree: <cale>)
+↩️ Amânate (coliziune de zonă / peste SOFT_CAP) (D):
+  - [<kind> #<id>] <titlu> → coliziune cu #<X>; rulează din nou ca să-l prinzi
+❌ Picate la verificare (K):
+  - [<kind> #<id>] <titlu> → <motiv>
+
+Worktrees parcate (de reluat manual): <căi>
 ```
+
+### Notă de scope (Milestone C vs. D)
+
+În Milestone C rulezi **o singură rundă**. Itemele amânate (coliziune de zonă sau peste `SOFT_CAP`) **nu**
+sunt reluate automat — raportul le listează ca „rulează din nou". Bucla-până-se-golește (`attempted`-set,
+re-citire board, repetare până nu mai e nimic nou), întrebările up-front printr-un `AskUserQuestion`,
+suportul pentru toate cele 4 tipuri de muncitor într-o rundă, și secțiunea de guvernare numerotată
+vin în **Milestone D**. Până atunci, pentru a procesa amânatele, rulează `/orchestrate <slug>` din nou.
 
 ---
 
@@ -442,3 +592,8 @@ Opțiuni disponibile acum:
 | A scrie în DB în dry-run | Dry-run-ul e promisiunea de „zero scrieri" | Faza 1 = SELECT-uri pure; niciun UPDATE/INSERT în dry-run |
 | Să sari SKIP_TAG check | Itemele `[manual]` sunt creative/intangibile; muncitorii nu le pot rezolva | Filtrează după 1d, înaintea oricărei alte procesări |
 | Abort silențios la repo murdar | Userul nu știe de ce nu s-a întâmplat nimic | Mesaj explicit cu calea repo-ului și ce să facă |
+| A lăsa Workflow-ul să genereze `run_id` | `Date.now()`/`Math.random()`/`new Date()` ARUNCĂ în sandbox-ul Workflow | Conductorul generează `run_id` (Pas C0, `date +%s`) și-l pasează în `args.run_id` |
+| Merge în paralel al worktree-urilor | Două merge-uri simultane în `repo_path` corup indexul / se calcă | Merge **secvențial**, un singur item odată (Pas C5) |
+| Cleanup worktree la PARK/conflict | Pierzi munca muncitorului care trebuie reluată manual | PARK păstrează worktree+branch; cleanup DOAR la merge reușit (`worktrees.md`) |
+| Fan-out paralel pe `git=false` | Nu poți edita în paralel același working tree fără izolare | `git=false` → in-place **serial**, fără merge (Pas C2) |
+| Merge fără verificare | Aterizezi cod neverificat | Doar `outcome ∈ {fixed,done}` (verificat preview/SQL) intră la merge; `blocked` → PARK |

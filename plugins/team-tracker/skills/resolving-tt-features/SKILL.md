@@ -432,4 +432,9 @@ Valori valide:
 - `summary`: rezumatul din 4d (ce s-a construit + fișiere + canal + dovadă), compactat în max 3 propoziții.
 - `question`: prezent și non-gol **doar** când `outcome="blocked"` — formulează o întrebare precisă la care userul trebuie să răspundă pentru a debloca itemul.
 
-**Câmpurile `worktree` și `branch`** sunt rezervate pentru Milestone C (worktree-uri izolate) și nu se emit în Milestone B.
+**Câmpurile `worktree` și `branch`** (Milestone C, worktree-uri izolate): dacă promptul Dispecerului
+îți dă o cale de worktree și un branch `orch/<id>` (și-ți cere explicit să le incluzi), emite-le **verbatim**
+în JSON (`worktree="<calea>"`, `branch="orch/<id>"`). În modul standalone / `--only` fără worktree
+(`TARGET_SOURCE_ROOT` = chiar repo-ul), lasă-le goale sau omite-le. Promptul Dispecerului poate cere și un
+câmp boolean `needs_preview` — setează-l `true` dacă verificarea cere preview UI (Dispecerul o serializează),
+altfel `false`.
