@@ -75,9 +75,9 @@ Dacă slug-ul există, extrage câmpurile de mai jos. Toate vin din intrarea din
 
 **Handling `git = false`:**
 Git worktrees sunt indisponibile pentru acest proiect. Modul `--only` (Milestone B) funcționează în continuare
-— muncitorul rulează direct în `repo_path`, fără worktree izolat. Modul cu flotă (Milestone C) va rula
-in-place / serializat pentru proiectele fără git (nu se implementează acum; documentat pentru planificare
-ulterioară). Sari verificarea `git status` de mai jos și continuă direct la Faza 1.
+— muncitorul rulează direct în `repo_path`, fără worktree izolat. Modul cu flotă (Milestone C) rulează
+**in-place, serializat** pentru proiectele fără git (un singur muncitor odată, fără worktree, fără merge) —
+vezi **Pas C2** din „Fazele 2–3". Sari verificarea `git status` de mai jos și continuă direct la Faza 1.
 
 **Handling `preview_name = null`:**
 UI preview verification este indisponibilă pentru acest proiect. Muncitorul trebuie să verifice exclusiv
