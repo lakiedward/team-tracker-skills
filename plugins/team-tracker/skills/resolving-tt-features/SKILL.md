@@ -342,3 +342,90 @@ Stop immediately and report to the user when any of these happen:
 - The first evaluator subagent crashes with a tool-permission error you cannot work around.
 
 Before stopping, revert any rows this run flipped to `În Focus` back to `Planificat` so they aren't stranded. Then output a single sentence describing what blocked you and what the user needs to do.
+
+---
+
+## Orchestrator target mode (single item)
+
+Această secțiune se activează **exclusiv** când invocarea primește toți cei trei parametri:
+`TARGET_PROJECT_ID`, `TARGET_SOURCE_ROOT`, și `TARGET_ITEM_ID` (pasați de Dispecer).
+Dacă oricare lipsește, skill-ul rulează flow-ul normal de mai sus.
+
+### Parametri primiți de la Dispecer
+
+| Parametru | Tip | Descriere |
+|---|---|---|
+| `TARGET_PROJECT_ID` | number | `project_id` al proiectului; înlocuiește rezolvarea din Step 0 |
+| `TARGET_SOURCE_ROOT` | string | Calea absolută a repo-ului sursă (sau worktree-ului, în Milestone C+); înlocuiește cwd-ul din Step 0 |
+| `TARGET_ITEM_ID` | number | `id`-ul exact al feature-ului de procesat; înlocuiește query-ul în masă din Step 2 |
+| `TARGET_PREVIEW_SERVER_ID` | string | (opțional) `serverId`-ul unui preview deja pornit; dacă e dat, **nu porni și nu opri preview-ul** — lease-ul e deținut de Dispecer |
+
+### Modificări față de flow-ul normal
+
+**Sari peste Step 0** — nu mai detectezi proiectul din cwd. Folosești direct:
+- `<project_id>` = `TARGET_PROJECT_ID`
+- `<source_root>` = `TARGET_SOURCE_ROOT`
+
+**Sari peste Step 2 (load în masă)** — nu mai rulezi query-ul peste toate feature-urile
+`Propus/Planificat/În Focus`. Rulezi aceeași interogare dar **filtrată pe un singur rând**:
+
+```sql
+SELECT
+  id, title, description, type, priority, status,
+  requested_by, image_urls, focus_task_id,
+  created_at, updated_at,
+  CASE priority
+    WHEN 'Critical' THEN 1
+    WHEN 'High'     THEN 2
+    WHEN 'Medium'   THEN 3
+    WHEN 'Low'      THEN 4
+    ELSE 5
+  END AS priority_rank
+FROM tt_features
+WHERE project_id = <TARGET_PROJECT_ID>
+  AND id = <TARGET_ITEM_ID>
+  AND is_archived = false
+  AND status IN ('Propus', 'Planificat', 'În Focus');
+```
+
+Dacă rândul nu există sau statusul nu e acționabil → întoarce imediat JSON cu
+`outcome="blocked"`, `question="Feature #<id> nu există sau nu mai e acționabil în DB."`.
+
+**Step-urile 3–4 (triage, design, implement, verify) sunt identice** cu flow-ul normal — procesezi
+un singur feature, dar cu aceeași calitate de evaluare, același canal de verificare, și aceeași logică
+de retry (max 3 cicluri). Pasul de triage (Step 3c, decision gate) se sare automat — Dispecerul
+a preautorizat procesarea acestui item.
+
+**Preview (dacă necesar):** dacă `TARGET_PREVIEW_SERVER_ID` este dat, **refolosește-l direct** —
+nu chema `preview_start` și nu chema `preview_stop` după verificare. Dispecerul deține lease-ul.
+Dacă `TARGET_PREVIEW_SERVER_ID` lipsește și feature-ul necesită verificare pe preview, pornește
+preview-ul normal (Step 1 pct. 4) și oprește-l la final — ești în modul standalone.
+
+**Nu printa raportul Step 5** (tabelul de sweep). În loc de raport, **întoarce un JSON structurat
+ca ULTIM mesaj** (vezi mai jos).
+
+### Output structurat — ultimul mesaj
+
+Întoarce **exact** acest JSON ca ultimul mesaj (fără text în afara blocului JSON):
+
+```json
+{
+  "item_id": <TARGET_ITEM_ID>,
+  "outcome": "done|blocked",
+  "verify_channel": "preview|sql|none",
+  "test_recommendation": "ai|human|both|none",
+  "effort": "<low|medium|high|xhigh|max|ultracode>",
+  "summary": "<un paragraf: ce s-a construit, fișiere atinse, canalul de verificare, o felie de dovadă>",
+  "question": "<dacă outcome=blocked: întrebarea concretă pentru user — ce lipsește sau ce decizie trebuie luată; altfel câmpul lipsește sau e șir gol>"
+}
+```
+
+Valori valide:
+- `outcome`: `"done"` când feature-ul e verificat și `tt_features.status='Gata'`; `"blocked"` în orice alt caz (native-only, decizie de produs, retry-uri epuizate, verificare eșuată, feature prea mare / XL). Notă: features folosesc `"done"` (nu `"fixed"` care este specific bug-urilor).
+- `verify_channel`: canalul folosit efectiv în 4c (`"preview"`, `"sql"`, sau `"none"` dacă n-a ajuns la verificare).
+- `test_recommendation`: valoarea din Step 6 mapată la una dintre cele patru opțiuni (`"ai"`, `"human"`, `"both"`, `"none"`).
+- `effort`: nivelul determinat din evaluare și confirmat la implementare, aplicat pe `tt_features.effort`.
+- `summary`: rezumatul din 4d (ce s-a construit + fișiere + canal + dovadă), compactat în max 3 propoziții.
+- `question`: prezent și non-gol **doar** când `outcome="blocked"` — formulează o întrebare precisă la care userul trebuie să răspundă pentru a debloca itemul.
+
+**Câmpurile `worktree` și `branch`** sunt rezervate pentru Milestone C (worktree-uri izolate) și nu se emit în Milestone B.
