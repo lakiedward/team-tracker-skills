@@ -88,14 +88,36 @@ WHERE id=:id;
 
 ### PARK — notă pe sursă + card blocat
 
+Substituie `:table` cu `tt_bugs` dacă `kind='bug'`, sau `tt_features` dacă `kind='feature'`.
+
 ```sql
--- PARK: notă pe sursă + card blocat (creează cardul dacă lipsește)
-UPDATE :table SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
--- apoi asigură rând focus + blochează:
---   dacă tt_(bugs|features).focus_task_id IS NULL → INSERT tt_focus_tasks (source_type,source_id,title,project_id,status,priority...) și leagă focus_task_id;
---   apoi UPDATE tt_focus_tasks SET is_blocked=true, blocked_reason=:reason WHERE id=<focus_task_id>;
+-- PARK pas 1: notă pe rândul sursă
+-- (înlocuiește :table cu tt_bugs dacă kind='bug', sau tt_features dacă kind='feature')
+UPDATE tt_bugs SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
+-- sau, dacă kind='feature':
+-- UPDATE tt_features SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
 ```
 
-Logica `ensureFocusRow`: dacă rândul sursă nu are `focus_task_id`, creează mai întâi rândul
-`tt_focus_tasks` cu `source_type='bug'|'feature'`, `source_id=:id`, câmpurile corespunzătoare,
-actualizează `focus_task_id` pe rândul sursă, **apoi** aplică `is_blocked=true`.
+Logica `ensureFocusRow`:
+
+1. Citește `focus_task_id` din rândul sursă.
+2. Dacă `focus_task_id` este non-NULL:
+   ```sql
+   UPDATE tt_focus_tasks SET is_blocked=true, blocked_reason=:reason, updated_at=NOW() WHERE id=<focus_task_id>;
+   ```
+3. Dacă `focus_task_id IS NULL` → INSERT cu câmpurile obligatorii:
+   - `title`, `description`, `project_id`
+   - `status` = statusul sursei mapat: bug `Open`→`'todo'`, bug `In Progress`→`'in_progress'`; feature `Propus`/`Planificat`→`'todo'`, feature `În Focus`→`'in_progress'`
+   - `priority` = număr: `Critical→1`, `High→2`, `Medium→3` (default), `Low→4`
+   - `is_blocked=true`, `blocked_reason=:reason`
+   - `source_type='bug'|'feature'`, `source_id=CAST(:id AS text)`
+   - `order_index=0`, `created_at=NOW()`, `updated_at=NOW()`
+
+   Valori valide pentru `tt_focus_tasks.status`: **exclusiv** `todo | in_progress | testing | done`. NU folosi `'focus'` sau `'blocked'`.
+
+   Apoi leagă rândul sursă (înlocuiește `:table` cu `tt_bugs`/`tt_features` după `kind`):
+   ```sql
+   UPDATE tt_bugs SET focus_task_id=<noul id>, updated_at=NOW() WHERE id=:id;
+   -- sau, dacă kind='feature':
+   -- UPDATE tt_features SET focus_task_id=<noul id>, updated_at=NOW() WHERE id=:id;
+   ```

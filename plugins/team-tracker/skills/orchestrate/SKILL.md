@@ -252,8 +252,8 @@ TARGET_SOURCE_ROOT=<repo_path>
 TARGET_ITEM_ID=<id>
 
 Item: [<kind> #<id>] <title>
-Descriere (brief canonic):
-<description verbatim — copiată exact din rândul DB>
+Descriere (brief canonic — copiată verbatim din setul de rezultate al citirii board-ului din Faza 1; nu e necesară o nouă interogare DB pentru aceasta):
+<description verbatim din rândul DB citit în Faza 1>
 
 Instrucțiuni speciale:
 - Sari peste Step 0 și Step 2 din flow-ul normal; folosește parametrii TARGET_* de mai sus.
@@ -261,6 +261,7 @@ Instrucțiuni speciale:
 - La final, întoarce DOAR JSON-ul structurat din contractul skill-ului (nu adăuga text în afara JSON-ului).
 - Dacă acțiunea necesită o migrare DB / ștergere de date / push la remote / trimitere în afara sistemului
   → întoarce outcome="blocked" cu o întrebare clară despre acea acțiune ireversibilă (nu executa).
+- Dacă kind='feature', adaugă în promptul muncitorului instrucția: 'Sari și peste Step 3c (decision gate) — Dispecerul a preautorizat procesarea acestui item.'
 ```
 
 Notă: în Milestone B nu se creează worktree-uri — `TARGET_SOURCE_ROOT` este repo-ul direct (`repo_path`).
@@ -279,6 +280,8 @@ Parsează JSON-ul. Dacă muncitorul n-a returnat un JSON valid → tratează ca 
 
 ### Pas B5 — Pasul de teste (înainte de write-back)
 
+Dacă `outcome = 'blocked'`, sari direct la Pas B6 — nu lansa niciun subagent de testare.
+
 Execută pasul de teste **înainte de a marca itemul gata** — diff-ul trebuie să fie vizibil pentru
 skill-ul de scris teste, care operează pe același `TARGET_SOURCE_ROOT`.
 
@@ -293,7 +296,7 @@ Mapează `test_recommendation`:
 
 Subagentul de testare primește: `TARGET_PROJECT_ID`, `TARGET_SOURCE_ROOT`, `TARGET_ITEM_ID`, titlul
 și descrierea itemului, și instrucția că fix-ul este deja aplicat în `TARGET_SOURCE_ROOT`.
-Asteaptă finalizarea subagentului/subagentelor de testare înainte de a continua la write-back.
+Așteaptă finalizarea subagentului/subagentelor de testare înainte de a continua la write-back.
 
 ### Pas B6 — Write-back sau Park
 
@@ -326,20 +329,45 @@ Pasul de teste NU se execută pentru un item blocat (nimic nu s-a implementat).
 Execută SQL-ul PARK din `reference/board-queries.md`:
 
 1. Append notă pe rândul sursă (`tt_bugs` sau `tt_features`, după `kind`):
-```sql
-UPDATE :table SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
-```
-Unde `:reason` = valoarea `question` din JSON.
+
+   Substituie `:table` cu `tt_bugs` dacă `kind='bug'`, sau `tt_features` dacă `kind='feature'`.
+   ```sql
+   UPDATE tt_bugs SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
+   -- sau, dacă kind='feature':
+   UPDATE tt_features SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
+   ```
+   Unde `:reason` = valoarea `question` din JSON.
 
 2. Asigură rândul focus și marchează blocat (`ensureFocusRow`):
-   - Citește `focus_task_id` de pe rândul sursă.
-   - Dacă `focus_task_id IS NULL` → INSERT în `tt_focus_tasks` cu
-     `source_type='bug'|'feature'`, `source_id=:id`, `title=<titlul itemului>`,
-     `project_id=<project_id>`, `status='focus'`, `priority=<prioritatea itemului>`;
-     apoi UPDATE rândul sursă să seteze `focus_task_id=<noul id>`.
-   - Execută:
+   - Citește `focus_task_id` de pe rândul sursă (via SELECT pe `tt_bugs` sau `tt_features`, după `kind`).
+   - Dacă `focus_task_id` este prezent (non-NULL):
      ```sql
-     UPDATE tt_focus_tasks SET is_blocked=true, blocked_reason=:reason WHERE id=<focus_task_id>;
+     UPDATE tt_focus_tasks SET is_blocked=true, blocked_reason=:reason, updated_at=NOW() WHERE id=<focus_task_id>;
+     ```
+   - Dacă `focus_task_id IS NULL` → INSERT în `tt_focus_tasks`:
+     - `title` = titlul itemului
+     - `description` = descrierea itemului
+     - `project_id` = `<project_id>`
+     - `status` = statusul sursei mapat la coloana focus:
+       - bug `Open` → `'todo'`; bug `In Progress` → `'in_progress'`
+       - feature `Propus`/`Planificat` → `'todo'`; feature `În Focus` → `'in_progress'`
+     - `priority` = număr: `Critical→1`, `High→2`, `Medium→3` (default), `Low→4`
+     - `is_blocked` = `true`
+     - `blocked_reason` = `:reason`
+     - `source_type` = `'bug'` dacă `kind='bug'`, altfel `'feature'`
+     - `source_id` = `CAST(:id AS text)`
+     - `order_index` = `0`
+     - `created_at` = `NOW()`
+     - `updated_at` = `NOW()`
+
+     Folosește numai valori valide pentru `tt_focus_tasks.status`: `todo | in_progress | testing | done`. NU folosi `'focus'` sau `'blocked'` — starea blocată se exprimă exclusiv prin `is_blocked=true` + `blocked_reason`.
+
+     Apoi leagă rândul sursă:
+     Substituie `:table` cu `tt_bugs` dacă `kind='bug'`, sau `tt_features` dacă `kind='feature'`.
+     ```sql
+     UPDATE tt_bugs SET focus_task_id=<noul id>, updated_at=NOW() WHERE id=:id;
+     -- sau, dacă kind='feature':
+     UPDATE tt_features SET focus_task_id=<noul id>, updated_at=NOW() WHERE id=:id;
      ```
 
 ### Pas B7 — Raport final (mod `--only`)
@@ -350,7 +378,7 @@ Printează un raport concis:
 Dispecer — --only <kind>:<id> — <slug> — <YYYY-MM-DD>
 
 [<kind> #<id>] <titlu>
-  Status:  <Fixed | Gata | Blocat>
+  Status:  <Fixed | Gata | Blocat>  ('Blocat' e eticheta de afișare; în DB statusul sursei rămâne neschimbat — 'Open'/'Propus' etc.)
   Outcome: <fixed | done | blocked>
   Efort:   <effort>
   Canal:   <verify_channel>

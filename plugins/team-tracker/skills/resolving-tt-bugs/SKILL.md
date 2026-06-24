@@ -359,6 +359,8 @@ Dacă rândul nu există sau statusul nu e `Open`/`In Progress` → întoarce im
 **Step 3a–3e, verificare, effort, Step 5 sunt identice** cu flow-ul normal — procesezi un singur bug,
 dar cu aceeași calitate de investigație, același canal de verificare, și aceeași logică de retry (max 3 cicluri).
 
+**În target mode NU scrie statusul sursei — NU face flip-ul `In Progress` și NU seta `Fixed`/`Gata`. Dispecerul deține tot write-back-ul de status (Pas B6 din orchestrate). Tu doar investighezi, repari, verifici, scrii efortul/nota și întorci JSON-ul.**
+
 **Preview (dacă necesar):** dacă `TARGET_PREVIEW_SERVER_ID` este dat, **refolosește-l direct** —
 nu chema `preview_start` și nu chema `preview_stop` după verificare. Dispecerul deține lease-ul
 și gestionează ciclul de viață al preview-ului pentru toată runda.

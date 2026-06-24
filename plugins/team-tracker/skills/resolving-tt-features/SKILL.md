@@ -396,6 +396,10 @@ un singur feature, dar cu aceeași calitate de evaluare, același canal de verif
 de retry (max 3 cicluri). Pasul de triage (Step 3c, decision gate) se sare automat — Dispecerul
 a preautorizat procesarea acestui item.
 
+**Ignoră logica de reclamare a orfanilor din Step 2 — Dispecerul a verificat deja că itemul e acționabil.**
+
+**În target mode NU scrie statusul sursei — NU face flip-ul `În Focus` și NU seta `Gata`. Dispecerul deține tot write-back-ul de status (Pas B6 din orchestrate). Tu doar investighezi, implementezi, verifici, scrii efortul/nota și întorci JSON-ul.**
+
 **Preview (dacă necesar):** dacă `TARGET_PREVIEW_SERVER_ID` este dat, **refolosește-l direct** —
 nu chema `preview_start` și nu chema `preview_stop` după verificare. Dispecerul deține lease-ul.
 Dacă `TARGET_PREVIEW_SERVER_ID` lipsește și feature-ul necesită verificare pe preview, pornește
