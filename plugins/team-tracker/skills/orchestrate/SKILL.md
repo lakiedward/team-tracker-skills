@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Use when the user wants to run an automated sweep of the entire Focus board for a project — resolves the project, reads all open bugs, features, and test plans, and (in dry-run mode) prints a full work list with the worker skill that would be dispatched for each item, without writing anything. Triggers on "/orchestrate", "dă-i la tot <proiect>", "apucă-te de tot de pe Focus", "orchestrate betro", "rulează dispecerul pe <proiect>", "sweep tot board-ul", "procesează tot board-ul".
+description: Use when the user wants to run an automated sweep of the entire Focus board for a project — resolves the project, reads all open bugs, features, and test plans, asks any up-front clarifying questions once, then launches a fleet of parallel workers (existing team-tracker skills) in isolated git worktrees, runs them round after round until the board is empty, lands only what is verified, parks what is uncertain, and prints a consolidated report with batched parked questions. A `--dry-run` mode prints the work list without writing anything; `--only <kind>:<id>` processes a single item. Triggers on "/orchestrate", "dă-i la tot <proiect>", "apucă-te de tot de pe Focus", "orchestrate betro", "rulează dispecerul pe <proiect>", "sweep tot board-ul", "procesează tot board-ul".
 ---
 
 # Dispecerul (Orchestrator de Focus board)
@@ -416,15 +416,19 @@ Dispecer — --only <kind>:<id> — <slug> — <YYYY-MM-DD>
 
 ---
 
-## Fazele 2–3 — O rundă completă (flotă, Milestone C)
+## Fazele 2–3 — O rundă completă (flotă)
 
 Dacă invocarea **nu** are `--dry-run` și **nu** are `--only`, rulezi modul cu flotă: o rundă în care mai
 mulți muncitori lucrează în paralel, fiecare în worktree-ul lui, verificarea-pe-preview e serializată
 printr-un lease unic, iar tu (firul principal) faci merge secvențial la verzi și parchezi conflictele.
 
-> **Scope Milestone C: o singură rundă.** Bucla-până-se-golește (re-citește board-ul și repetă), pâlnia
-> de întrebări up-front și secțiunea de guvernare extinsă vin în Milestone D. În C: citește board-ul o
-> dată (Faza 1), rulează o rundă, raportează. Vezi nota de la sfârșitul acestei secțiuni.
+> **Această secțiune definește O RUNDĂ (Pas C0–C7).** În fluxul complet `/orchestrate <proiect>`, runda
+> NU rulează o singură dată — e **corpul buclei** descrise în **„Faza buclă (runde)"** mai jos (Milestone D),
+> care o repetă până se golește board-ul. Pașii de mai jos sunt scriși pentru o rundă; bucla îi cheamă în
+> mod repetat, întreținând un set `attempted` și re-citind board-ul între runde. Înainte de PRIMA rundă rulează
+> **triajul + pâlnia de întrebări up-front** (Milestone D, secțiunea „Triaj & întrebări up-front"); după ce
+> bucla se oprește, printezi **raportul final consolidat** (nu raportul de rundă din Pas C7). **Nu duplica
+> logica rundei** — bucla și modurile up-front/raport o referențiază; ea trăiește o singură dată, aici.
 
 ### Pas C0 — Generează `run_id` (în firul principal)
 
@@ -439,6 +443,13 @@ date +%s
 Reține rezultatul ca `run_id` (string, ex. `"1750762800"`). Worktree-urile rundei vor sta sub
 `C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/`.
 
+> **`run_id` = identitatea ÎNTREGII comenzi `/orchestrate`, nu a unei singure runde.** În fluxul cu buclă
+> (Milestone D), generezi `run_id` **o singură dată** la începutul comenzii (înainte de prima rundă) și-l
+> refolosești pentru **toate** rundele. El identifică setul `attempted` (vezi „Faza buclă") și rădăcina de
+> worktree-uri pentru toată rularea. Worktree-urile rundei N stau tot sub `.orch-worktrees/<run_id>/` —
+> coliziunile de nume sunt evitate de basename-ul `<slug>-<itemId>` (un id se procesează o singură dată per
+> comandă, garantat de `attempted`).
+
 ### Pas C1 — Grupare anti-conflict (înainte de fan-out)
 
 Două branch-uri care ating **același fișier** intră în conflict la merge. Ca să eviți asta:
@@ -448,9 +459,11 @@ Două branch-uri care ating **același fișier** intră în conflict la merge. C
    → zona UI/componenta respectivă). Folosește judecată — nu există o hartă exactă; grupează după
    substantivele de feature/ecran/fișier menționate.
 2. **Itemele din aceeași zonă nu intră în aceeași rundă.** Dintr-un grup cu aceeași zonă, ia **un singur**
-   item în runda curentă; pe celelalte **amână-le** (în Milestone C, fără buclă, „amânat" = raportat ca
-   „amânat — coliziune de zonă cu #X; rulează din nou ca să-l prinzi"). În Milestone D, amânatele intră
-   automat în runda următoare.
+   item în runda curentă; pe celelalte **amână-le**. În fluxul cu buclă (Milestone D), amânatele NU se
+   raportează ca „rulează din nou" — ele **intră automat în runda următoare**: nu le adăuga în `attempted`
+   (vezi „Faza buclă"), așa că re-citirea board-ului din runda următoare le va include din nou și de data
+   asta zona lor e liberă (itemul cu care se ciocneau s-a procesat deja). Astfel coliziunile de zonă se
+   rezolvă natural rundă-după-rundă, nu prin re-rulare manuală.
 3. Itemele din **zone diferite** rulează în paralel (asta e câștigul flotei).
 4. **Plafonează la `SOFT_CAP`**: dacă rămân mai multe iteme independente decât `SOFT_CAP`, ia primele
    `SOFT_CAP` (ordonate după prioritate din Faza 1) în runda curentă; restul → amânate.
@@ -635,19 +648,23 @@ rmdir C:/Users/lakie/Desktop/.orch-worktrees/<run_id>
 `rmdir` (fără `-r`) șterge dir-ul **doar dacă e gol** — deci e sigur: dacă un worktree parcat încă trăiește acolo,
 comanda eșuează inofensiv și dir-ul rămâne. NU forța ștergerea. (Pentru `git=false` nu există acest dir.)
 
-#### C7.1 — Raport
+#### C7.1 — Raport de rundă (intermediar; agregat de buclă)
 
-Printează un raport concis al rundei. **Fiecare item trimis apare pe EXACT o linie, într-un singur bucket:**
+Printează un raport concis **al rundei curente** (rundă `r` din buclă). **Fiecare item trimis apare pe EXACT
+o linie, într-un singur bucket.** Acesta e un raport *intermediar*: bucla (vezi „Faza buclă") acumulează
+soartele tuturor itemelor din toate rundele și, după ce bucla se oprește, le strânge în **raportul final
+consolidat** (vezi „Raport final + întrebări parcate"). Itemele „↩️ Amânate" de aici NU sunt o concluzie —
+ele reintră în runda următoare; le listezi doar ca să fie vizibil progresul rundei.
 
 ```
-Dispecer — rundă (Milestone C) — <slug> (project_id=<pid>) — <YYYY-MM-DD> — run_id=<run_id>
+Dispecer — rundă <r> — <slug> (project_id=<pid>) — <YYYY-MM-DD> — run_id=<run_id>
 
 ✅ Făcute & merge-uite (N):
   - [<kind> #<id>] <titlu> → <summary>   (branch orch/<id> merge-uit, worktree curățat)
 ⏸️ Parcate / picate (cu motiv) (M):
   - [<kind> #<id>] <titlu> → <motiv>   (worktree: <cale> | curățat)
-↩️ Amânate (coliziune de zonă / peste SOFT_CAP) (D):
-  - [<kind> #<id>] <titlu> → coliziune cu #<X>; rulează din nou ca să-l prinzi
+↩️ Amânate → runda următoare (coliziune de zonă / peste SOFT_CAP) (D):
+  - [<kind> #<id>] <titlu> → coliziune cu #<X>; reintră în runda următoare
 
 Worktrees parcate (de reluat manual): <căi care încă există>
 ```
@@ -668,13 +685,251 @@ Worktrees parcate (de reluat manual): <căi care încă există>
 > stau în **același** bucket „⏸️ Parcate / picate", iar `<motiv>` (din `question`) le distinge. Nu inventa un
 > bucket separat; un singur rând per item, cu motivul corect din tabelul de mai sus.
 
-### Notă de scope (Milestone C vs. D)
+---
 
-În Milestone C rulezi **o singură rundă**. Itemele amânate (coliziune de zonă sau peste `SOFT_CAP`) **nu**
-sunt reluate automat — raportul le listează ca „rulează din nou". Bucla-până-se-golește (`attempted`-set,
-re-citire board, repetare până nu mai e nimic nou), întrebările up-front printr-un `AskUserQuestion`,
-suportul pentru toate cele 4 tipuri de muncitor într-o rundă, și secțiunea de guvernare numerotată
-vin în **Milestone D**. Până atunci, pentru a procesa amânatele, rulează `/orchestrate <slug>` din nou.
+## Triaj & întrebări up-front (înainte de prima rundă)
+
+Acesta este **primul pas al fluxului complet** `/orchestrate <proiect>` (fără `--dry-run`, fără `--only`),
+rulat **o singură dată**, după Faza 1 (citirea board-ului) și **înainte** de generarea `run_id` și de prima
+rundă a buclei. Scop: itemele **clar ambigue** nu intră în flotă pe ghicite — strângi întrebările lor și le
+pui userului **o singură dată**, printr-un singur apel `AskUserQuestion` (tool de fir-principal). Apoi
+țeși răspunsurile în prompturile muncitorilor.
+
+### Pas T1 — Separă itemele clar ambigue
+
+Parcurge `work_items` (din Faza 1). Marchează un item drept **clar ambiguu** DOAR dacă, fără un răspuns de la
+user, un muncitor n-ar putea decide ce să facă — nu specula. Semnale concrete de ambiguitate:
+
+- titlu/descriere vagi fără criteriu de acceptare (ex. „fă mai bine pagina X", „îmbunătățește fluxul", „mai
+  frumos") — nu se poate verifica obiectiv ce înseamnă „gata";
+- mai multe interpretări incompatibile, fără indiciu care e cea dorită (ex. „mută butonul" — unde?);
+- decizie de produs deschisă în brief (ex. „poate ar trebui să scoatem feature-ul Y?" — întrebare, nu cerință).
+
+Un item cu brief clar (chiar dacă mare) **NU** e ambiguu — intră în flotă; muncitorul decide tehnic. Rezervă
+pâlnia up-front pentru ambiguitatea de **intenție**, nu de implementare.
+
+> **Diferența față de park:** ambiguitatea up-front o prinzi **înainte** de a porni muncitorul (nu irosești o
+> rundă pe un item care oricum s-ar bloca). Park-ul prinde incertitudinea descoperită **în timpul** lucrului
+> (acțiune ireversibilă, verificare eșuată, retry-uri epuizate). Ambele duc întrebări la user — una înainte,
+> alta după.
+
+### Pas T2 — Pune întrebările o singură dată (`AskUserQuestion`, fir principal)
+
+- Dacă **niciun** item nu e clar ambiguu → **nu** întreba nimic; pornește direct bucla (full auto). Ăsta e
+  cazul normal.
+- Dacă există 1+ iteme ambigue → adună întrebările lor și pune-le **într-un SINGUR apel `AskUserQuestion`**
+  (un singur tool call, cu câte o întrebare per item ambiguu — `AskUserQuestion` acceptă mai multe întrebări
+  odată). NU pune câte un apel per item; NU întreba în mijlocul buclei. **`AskUserQuestion` se cheamă EXCLUSIV
+  aici, în firul principal** — niciodată din `round.workflow.js` (sandbox-ul e mut; vezi „Plase de siguranță"
+  pct. 7).
+
+### Pas T3 — Țese răspunsurile + decide ce intră în flotă
+
+- Pentru fiecare item ambiguu **la care userul a răspuns**: adaugă răspunsul în brieful muncitorului (în
+  promptul de la Pas C3 / `args.items[].description`, ca text suplimentar „Clarificare user: …") și include-l
+  în flotă (intră în prima rundă, prin `work_items`).
+- Pentru un item ambiguu **lăsat fără răspuns** (userul a sărit întrebarea): NU-l băga în flotă — marchează-l
+  direct ca **parcat up-front** cu `question` = întrebarea originală, și include-l în raportul final la „Parcate".
+- Itemele neambigue intră în flotă neschimbate.
+
+Abia acum generezi `run_id` (Pas C0) și intri în „Faza buclă".
+
+---
+
+## Faza buclă (runde) — buclă-până-se-golește + anti-buclă-infinită
+
+Fluxul complet `/orchestrate <proiect>` **nu rulează o singură rundă** — repetă runda (Pas C0–C7) până când
+board-ul nu mai produce iteme noi acționabile, sau se atinge un plafon. Această fază **înconjoară** runda
+definită în „Fazele 2–3"; **nu redefini** pașii rundei aici — cheam-o.
+
+### Pas L0 — Inițializează identitatea rulării
+
+O singură dată, la începutul comenzii (după triajul up-front):
+- Generează `run_id` (Pas C0) — **una** pentru toată comanda, refolosită în toate rundele.
+- `attempted = ∅` — un **set de chei `kind:id`** (ex. `bug:42`, `testplan:5`) procesate în această comandă.
+  Identitatea lui e `run_id` (un `attempted` per rulare `/orchestrate`). NU persistă între comenzi.
+- `rounds = 0`.
+- `parked = []`, `done = []`, `failed = []` — acumulatori pentru raportul final (umplute din soarta fiecărui
+  item, după tabelul din Pas C7.1). Adaugă aici și itemele parcate up-front din Pas T3.
+
+### Pas L1 — O rundă
+
+Repetă următoarele ca **o rundă**:
+
+1. **Re-citește board-ul** (Faza 1 — query-urile 1a/1b/1c). Board-ul se schimbă între runde: write-back-urile
+   rundei anterioare au mutat carduri pe „done", iar testele AI scrise într-o rundă apar acum ca planuri noi.
+2. **Construiește mulțimea acționabilă a rundei** = `work_items` MINUS:
+   - cheile din `attempted` (deja procesate în această comandă — anti-buclă-infinită);
+   - itemele cu `SKIP_TAG` (`[manual]`) — niciodată în flotă (sunt deja excluse de Faza 1d, dar reține regula);
+   - itemele **curent parcate/blocate**: orice item al cărui card Focus are `is_blocked=true` (parcat într-o
+     rundă anterioară a ACESTEI comenzi, sau de o rulare trecută). Un item parcat nu se reia automat în aceeași
+     comandă — așteaptă răspunsul userului (vezi „Raport final"). Practic, cheile parcate sunt deja în
+     `attempted` (le adaugi când le parchezi, pasul 5), deci filtrarea pe `attempted` le acoperă; verificarea
+     `is_blocked` prinde în plus itemele parcate de rulări **anterioare** care încă n-au fost deblocate.
+3. **Grupare anti-conflict** (Pas C1) pe mulțimea acționabilă → `round_items` (plafonat la `SOFT_CAP`, fără
+   coliziuni interne) + `deferred` (amânate — coliziune de zonă / peste `SOFT_CAP`). **Amânatele NU intră în
+   `attempted`** — reintră în runda următoare.
+4. **Dacă `round_items` e gol** → bucla s-a terminat (nimic nou de făcut). Ieși din buclă, treci la raport.
+5. **Rulează runda** (Pas C2–C7 pe `round_items`): lansează Workflow-ul, fă pasul de teste pe verzi, merge
+   secvențial la verzii verificați, park la blocate/neverificate/conflicte, reconciliere orfani, cleanup,
+   raport de rundă. Pentru fiecare item **procesat** (apare în `round_items` și a fost trimis Workflow-ului),
+   **adaugă cheia `kind:id` în `attempted`** — indiferent de soartă (făcut, parcat, picat, muncitor mort).
+   Acumulează soarta lui în `done` / `parked` / `failed`. `rounds += 1`.
+
+### Pas L2 — Condiția de continuare
+
+După fiecare rundă, **repetă** (înapoi la Pas L1) cât timp **TOATE** sunt adevărate:
+- **(a) runda a produs ≥1 item nou acționabil** — adică `round_items` n-a fost gol (a existat muncă nouă pe
+  care n-o mai încercaseși). Dacă o rundă completă iese cu `round_items` gol (tot ce rămâne e în `attempted`
+  sau parcat), **nu mai e nimic nou** → **stop**.
+- **(b) `rounds < --max-rounds`** (default 6). La atingerea plafonului → **stop** (chiar dacă ar mai fi iteme;
+  ce rămâne se raportează ca „de reluat").
+- **(c) nu s-a atins un rate-limit MAX.** Dacă lansările încep să fie respinse de rate-limit → **nu mai lansa
+  runde noi**; lasă runda curentă să-și termine ce-i în aer, apoi stop + raport (vezi „Plase de siguranță" pct. 3).
+
+**Stop** = ieși din buclă și treci la „Raport final + întrebări parcate".
+
+### Bucla de calitate (de ce progresează tests→run→fix peste runde)
+
+Aceasta NU e o re-rulare oarbă a acelorași iteme — fiecare rundă lucrează pe **iteme noi**, datorită write-back-ului
+și a generării de teste:
+
+1. **Runda N**: `resolving-tt-bugs` / `resolving-tt-features` rezolvă bug-uri/features și, pe verzi, pasul de
+   teste rulează `/writing-ai-test-plans` → scrie **planuri AI noi** (`test_type='ai'`, toate itemele `pending`).
+2. **Runda N+1**: re-citirea board-ului vede acele planuri ca muncă nouă pentru `auto-running-test-plans`
+   (plan AI ne-arhivat cu iteme `pending`). Au **id-uri noi** de plan → NU sunt în `attempted` → intră în flotă.
+   `auto-running-test-plans` le rulează pe preview.
+3. Dacă un plan AI **pică** (iteme `fail`/`blocked`), runda N+2 îl vede ca muncă pentru
+   `resolving-failed-test-plans` (plan cu `fail`/`blocked`) → id de plan (tot nou pentru acest worker) →
+   intră în flotă → repară defectul și marchează pașii `pass`.
+4. Lanțul se golește singur: când nu mai apar planuri noi `pending` și niciun `fail`/`blocked` nou,
+   `round_items` devine gol → bucla se oprește (Pas L2.a).
+
+`attempted` (cheie `kind:id`) împiedică **reluarea ACELUIAȘI id** în aceeași comandă (anti-buclă-infinită):
+un bug `Fixed` în runda N nu reapare (statusul nu mai e acționabil) și, chiar dacă ar reapărea, cheia lui e în
+`attempted`. Itemele de tip diferit care apar din munca anterioară (planurile noi) au **id-uri/chei diferite**,
+deci progresul e real, nu o buclă. Terminarea e garantată de **`attempted` (monoton crescător, board finit)**
+ȘI de **`--max-rounds`** — chiar dacă o regulă de mapare ar genera la nesfârșit, plafonul de runde oprește.
+
+---
+
+## Raport final + întrebări parcate (după ce bucla se oprește)
+
+Rulează **o singură dată**, când bucla a ieșit (board golit, plafon de runde, sau rate-limit). Înlocuiește
+raportul de rundă din Pas C7.1 ca **ieșire finală** a comenzii — rapoartele de rundă au fost intermediare;
+acesta consolidează toate rundele.
+
+### Pas R1 — Raportul consolidat
+
+Printează, în firul principal:
+
+```
+Dispecer — <slug> (project_id=<pid>) — <YYYY-MM-DD> — run_id=<run_id> — runde: <rounds>
+
+✅ Făcute & merge-uite (N):
+  - [<kind> #<id>] <titlu> → <summary>   (rundă <r>; branch orch/<id> merge-uit)
+⏸️ Parcate / picate (cu motiv/întrebare) (M):
+  - [<kind> #<id>] <titlu> → <question/motiv>   (worktree: <cale> | curățat)
+❌ Picate (K):
+  - [<kind> #<id>] <titlu> → <motiv>   (ex. muncitor mort / conflict de merge — reia)
+
+Runde rulate: <rounds> / <--max-rounds>   (motiv oprire: board golit | plafon runde | rate-limit)
+Worktrees parcate (de reluat manual): <căi care încă există>
+```
+
+- **✅ Făcute** = `done` (merge reușit + write-back DONE).
+- **⏸️ Parcate / picate** = `parked` — itemele cu `outcome='blocked'` (inclusiv ambigue up-front fără răspuns,
+  acțiuni ireversibile, verificare eșuată, retry-uri epuizate) și verzii neverificați. Fiecare poartă `question`
+  sau motivul concret.
+- **❌ Picate** = `failed` — eșecuri de infrastructură (muncitor mort, conflict de merge) care nu sunt o
+  întrebare pentru user, ci „reia". (Poți contopi ⏸️ și ❌ dacă preferi două bucket-uri; păstrează distincția
+  întrebare-pentru-user vs. reia-mecanic.)
+
+Numărătoarea trebuie să fie consistentă: fiecare item trimis în orice rundă apare exact o dată, în exact un
+bucket (regula de încadrare din Pas C7.1, agregată peste runde).
+
+### Pas R2 — Întrebări parcate în lot (`AskUserQuestion`, fir principal)
+
+Dacă există iteme în `parked` care **poartă un `question`** (blocaje care chiar au nevoie de o decizie/un
+input de la user — nu „muncitor mort/conflict", acelea sunt „reia"), pune-le userului **într-un SINGUR apel
+`AskUserQuestion`** (la fel ca pâlnia up-front: un singur tool call, câte o întrebare per item parcat).
+Acesta e **al doilea și ultimul** punct unde se cheamă `AskUserQuestion`, tot în firul principal.
+
+### Pas R3 — Resume ușor (documentat; NU auto-resume în această invocare)
+
+Când userul răspunde la întrebările parcate (din Pas R2), **nu** relua munca în aceeași invocare. În schimb,
+pentru fiecare item parcat la care userul a dat un răspuns, aplică **resume-ul ușor** (per design):
+
+1. **Adaugă răspunsul în `description`-ul rândului-sursă** al itemului (`tt_bugs` / `tt_features` /
+   `tt_test_plans`, după `kind`), append cu un antet de forma
+   `E'\n\n--- Răspuns user :date (Dispecer) ---\n<răspuns>'`. Astfel brieful canonic conține de-acum
+   clarificarea.
+2. **Deblochează cardul Focus** al itemului: `UPDATE tt_focus_tasks SET is_blocked=false, blocked_reason=NULL,
+   updated_at=NOW() WHERE id=<focus_task_id>` (rândul focus creat la park prin `ensureFocusRow`).
+
+Efect: itemul redevine acționabil cu răspunsul deja în brief, iar **o rulare viitoare** `/orchestrate <slug>`
+îl prinde în Faza 1 și-l procesează cu contextul complet. **Nu construi auto-resume în-invocare** (re-citire +
+re-flotă în aceeași comandă după răspuns) — e amânat prin design; raportul + deblocarea sunt suficiente.
+
+> Dacă userul **nu** răspunde (sare întrebarea), lasă cardul blocat — rămâne în raport ca „de reluat" și o
+> rulare viitoare îl va re-parca până primește un răspuns.
+
+---
+
+## Plase de siguranță
+
+Regulile de guvernare care țin flota sub control. Sunt **obligatorii** — nu le slăbi „ca să meargă mai mult".
+Multe sunt deja impuse de pașii de mai sus; secțiunea le strânge ca un checklist explicit și verificabil.
+
+1. **Verificarea = poarta spre merge.** Niciun worktree nu aterizează fără un `outcome` verificat de un agent
+   de verificare viu. Impus în **Pas C5.1**: merge DOAR dacă `outcome ∈ {fixed,done}` **ȘI `verified===true`**.
+   Un verde cu `verified:false` (verificator mort → passthrough, sau `verify_channel:'none'`) NU se merge-uiește
+   — se parchează cu „verificare lipsă/eșuată — reia". Nu te baza pe `outcome` singur.
+
+2. **Poartă pe acțiuni ireversibile.** Dacă un muncitor raportează că fix-ul cere o **migrare DB**, **ștergere
+   de date**, **push la remote**, sau **trimitere în afara sistemului** (email/webhook/API extern) → muncitorul
+   întoarce `outcome="blocked"` cu un `question` care descrie acțiunea ireversibilă, **fără să o execute**.
+   Conductorul **NU auto-merge-uiește** și **NU execută** acea acțiune — o **parchează pentru user** (card
+   blocat + întrebare în raport, Pas R2). Regula e codată în promptul muncitorului (`round.workflow.js`
+   `implementPrompt`, „Reguli de incertitudine") și în target-mode-ul fiecărui skill muncitor. Acceptance live
+   (amânat): un item care cere clar o migrare iese **parcat**, `tt_*.status` neschimbat, zero migrări aplicate
+   (`SELECT count(*) FROM supabase_migrations.schema_migrations` egal înainte/după).
+
+3. **Plafoane.** (a) `SOFT_CAP` muncitori per rundă (Pas C1.4 — plafonează `round_items`; restul amânate).
+   (b) `--max-rounds` (default 6) runde maxime (Pas L2.b). (c) **Rate-limit MAX**: dacă lansările încep să fie
+   respinse → **nu mai lansa runde/muncitori noi**, lasă ce-i în aer să termine, apoi **stop + raport** (Pas
+   L2.c). Nu reîncerca în buclă strânsă pe rate-limit.
+
+4. **Anti-thrash.** Muncitorul respectă **cele max 3 cicluri de retry ale propriului skill** (definite în
+   fiecare skill muncitor); epuizate → `outcome="blocked"`, **nu** reîncearcă la nesfârșit. La nivel de comandă,
+   setul **`attempted`** (cheie `kind:id`, Pas L0/L1.5) împiedică reluarea aceluiași id în aceeași comandă
+   `/orchestrate`. Cele două straturi (retry intra-skill + `attempted` inter-rundă) garantează că un item
+   stubborn se parchează, nu ciclează.
+
+5. **Skip creativ.** Itemele cu `SKIP_TAG` (`[manual]`, case-insensitive în `title`/`description`) **nu intră
+   niciodată în flotă** — excluse în Faza 1d, re-afirmat la filtrarea rundei (Pas L1.2). Sunt iteme
+   creative/intangibile pe care muncitorii nu le pot rezolva; userul le scrie tag-ul din UI.
+
+6. **Repo curat + `git=false` tratate (Faza 0).** Faza 0 **abortează** dacă `repo_path` are modificări
+   necommittuite (`git status --porcelain` cod-zero cu stdout non-gol) sau dacă nu e repo git (cod non-zero).
+   Pentru `git=false`, flota rulează **in-place serial, fără worktree, fără merge** (Pas C2) — nu se editează
+   în paralel același working tree. Abort-ul e explicit, cu calea repo-ului și ce să facă userul.
+
+### Cele 5 reguli incertitudine → park (regulile din promptul muncitorului)
+
+Acestea sunt **regulile pe care fiecare muncitor le primește în prompt** (`round.workflow.js` `implementPrompt`,
+linia „Reguli de incertitudine", oglindite în target-mode-ul fiecărui skill muncitor). Un muncitor care
+lovește ORICARE dintre ele **NU ghicește** — întoarce `outcome="blocked"` cu un `question` clar pentru user:
+
+1. **Prea vag** — itemul n-are un criteriu de acceptare verificabil (ce înseamnă „gata"?).
+2. **Mai multe interpretări** — briefor admite citiri incompatibile, fără indiciu care e cea dorită.
+3. **Acțiune ireversibilă** — fix-ul cere migrare DB / ștergere de date / push / trimitere în afară (vezi pct. 2
+   de mai sus). Muncitorul descrie acțiunea în `question`, nu o execută.
+4. **Retry-uri epuizate** — skill-ul și-a consumat cele max 3 cicluri fără verificare verde.
+5. **Încredere mică** — muncitorul nu e sigur de corectitudine (regresie probabilă, root-cause neclar).
+
+Cele 5 sunt enunțate identic în firul muncitorului și aici — o singură sursă de adevăr. Park-ul rezultat duce
+întrebarea la user prin raportul final (Pas R2), niciodată printr-un `AskUserQuestion` din sandbox.
 
 ---
 
@@ -695,3 +950,11 @@ vin în **Milestone D**. Până atunci, pentru a procesa amânatele, rulează `/
 | Fan-out paralel pe `git=false` | Nu poți edita în paralel același working tree fără izolare | `git=false` → in-place **serial**, fără merge (Pas C2) |
 | Merge pe `outcome` fără să verifici `verified` | Un verde cu verificator mort (passthrough) arată byte-identic cu un verde real → aterizezi cod NEVERIFICAT | Merge DOAR dacă `outcome ∈ {fixed,done}` **ȘI `verified===true`**; altfel PARK „verificare lipsă/eșuată" (Pas C5.1) |
 | A ignora ID-urile trimise-dar-neîntoarse | Un muncitor mort lasă un worktree orfan + branch `orch/<id>` care nu se curăță niciodată | Reconciliere `sent` vs `returned` la C5.0: curăță worktree-ul orfan la calea deterministă |
+| A NU adăuga itemele procesate în `attempted` | Bucla ar reprocesa la nesfârșit același id → buclă infinită | La Pas L1.5 adaugă cheia `kind:id` în `attempted` pentru FIECARE item trimis, indiferent de soartă |
+| A adăuga amânatele (coliziune de zonă) în `attempted` | Itemele amânate n-ar mai fi reluate niciodată — s-ar pierde | Amânatele NU intră în `attempted` (Pas L1.3); reintră în runda următoare când zona lor e liberă |
+| A regenera `run_id` per rundă | Worktree-uri împrăștiate pe mai multe dir-uri; `attempted` resetat → buclă | Generează `run_id` o singură dată per comandă (Pas L0); refolosește-l în toate rundele |
+| A chema `AskUserQuestion` din `round.workflow.js` | Sandbox-ul Workflow e mut — apelul aruncă / e ignorat; userul nu vede întrebarea | `AskUserQuestion` DOAR în firul principal: o dată up-front (Pas T2), o dată la final (Pas R2) |
+| A întreba userul în mijlocul buclei (per item) | Spam de prompturi; rupe fluxul full-auto | Strânge întrebările și pune-le în LOT: un singur `AskUserQuestion` up-front, unul la final |
+| A construi auto-resume în-invocare după răspunsuri | Complexitate inutilă; design-ul cere resume amânat | Pas R3: append răspuns în `description` + deblochează cardul; o rulare VIITOARE îl prinde |
+| A merge-ui un item `no_worktree` (auto-running-test-plans) | N-are diff de cod; nu există branch de merge-uit | Conductorul sare merge-ul pentru `no_worktree`; rezultatul lui (rulare) informează doar runda următoare |
+| A auto-executa o acțiune ireversibilă raportată de muncitor | Migrare/ștergere/push ireversibil aplicat fără acordul userului | Muncitorul o întoarce ca `blocked`+`question`; conductorul PARCHEAZĂ, nu execută (Plase de siguranță pct. 2) |
