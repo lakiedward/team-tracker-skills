@@ -556,8 +556,16 @@ Asta rulează doar pentru proiecte `git=true` (cele cu worktree-uri). La `git=fa
 Procesează rezultatele întoarse **unul câte unul** (NICIODATĂ două merge-uri în paralel). Pentru fiecare rezultat
 `r`, **clasifică-l întâi după poarta de verificare**, NU doar după `outcome`:
 
-- **Merge DOAR dacă** `r.outcome ∈ {fixed, done}` **ȘI** `r.verified === true`. Numai atunci codul a fost
-  efectiv verificat de un agent de verificare viu → treci la C5.2 (merge).
+- **Item `no_worktree` (test-runner, ex. `auto-running-test-plans`)** — recunoaște-l după `r.no_worktree === true`
+  (sau worktree/branch goale). Acesta **NU se merge-uiește** (n-are diff de cod) și **nu are worktree de
+  curățat**. Muncitorul a scris deja rezultatele planului per item în DB în timpul rulării; tu **nu** faci
+  write-back DONE pe vreun rând-sursă (planul nu se „termină" ca un bug). Dacă `r.outcome === 'done'`,
+  contorizează-l ca „✅ rulat" în raport; dacă `r.outcome === 'blocked'` (planul nu s-a putut rula deloc),
+  PARK normal (Pas C6, fără worktree). Nu intra în C5.2 pentru aceste iteme. Rezultatul lor informează doar
+  runda următoare (pașii `fail` apar pentru `resolving-failed-test-plans`).
+- **Merge DOAR dacă** `r.outcome ∈ {fixed, done}` **ȘI** `r.verified === true` **ȘI** itemul are worktree
+  (`r.no_worktree !== true`). Numai atunci codul a fost efectiv verificat de un agent de verificare viu → treci
+  la C5.2 (merge).
 - **Dacă** `r.outcome ∈ {fixed, done}` **DAR** `r.verified !== true` (verificatorul a murit și itemul a degradat
   la passthrough, SAU `verify_channel:'none'` — n-a existat stage de verificare) → **NU face merge**. PARK-ează
   itemul (Pas C6) cu `question="verificare lipsă/eșuată — reia"` și **PĂSTREAZĂ** worktree-ul + branch-ul. Un
