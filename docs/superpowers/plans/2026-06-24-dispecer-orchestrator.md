@@ -1,4 +1,4 @@
-# Dispecerul (Orchestrator de Focus board) — Implementation Plan
+﻿# Dispecerul (Orchestrator de Focus board) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -32,7 +32,7 @@ Livrabilul e un **skill Claude Code** (instrucțiuni Markdown + un script de Wor
 | `SUPABASE_REF` | `ntjzghsbrzkvpkniotaj` |
 | Supabase MCP | `mcp__supabase-mcp-server__execute_sql`, `mcp__supabase-mcp-server__apply_migration` |
 | Preview MCP | `mcp__Claude_Preview__*` (start/list/click/fill/snapshot/inspect/screenshot/console_logs) |
-| BetRO (v1) | `project_id=1`, slug `betro`, repo `C:/Users/lakie/Desktop/BETRO`, preview `vite-dev` :3000 |
+| Exemplu entry | `betro`: `project_id=1`, repo `C:/Users/lakie/Desktop/BETRO`, `git=true`, preview `vite-dev:3000` — valorile reale vin din `projects.json` (slug, project_id, repo_path, git, preview_name, preview_port) |
 | Worktrees root | `C:/Users/lakie/Desktop/.orch-worktrees` |
 | `SKIP_TAG` | `[manual]` |
 | `SOFT_CAP` | `min(6, min(16, cores-2))` |
@@ -75,7 +75,7 @@ Livrabilul e un **skill Claude Code** (instrucțiuni Markdown + un script de Wor
 **Files:**
 - Create: `<ORCH_DIR>/projects.json`
 
-- [ ] **Step 1: Scrie registrul (v1: o intrare)**
+- [ ] **Step 1: Scrie registrul (8 intrări — toate proiectele cu repo local)** [completat]
 
 ```json
 {
@@ -91,8 +91,8 @@ Livrabilul e un **skill Claude Code** (instrucțiuni Markdown + un script de Wor
 - [ ] **Step 2: Acceptance — rezolvarea funcționează**
 
 Verifică manual: `betro` → `project_id=1`, `repo_path` există.
-Run: `node -e "const m=require('C:/Users/lakie/Desktop/team-tracker-skills/plugins/team-tracker/skills/orchestrate/projects.json'); console.log(m.betro.project_id, require('fs').existsSync(m.betro.repo_path))"`
-Expected: `1 true`
+Run: `node -e "const m=require('C:/Users/lakie/Desktop/team-tracker-skills/plugins/team-tracker/skills/orchestrate/projects.json'); console.log(Object.keys(m).length, m.padel_team.project_id, m.culcush.git, m.popicu_tips.preview_name)"`
+Expected: `8 12 false null`
 
 - [ ] **Step 3: Commit**
 

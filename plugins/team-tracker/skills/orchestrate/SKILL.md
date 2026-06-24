@@ -5,9 +5,15 @@ description: Use when the user wants to run an automated sweep of the entire Foc
 
 # Dispecerul (Orchestrator de Focus board)
 
-Citește board-ul Focus al unui proiect, construiește lista de muncă, și (în modul complet) lansează o flotă de
-muncitori paraleli în worktree-uri izolate. În **`--dry-run`**, se oprește după ce printează lista — zero scrieri,
-zero worktree-uri, zero lansări de muncitori.
+Citește board-ul Focus al oricărui proiect din `projects.json`, construiește lista de muncă, și (în modul
+complet) lansează o flotă de muncitori paraleli în worktree-uri izolate. În **`--dry-run`**, se oprește după
+ce printează lista — zero scrieri, zero worktree-uri, zero lansări de muncitori.
+
+Skill-ul funcționează pentru **orice proiect înregistrat în `projects.json`** — BetRO, team-tracker,
+Pagina-Prezentare-Betora, Padel-Team, gradinita-amos, motiontimisoara, culcush, popicu_tips și oricare altul
+adăugat ulterior. BetRO (`betro`) este proiectul folosit ca exemplu în snippet-urile de mai jos; înlocuiește
+slug-ul cu cel al proiectului tău. Proiectele fără repo local pe disc (ex. `telegram_tips`, `website`) nu sunt
+în registru și nu pot fi orchestrate local — comanda va aborta cu un mesaj clar.
 
 **Arhitectura:** Acest skill este **Conductorul** — rulează în firul principal, pune întrebările userului,
 lansează Workflow-uri per rundă, face merge la worktree-uri verificate, și raportează. Workflow-urile
@@ -25,6 +31,9 @@ lansează Workflow-uri per rundă, face merge la worktree-uri verificate, și ra
 Exemplu: `/orchestrate betro --dry-run` · `/orchestrate betro` · `/orchestrate betro --max-rounds 3` · `/orchestrate betro --only bug:42` · `/orchestrate betro --only feature:17`
 
 ## Constante
+
+Valorile per-proiect (`project_id`, `repo_path`, `git`, `preview_name`, `preview_port`) vin din `projects.json`.
+Cele globale sunt fixe:
 
 | Nume | Valoare |
 |---|---|
@@ -50,16 +59,34 @@ const registry = JSON.parse(readFile('...projects.json'))
 const entry = registry[slug]   // ex. registry['betro']
 ```
 
-Dacă slug-ul **nu există** în registry → abort imediat:
-> "Proiectul '<slug>' nu există în projects.json. Slug-uri disponibile: <lista cheilor>."
+**Dacă slug-ul nu există în registry** → abort imediat:
+> "Proiectul '<slug>' nu e în registru (projects.json). Proiecte fără repo local (ex. telegram_tips, website) nu pot fi orchestrate local."
+> Adaugă: "Slug-uri disponibile: <lista cheilor din projects.json>."
 
-Dacă slug-ul există, extrage:
-- `project_id` — numărul întreg de folosit în toate query-urile `tt_*`
-- `repo_path` — calea absolută a repo-ului sursă
-- `preview_name` — numele serverului de preview (ex. `vite-dev`)
-- `preview_port` — portul (ex. `3000`)
+Dacă slug-ul există, extrage câmpurile de mai jos. Toate vin din intrarea din `projects.json`:
 
-**Verifică `repo_path`:**
+| Câmp | Tip | Descriere |
+|---|---|---|
+| `project_id` | număr întreg | folosit în toate query-urile `tt_*` |
+| `repo_path` | string | calea absolută a repo-ului sursă |
+| `git` | boolean | `true` dacă root-ul are git; `false` dacă nu |
+| `preview_name` | string \| null | numele serverului de preview (ex. `vite-dev`); `null` = preview indisponibil |
+| `preview_port` | număr \| null | portul preview-ului; `null` dacă `preview_name` e null |
+
+**Handling `git = false`:**
+Git worktrees sunt indisponibile pentru acest proiect. Modul `--only` (Milestone B) funcționează în continuare
+— muncitorul rulează direct în `repo_path`, fără worktree izolat. Modul cu flotă (Milestone C) va rula
+in-place / serializat pentru proiectele fără git (nu se implementează acum; documentat pentru planificare
+ulterioară). Sari verificarea `git status` de mai jos și continuă direct la Faza 1.
+
+**Handling `preview_name = null`:**
+UI preview verification este indisponibilă pentru acest proiect. Muncitorul trebuie să verifice exclusiv
+prin SQL impersonation, sau să lase itemele care necesită verificare UI `blocked` cu motivul
+`"preview_name=null — verificare UI imposibilă; rezolvă manual sau configurează un server de preview"`.
+Skill-urile de rezolvare tratează deja „canal de verificare indisponibil" ca motiv valid de parcare — referă-te
+la secțiunea „verification channel unavailable" din skill-ul muncitor ales.
+
+**Verifică `repo_path`** (numai dacă `git = true`):
 
 ```bash
 git -C <repo_path> status --porcelain
@@ -76,7 +103,7 @@ Interpretează rezultatul **după codul de ieșire, nu doar după stdout**:
 Distincția dintre „director lipsă" și „repo curat" se face exclusiv prin codul de ieșire al comenzii
 — ambele returnează stdout gol, dar numai directorul lipsă/non-repo iese cu cod non-zero.
 
-Reține `project_id`, `repo_path`, `preview_name`, `preview_port` pentru restul rulării.
+Reține `project_id`, `repo_path`, `git`, `preview_name`, `preview_port` pentru restul rulării.
 
 ---
 

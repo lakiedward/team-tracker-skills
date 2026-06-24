@@ -1,4 +1,4 @@
-# Dispecerul — Orchestrator de Focus board (Design)
+﻿# Dispecerul — Orchestrator de Focus board (Design)
 
 **Data:** 2026-06-24
 **Status:** Design aprobat de user, gata de plan de implementare
@@ -41,7 +41,7 @@ userul nu mai scrie prompturi.
 
 - **Nu** e un app desktop / daemon separat. E un skill care rulează în Claude Code.
 - **Nu** rulează nesupravegheat pe cron în v1 (doar la comandă). Cron-ul vine în v3.
-- **Nu** atinge mai multe proiecte într-o comandă în v1 (doar BetRO). Multi-proiect în v2.
+- **Nu** atinge mai multe proiecte într-o singură comandă (un slug per invocare). Skill-ul este multi-proiect de la început (registry-driven — orice slug din `projects.json`); BetRO este primul proiect validat.
 - **Nu** atinge itemele „creative" — userul le rezolvă manual, în chat separat. Itemele creative se
   marchează pe board ca scoase din scope (vezi §9).
 - **Nu** rescrie logica skill-urilor existente. Le orchestrează și le adaptează minimal (§8).
@@ -313,9 +313,11 @@ aceeași comandă; ce-a parcat o dată rămâne parcat până la rularea de relu
 
 ## 13. Faze
 
-- **v1 (construim acum):** BetRO, la comandă, **toate trei** tipurile, model A (paralel + coadă preview),
-  model C (aterizare), buclă-până-se-golește (ii), pas de teste obligatoriu, raport + write-back în chat.
-- **v2:** **multi-proiect** („dă-i la tot" peste proiecte) + opțional **model B** (preview per worktree).
+- **v1 (construim acum):** **multi-proiect din start** — orice proiect din registrul `projects.json`, la
+  comandă, **toate trei** tipurile, model A (paralel + coadă preview), model C (aterizare),
+  buclă-până-se-golește (ii), pas de teste obligatoriu, raport + write-back în chat. BetRO este primul
+  proiect folosit pentru validare.
+- **v2:** opțional **model B** (preview per worktree, paralelism total) + adăugare proiecte noi în registru.
 - **v3:** **cron / always-on** (pornește singur când apar iteme pe Focus) + Focus board șlefuit ca dashboard
   live (statusul deja se scrie acolo). Eventual un strat subțire de UI/daemon — abia aici, dacă se dovedește.
 
