@@ -5,6 +5,6 @@
   "padel_team": { "project_id": 12, "repo_path": "C:/Users/lakie/Desktop/Padel-Team", "git": true, "preview_name": "dev", "preview_port": 3001 },
   "gradinita_amos": { "project_id": 15, "repo_path": "C:/Users/lakie/Desktop/gradinita-amos", "git": true, "preview_name": "Vite Dev Server", "preview_port": 3000 },
   "motiontimisoara": { "project_id": 16, "repo_path": "C:/Users/lakie/Desktop/motion-timisoara", "git": true, "preview_name": "motion-react", "preview_port": 3017, "note": "monorepo cu mai multe app-uri; motion-react este app-ul web. Confirmă sub-folderul sursă la prima rulare." },
-  "culcush": { "project_id": 7, "repo_path": "C:/Users/lakie/Desktop/culcus.ro", "git": false, "preview_name": "vite-dev", "preview_port": 3001, "note": "fără git la rădăcină; sursa reală e probabil nested culcus.ro/culcus.ro — fără worktree (Milestone C rulează in-place)." },
+  "culcush": { "project_id": 7, "repo_path": "C:/Users/lakie/Desktop/culcus.ro/culcus.ro", "git": true, "preview_name": "vite-dev", "preview_port": 3001, "note": "repo-ul real e nested (culcus.ro/culcus.ro), nu folderul de sus." },
   "popicu_tips": { "project_id": 17, "repo_path": "C:/Users/lakie/Desktop/PopicuTips", "git": false, "preview_name": null, "preview_port": null, "note": "fără git și fără preview configurat; capabilitate redusă (verificare doar SQL / parcare itemelor UI)." }
 }
