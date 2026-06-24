@@ -141,7 +141,7 @@ function implementPrompt(it) {
   }
   lines.push('')
 
-  lines.push('Reguli de incertitudine (NU ghici): dacă itemul e prea vag / are mai multe interpretări / cere o acțiune ireversibilă (migrare DB, ștergere de date, push la remote, trimitere în afara sistemului) / skill-ul și-a epuizat cele max 3 cicluri de retry / ai încredere mică în corectitudine → întoarce outcome="blocked" cu o question clară pentru user.')
+  lines.push('Reguli de incertitudine (NU ghici): dacă itemul e prea vag / are mai multe interpretări / cere o acțiune ireversibilă (ireversibil = după merge+deploy execută X fără confirmare ulterioară — migrare DB, ștergere de date, push la remote, trimitere email/notificare/mesaj în afara sistemului) / skill-ul și-a epuizat cele max 3 cicluri de retry / ai încredere mică în corectitudine → întoarce outcome="blocked" cu o question clară pentru user.')
   lines.push('')
 
   if (isTestRunner(it)) {

@@ -422,15 +422,15 @@ Dacă invocarea **nu** are `--dry-run` și **nu** are `--only`, rulezi modul cu 
 mulți muncitori lucrează în paralel, fiecare în worktree-ul lui, verificarea-pe-preview e serializată
 printr-un lease unic, iar tu (firul principal) faci merge secvențial la verzi și parchezi conflictele.
 
-> **Această secțiune definește O RUNDĂ (Pas C0–C7).** În fluxul complet `/orchestrate <proiect>`, runda
-> NU rulează o singură dată — e **corpul buclei** descrise în **„Faza buclă (runde)"** mai jos (Milestone D),
-> care o repetă până se golește board-ul. Pașii de mai jos sunt scriși pentru o rundă; bucla îi cheamă în
-> mod repetat, întreținând un set `attempted` și re-citind board-ul între runde. Înainte de PRIMA rundă rulează
+> **Această secțiune definește O RUNDĂ. Corpul buclei (Milestone D) este Pas C2–C7.** Pas C0 (`run_id`) și
+> triajul up-front rulează **O SINGURĂ DATĂ** la Pas L0 / Triaj, înainte de prima rundă — **niciodată** în
+> interiorul buclei. În fluxul complet `/orchestrate <proiect>`, bucla (Pas L1) cheamă Pas C2–C7 în mod
+> repetat, întreținând un set `attempted` și re-citind board-ul între runde. Înainte de PRIMA rundă rulează
 > **triajul + pâlnia de întrebări up-front** (Milestone D, secțiunea „Triaj & întrebări up-front"); după ce
 > bucla se oprește, printezi **raportul final consolidat** (nu raportul de rundă din Pas C7). **Nu duplica
 > logica rundei** — bucla și modurile up-front/raport o referențiază; ea trăiește o singură dată, aici.
 
-### Pas C0 — Generează `run_id` (în firul principal)
+### Pas C0 — Generează `run_id` (în firul principal, O SINGURĂ DATĂ la Pas L0)
 
 Workflow-ul rulează în sandbox unde `Date.now()` / `Math.random()` / `new Date()` fără argumente **aruncă**
 — deci NU poate fabrica un id. **Tu** generezi `run_id` o singură dată, dintr-un timestamp Unix, și-l pasezi
@@ -442,6 +442,10 @@ date +%s
 
 Reține rezultatul ca `run_id` (string, ex. `"1750762800"`). Worktree-urile rundei vor sta sub
 `C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/`.
+
+> **Generat O SINGURĂ DATĂ la Pas L0. NU regenera `run_id` la fiecare rundă** — ar schimba directorul
+> worktree-urilor și ar deruta setul `attempted`. Bucla (Pas L1) refolosește același `run_id` în toate
+> rundele comenzii.
 
 > **`run_id` = identitatea ÎNTREGII comenzi `/orchestrate`, nu a unei singure runde.** În fluxul cu buclă
 > (Milestone D), generezi `run_id` **o singură dată** la începutul comenzii (înainte de prima rundă) și-l
@@ -521,8 +525,13 @@ verificatorul a murit, itemul degradează la „passthrough" și revine byte-ide
 
 ### Pas C4 — Pasul de teste (pe verzi, în worktree, înainte de merge)
 
-Pentru fiecare rezultat cu `outcome ∈ {fixed, done}` (verde), execută **pasul de teste** (identic cu Pas B5),
-dar acum scopat pe **worktree-ul itemului** (`r.worktree`), nu pe `repo_path`:
+**Pasul de teste se execută NUMAI pentru iteme worktree-based verzi care au editat cod** (adică
+`worker_skill ∈ {resolving-tt-bugs, resolving-tt-features, resolving-failed-test-plans}` cu
+`r.no_worktree !== true`). **SARI complet Pas C4 pentru iteme `no_worktree`** (`auto-running-test-plans`) —
+`test_recommendation` lor este `none` oricum și nu există worktree pe care să-l scopezi.
+
+Pentru fiecare rezultat eligibil cu `outcome ∈ {fixed, done}` (verde, worktree prezent), execută **pasul
+de teste** (identic cu Pas B5), dar acum scopat pe **worktree-ul itemului** (`r.worktree`), nu pe `repo_path`:
 
 | `test_recommendation` | Acțiune |
 |---|---|
@@ -533,9 +542,6 @@ dar acum scopat pe **worktree-ul itemului** (`r.worktree`), nu pe `repo_path`:
 
 Testele se scriu **în worktree** ca să intre în același merge ca fix-ul. Dacă skill-ul de teste committuiește,
 committuiește în `r.worktree`. Așteaptă finalizarea înainte de merge.
-
-> Pentru iteme `no_worktree` (ex. `auto-running-test-plans` în Milestone D) pasul de teste e `none` și
-> nu există merge.
 
 ### Pas C5 — Reconciliere + merge secvențial al verzilor (firul principal)
 
@@ -620,11 +626,34 @@ pe itemul mai puțin prioritar.
 Pentru fiecare rezultat care merge la PARK — adică: `outcome = 'blocked'`; SAU verde neverificat
 (`outcome ∈ {fixed,done}` cu `verified !== true`, din C5.1); SAU item picat la merge cu conflict:
 
-- Execută SQL-ul PARK din `reference/board-queries.md` (notă pe rândul sursă + `ensureFocusRow` →
-  `is_blocked=true`, `blocked_reason=question`). Vezi Pas B6 „blocked" pentru detaliile `ensureFocusRow`
-  (mapare status focus, INSERT dacă `focus_task_id IS NULL`, legare).
-- `:reason` = `question`-ul itemului (din JSON pentru blocked; `"verificare lipsă/eșuată — reia"` pentru
+Execuția parkului **diferă după `kind`**:
+
+**`kind='bug'` sau `kind='feature'`** (comportament standard):
+- Pas 1 — append notă pe rândul sursă (`tt_bugs` / `tt_features`, după `kind`):
+  `:reason` = `question`-ul itemului (din JSON pentru blocked; `"verificare lipsă/eșuată — reia"` pentru
   verzi neverificați; „conflict de merge pe …" pentru conflicte).
+- Pas 2 — `ensureFocusRow` → `is_blocked=true`, `blocked_reason=question`. Vezi Pas B6 „blocked" pentru
+  detaliile `ensureFocusRow` (mapare status focus, INSERT dacă `focus_task_id IS NULL`, legare).
+  Valori valide pentru `source_type`: `'bug'` sau `'feature'` — **niciodată `'testplan'` sau `'test_plan'`**.
+
+**`kind='testplan'`** (virtual-first — fără rând `tt_focus_tasks`):
+- Pas 1 — append notă pe `tt_test_plans.description`:
+  ```sql
+  UPDATE tt_test_plans SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason',
+    updated_at=NOW() WHERE id=:id;
+  ```
+- **Pas 2 — SARI complet `ensureFocusRow`.** Test planurile sunt virtual-first pe Focus board: coloana lor
+  e calculată din rezultatele itemelor (`pending`/`fail`/`blocked`/`pass`), nu dintr-un rând `tt_focus_tasks`.
+  **Nu exista un `tt_focus_tasks` row pentru test planuri și NU trebuie creat unul.** Câmpul `is_blocked`
+  nu se aplică unui test plan (tabelul valid pentru `source_type` este `'test_plan'` cu underscore, dar
+  dispecerul **nu insertează niciodată un focus row** cu `source_type='test_plan'` — regula e: fără focus
+  row pentru test planuri, punct). Un test plan parcat rămâne vizibil pe board prin itemele sale; nota din
+  `description` este singurul artefact al parkului.
+
+> **Regulă pentru un Claude rece:** dacă `kind='testplan'`, parkul = NUMAI `UPDATE tt_test_plans SET
+> description = ...`. Nu căuta `focus_task_id`. Nu executa INSERT în `tt_focus_tasks`. Nu seta `is_blocked`.
+> Orice tentativă de `ensureFocusRow` pe un test plan este greșită — `source_type='test_plan'` nu este un
+> `source_type` valid pentru context-ul de park al dispecerului (chiar dacă coloana tehnic acceptă valoarea).
 
 **Worktree la PARK — PĂSTREAZĂ doar dacă există muncă de reluat (NU păstra worktree-uri goale):**
 Un muncitor blocat la **Stage 1** (implement) își poate crea worktree-ul dar **nu committuiește nimic** — un
@@ -787,11 +816,12 @@ Repetă următoarele ca **o rundă**:
    coliziuni interne) + `deferred` (amânate — coliziune de zonă / peste `SOFT_CAP`). **Amânatele NU intră în
    `attempted`** — reintră în runda următoare.
 4. **Dacă `round_items` e gol** → bucla s-a terminat (nimic nou de făcut). Ieși din buclă, treci la raport.
-5. **Rulează runda** (Pas C2–C7 pe `round_items`): lansează Workflow-ul, fă pasul de teste pe verzi, merge
-   secvențial la verzii verificați, park la blocate/neverificate/conflicte, reconciliere orfani, cleanup,
-   raport de rundă. Pentru fiecare item **procesat** (apare în `round_items` și a fost trimis Workflow-ului),
-   **adaugă cheia `kind:id` în `attempted`** — indiferent de soartă (făcut, parcat, picat, muncitor mort).
-   Acumulează soarta lui în `done` / `parked` / `failed`. `rounds += 1`.
+5. **Rulează runda** (**Pas C2–C7** pe `round_items` — corpul buclei; Pas C0 NU se repetă): lansează
+   Workflow-ul, fă pasul de teste pe verzi, merge secvențial la verzii verificați, park la
+   blocate/neverificate/conflicte, reconciliere orfani, cleanup, raport de rundă. Pentru fiecare item
+   **procesat** (apare în `round_items` și a fost trimis Workflow-ului), **adaugă cheia `kind:id` în
+   `attempted`** — indiferent de soartă (făcut, parcat, picat, muncitor mort). Acumulează soarta lui în
+   `done` / `parked` / `failed`. `rounds += 1`.
 
 ### Pas L2 — Condiția de continuare
 
@@ -799,8 +829,9 @@ După fiecare rundă, **repetă** (înapoi la Pas L1) cât timp **TOATE** sunt a
 - **(a) runda a produs ≥1 item nou acționabil** — adică `round_items` n-a fost gol (a existat muncă nouă pe
   care n-o mai încercaseși). Dacă o rundă completă iese cu `round_items` gol (tot ce rămâne e în `attempted`
   sau parcat), **nu mai e nimic nou** → **stop**.
-- **(b) `rounds < --max-rounds`** (default 6). La atingerea plafonului → **stop** (chiar dacă ar mai fi iteme;
-  ce rămâne se raportează ca „de reluat").
+- **(b) `rounds < max_rounds`** (valoarea întreagă pasată de user, default 6; condiția de stop este
+  `rounds >= max_rounds`). La atingerea plafonului → **stop** (chiar dacă ar mai fi iteme; ce rămâne se
+  raportează ca „de reluat").
 - **(c) nu s-a atins un rate-limit MAX.** Dacă lansările încep să fie respinse de rate-limit → **nu mai lansa
   runde noi**; lasă runda curentă să-și termine ce-i în aer, apoi stop + raport (vezi „Plase de siguranță" pct. 3).
 
@@ -845,25 +876,29 @@ Dispecer — <slug> (project_id=<pid>) — <YYYY-MM-DD> — run_id=<run_id> — 
 
 ✅ Făcute & merge-uite (N):
   - [<kind> #<id>] <titlu> → <summary>   (rundă <r>; branch orch/<id> merge-uit)
-⏸️ Parcate / picate (cu motiv/întrebare) (M):
+⏸️ Parcate — au nevoie de tine (M):
   - [<kind> #<id>] <titlu> → <question/motiv>   (worktree: <cale> | curățat)
 ❌ Picate (K):
   - [<kind> #<id>] <titlu> → <motiv>   (ex. muncitor mort / conflict de merge — reia)
 
-Runde rulate: <rounds> / <--max-rounds>   (motiv oprire: board golit | plafon runde | rate-limit)
+Runde rulate: <rounds> / <max_rounds>   (motiv oprire: board golit | plafon runde | rate-limit)
 Worktrees parcate (de reluat manual): <căi care încă există>
 ```
 
-- **✅ Făcute** = `done` (merge reușit + write-back DONE).
-- **⏸️ Parcate / picate** = `parked` — itemele cu `outcome='blocked'` (inclusiv ambigue up-front fără răspuns,
-  acțiuni ireversibile, verificare eșuată, retry-uri epuizate) și verzii neverificați. Fiecare poartă `question`
-  sau motivul concret.
-- **❌ Picate** = `failed` — eșecuri de infrastructură (muncitor mort, conflict de merge) care nu sunt o
-  întrebare pentru user, ci „reia". (Poți contopi ⏸️ și ❌ dacă preferi două bucket-uri; păstrează distincția
-  întrebare-pentru-user vs. reia-mecanic.)
+Raportul folosește **întotdeauna aceste trei bucket-uri fixe**:
 
-Numărătoarea trebuie să fie consistentă: fiecare item trimis în orice rundă apare exact o dată, în exact un
-bucket (regula de încadrare din Pas C7.1, agregată peste runde).
+- **✅ Făcute & merge-uite** = `done` — outcome merge-uit + write-back DONE executat. Intră: orice item cu
+  merge reușit (`outcome ∈ {fixed,done}` ȘI `verified===true` ȘI cod-zero la merge).
+- **⏸️ Parcate — au nevoie de tine** = `parked` — blocked cu o întrebare/decizie pentru user. Intră:
+  `outcome='blocked'` (acțiune ireversibilă, prea vag, mai multe interpretări, retry-uri epuizate, încredere
+  mică), verde neverificat (`verified=false`) parcat „verificare lipsă/eșuată — reia", ambigue up-front fără
+  răspuns. Fiecare poartă un `question` sau motiv concret; acestea sunt cele transmise userului la Pas R2.
+- **❌ Picate** = `failed` — eșecuri mecanice, fără întrebare pentru user, ci „reia". Intră: muncitor mort
+  (id trimis dar neîntors), conflict de merge (`merge --abort` aplicat).
+
+**Nu combina ⏸️ și ❌.** Distincția este: ⏸️ are o întrebare/decizie pentru user; ❌ este o reîncercare
+mecanică. Numărătoarea trebuie să fie consistentă: fiecare item trimis în orice rundă apare exact o dată,
+în exact un bucket (regula de încadrare din Pas C7.1, agregată peste runde).
 
 ### Pas R2 — Întrebări parcate în lot (`AskUserQuestion`, fir principal)
 
@@ -872,24 +907,33 @@ input de la user — nu „muncitor mort/conflict", acelea sunt „reia"), pune-
 `AskUserQuestion`** (la fel ca pâlnia up-front: un singur tool call, câte o întrebare per item parcat).
 Acesta e **al doilea și ultimul** punct unde se cheamă `AskUserQuestion`, tot în firul principal.
 
-### Pas R3 — Resume ușor (documentat; NU auto-resume în această invocare)
+### Pas R3 — Resume ușor: aplică răspunsurile ACUM (nu le pierde)
 
-Când userul răspunde la întrebările parcate (din Pas R2), **nu** relua munca în aceeași invocare. În schimb,
-pentru fiecare item parcat la care userul a dat un răspuns, aplică **resume-ul ușor** (per design):
+Când userul răspunde la întrebările parcate (din Pas R2 — same invocation, imediat după), **execută
+deblocarea pentru fiecare item cu răspuns primit**, în ordinea răspunsurilor:
 
 1. **Adaugă răspunsul în `description`-ul rândului-sursă** al itemului (`tt_bugs` / `tt_features` /
    `tt_test_plans`, după `kind`), append cu un antet de forma
    `E'\n\n--- Răspuns user :date (Dispecer) ---\n<răspuns>'`. Astfel brieful canonic conține de-acum
-   clarificarea.
-2. **Deblochează cardul Focus** al itemului: `UPDATE tt_focus_tasks SET is_blocked=false, blocked_reason=NULL,
-   updated_at=NOW() WHERE id=<focus_task_id>` (rândul focus creat la park prin `ensureFocusRow`).
+   clarificarea — o rulare viitoare o vede fără să re-parkeze itemul.
+2. **Deblochează cardul Focus** al itemului:
+   - Pentru `kind='bug'` sau `kind='feature'`: `UPDATE tt_focus_tasks SET is_blocked=false,
+     blocked_reason='', updated_at=NOW() WHERE id=<focus_task_id>` (rândul focus creat la park prin
+     `ensureFocusRow`).
+   - Pentru `kind='testplan'`: **nu există rând `tt_focus_tasks`** (test planurile sunt virtual-first — nu se
+     creează focus row la park; vezi Pas C6 / I-3). Pasul de deblocare focus se **sare** — numai append-ul
+     de descriere contează.
+
+> **„nu relua munca"** înseamnă: **NU re-citi board-ul** și **NU lansa runde noi** în aceeași invocare după
+> ce aplici răspunsurile. NU înseamnă să sari aplicarea răspunsului — dacă răspunsul nu e persistat acum,
+> este pierdut definitiv și o rulare viitoare va re-parca imediat itemul (brieful rămâne gol).
 
 Efect: itemul redevine acționabil cu răspunsul deja în brief, iar **o rulare viitoare** `/orchestrate <slug>`
-îl prinde în Faza 1 și-l procesează cu contextul complet. **Nu construi auto-resume în-invocare** (re-citire +
-re-flotă în aceeași comandă după răspuns) — e amânat prin design; raportul + deblocarea sunt suficiente.
+îl prinde în Faza 1 și-l procesează cu contextul complet. Deblocarea este **obligatorie** în această
+invocare; re-citirea board-ului și lansarea de runde noi sunt amânate prin design.
 
-> Dacă userul **nu** răspunde (sare întrebarea), lasă cardul blocat — rămâne în raport ca „de reluat" și o
-> rulare viitoare îl va re-parca până primește un răspuns.
+> Dacă userul **nu** răspunde la un item (sare întrebarea), lasă cardul blocat și brieful neatins — rămâne
+> în raport ca „de reluat" și o rulare viitoare îl va re-parca până primește un răspuns.
 
 ---
 
@@ -903,19 +947,20 @@ Multe sunt deja impuse de pașii de mai sus; secțiunea le strânge ca un checkl
    Un verde cu `verified:false` (verificator mort → passthrough, sau `verify_channel:'none'`) NU se merge-uiește
    — se parchează cu „verificare lipsă/eșuată — reia". Nu te baza pe `outcome` singur.
 
-2. **Poartă pe acțiuni ireversibile.** Dacă un muncitor raportează că fix-ul cere o **migrare DB**, **ștergere
-   de date**, **push la remote**, sau **trimitere în afara sistemului** (email/webhook/API extern) → muncitorul
-   întoarce `outcome="blocked"` cu un `question` care descrie acțiunea ireversibilă, **fără să o execute**.
-   Conductorul **NU auto-merge-uiește** și **NU execută** acea acțiune — o **parchează pentru user** (card
-   blocat + întrebare în raport, Pas R2). Regula e codată în promptul muncitorului (`round.workflow.js`
+2. **Poartă pe acțiuni ireversibile.** Definiție: **ireversibil = după merge+deploy execută X fără confirmare
+   ulterioară — migrare DB, ștergere de date, push la remote, trimitere email/notificare/mesaj în afara
+   sistemului.** Dacă un muncitor raportează că fix-ul cere o astfel de acțiune → muncitorul întoarce
+   `outcome="blocked"` cu un `question` care descrie acțiunea ireversibilă, **fără să o execute**. Conductorul
+   **NU auto-merge-uiește** și **NU execută** acea acțiune — o **parchează pentru user** (card blocat +
+   întrebare în raport, Pas R2). Regula e codată în promptul muncitorului (`round.workflow.js`
    `implementPrompt`, „Reguli de incertitudine") și în target-mode-ul fiecărui skill muncitor. Acceptance live
    (amânat): un item care cere clar o migrare iese **parcat**, `tt_*.status` neschimbat, zero migrări aplicate
    (`SELECT count(*) FROM supabase_migrations.schema_migrations` egal înainte/după).
 
 3. **Plafoane.** (a) `SOFT_CAP` muncitori per rundă (Pas C1.4 — plafonează `round_items`; restul amânate).
-   (b) `--max-rounds` (default 6) runde maxime (Pas L2.b). (c) **Rate-limit MAX**: dacă lansările încep să fie
-   respinse → **nu mai lansa runde/muncitori noi**, lasă ce-i în aer să termine, apoi **stop + raport** (Pas
-   L2.c). Nu reîncerca în buclă strânsă pe rate-limit.
+   (b) `max_rounds` runde maxime (default 6; stop când `rounds >= max_rounds`, Pas L2.b). (c) **Rate-limit
+   MAX**: dacă lansările încep să fie respinse → **nu mai lansa runde/muncitori noi**, lasă ce-i în aer să
+   termine, apoi **stop + raport** (Pas L2.c). Nu reîncerca în buclă strânsă pe rate-limit.
 
 4. **Anti-thrash.** Muncitorul respectă **cele max 3 cicluri de retry ale propriului skill** (definite în
    fiecare skill muncitor); epuizate → `outcome="blocked"`, **nu** reîncearcă la nesfârșit. La nivel de comandă,
@@ -969,7 +1014,8 @@ Cele 5 sunt enunțate identic în firul muncitorului și aici — o singură sur
 | A ignora ID-urile trimise-dar-neîntoarse | Un muncitor mort lasă un worktree orfan + branch `orch/<id>` care nu se curăță niciodată | Reconciliere `sent` vs `returned` la C5.0: curăță worktree-ul orfan la calea deterministă |
 | A NU adăuga itemele procesate în `attempted` | Bucla ar reprocesa la nesfârșit același id → buclă infinită | La Pas L1.5 adaugă cheia `kind:id` în `attempted` pentru FIECARE item trimis, indiferent de soartă |
 | A adăuga amânatele (coliziune de zonă) în `attempted` | Itemele amânate n-ar mai fi reluate niciodată — s-ar pierde | Amânatele NU intră în `attempted` (Pas L1.3); reintră în runda următoare când zona lor e liberă |
-| A regenera `run_id` per rundă | Worktree-uri împrăștiate pe mai multe dir-uri; `attempted` resetat → buclă | Generează `run_id` o singură dată per comandă (Pas L0); refolosește-l în toate rundele |
+| A regenera `run_id` per rundă | Worktree-uri împrăștiate pe mai multe dir-uri; `attempted` resetat → buclă | Generează `run_id` O SINGURĂ DATĂ la Pas L0; refolosește-l în **toate** rundele (Pas C0) |
+| A parca un `testplan` cu `ensureFocusRow` / INSERT în `tt_focus_tasks` | Test planurile sunt virtual-first — nu au focus row; `source_type='test_plan'` nu se insertează | La `kind='testplan'` parkul = NUMAI `UPDATE tt_test_plans SET description=...`; sari `ensureFocusRow` (Pas C6) |
 | A chema `AskUserQuestion` din `round.workflow.js` | Sandbox-ul Workflow e mut — apelul aruncă / e ignorat; userul nu vede întrebarea | `AskUserQuestion` DOAR în firul principal: o dată up-front (Pas T2), o dată la final (Pas R2) |
 | A întreba userul în mijlocul buclei (per item) | Spam de prompturi; rupe fluxul full-auto | Strânge întrebările și pune-le în LOT: un singur `AskUserQuestion` up-front, unul la final |
 | A construi auto-resume în-invocare după răspunsuri | Complexitate inutilă; design-ul cere resume amânat | Pas R3: append răspuns în `description` + deblochează cardul; o rulare VIITOARE îl prinde |

@@ -88,7 +88,10 @@ WHERE id=:id;
 
 ### PARK — notă pe sursă + card blocat
 
-Substituie `:table` cu `tt_bugs` dacă `kind='bug'`, sau `tt_features` dacă `kind='feature'`.
+Substituie `:table` cu `tt_bugs` dacă `kind='bug'`, `tt_features` dacă `kind='feature'`, sau
+`tt_test_plans` dacă `kind='testplan'`.
+
+#### PARK pentru `kind='bug'` sau `kind='feature'`
 
 ```sql
 -- PARK pas 1: notă pe rândul sursă
@@ -98,7 +101,7 @@ UPDATE tt_bugs SET description = description || E'\n\n--- Parcat :date (Dispecer
 -- UPDATE tt_features SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason', updated_at=NOW() WHERE id=:id;
 ```
 
-Logica `ensureFocusRow`:
+Logica `ensureFocusRow` (doar pentru `kind='bug'` și `kind='feature'`):
 
 1. Citește `focus_task_id` din rândul sursă.
 2. Dacă `focus_task_id` este non-NULL:
@@ -121,3 +124,23 @@ Logica `ensureFocusRow`:
    -- sau, dacă kind='feature':
    -- UPDATE tt_features SET focus_task_id=<noul id>, updated_at=NOW() WHERE id=:id;
    ```
+
+#### PARK pentru `kind='testplan'` — virtual-first, fără `tt_focus_tasks`
+
+Test planurile sunt **virtual-first** pe Focus board: coloana lor e calculată din rezultatele itemelor
+(`pending`/`fail`/`blocked`/`pass`), nu dintr-un rând `tt_focus_tasks`. Prin urmare parkul constă **numai**
+dintr-un append pe `tt_test_plans.description` — **fără `ensureFocusRow`**, fără INSERT în
+`tt_focus_tasks`, fără `is_blocked`.
+
+```sql
+-- PARK testplan: notă pe tt_test_plans.description (singura operație de park pentru testplan)
+UPDATE tt_test_plans
+SET description = description || E'\n\n--- Parcat :date (Dispecer) ---\n:reason',
+    updated_at = NOW()
+WHERE id = :id;
+```
+
+> **Nu inserta niciodată un rând `tt_focus_tasks` cu `source_type='test_plan'`** pentru un test plan
+> parcat de dispecer. Valoarea `source_type='test_plan'` (cu underscore) există tehnic în enum-ul coloanei,
+> dar dispecerul nu o folosește — test planurile parcate rămân vizibile pe board prin itemele lor. Un
+> INSERT de focus row cu `source_type='test_plan'` este o greșeală și nu trebuie executat.
