@@ -50,9 +50,10 @@ git -C <repo_path> worktree add -b orch/<itemId> C:/Users/lakie/Desktop/.orch-wo
 
 ## MERGE-IF-GREEN (firul principal, secvențial)
 
-**Numai după** ce muncitorul a committuit în worktree ȘI rezultatul lui este verde (`outcome` verificat,
-nu `blocked`). Conductorul face merge **un singur item odată** (secvențial — niciodată două merge-uri în paralel),
-în `<repo_path>`:
+**Numai după** ce muncitorul a committuit în worktree ȘI rezultatul a trecut poarta de verificare: `outcome ∈
+{fixed,done}` **ȘI `verified === true`** (vezi SKILL.md Pas C5.1 — un verde cu `verified:false` provine de la un
+verificator mort și NU se merge-uiește). Conductorul face merge **un singur item odată** (secvențial — niciodată
+două merge-uri în paralel), în `<repo_path>`:
 
 ```bash
 git -C <repo_path> merge --no-ff --no-edit orch/<itemId>
@@ -93,10 +94,57 @@ git -C <repo_path> branch -D orch/<itemId>
 |---|---|
 | **Merge reușit** | **CLEANUP** — șterge worktree-ul și branch-ul `orch/<itemId>` |
 | **Abandon explicit** (item picat fără valoare de păstrat) | **CLEANUP** |
-| **PARK** — `outcome=blocked` SAU conflict de merge | **PĂSTREAZĂ** worktree-ul + branch-ul; userul / o relansare îl reia |
+| **Muncitor mort** (id trimis dar neîntors de Workflow) | **CLEANUP** worktree-ul orfan la calea deterministă (reconciliere — vezi mai jos) |
+| **PARK cu muncă reală** — `blocked`/verde-neverificat/conflict **și** branch-ul are commit-uri | **PĂSTREAZĂ** worktree-ul + branch-ul; userul / o relansare îl reia |
+| **PARK gol** — `blocked` la Stage 1, branch **fără commit-uri** | **CLEANUP** — nimic de reluat |
 
-La **PARK** munca muncitorului trăiește în branch-ul `orch/<itemId>` și în worktree-ul lui; nu o arunca.
-Raportul final listează căile worktree-urilor parcate ca să le poată găsi userul.
+> **Atenție — „munca trăiește în branch" e adevărat DOAR dacă branch-ul are commit-uri.** Un muncitor blocat la
+> **Stage 1** (implement) își poate crea worktree-ul dar **nu committuiește nimic** → branch-ul `orch/<itemId>` e
+> identic cu HEAD, iar worktree-ul e gol. Un astfel de worktree nu are ce relua și trebuie curățat, nu parcat.
+> Înainte de a decide PARK vs CLEANUP, numără commit-urile peste HEAD:
+>
+> ```bash
+> git -C <repo_path> rev-list --count HEAD..orch/<itemId>
+> ```
+>
+> - **`0`** → branch gol → **CLEANUP** (worktree remove + branch -D). Tipic pentru un block la Stage 1.
+> - **`>0`** → branch cu muncă reală (verde neverificat, block după implementare, sau conflict de merge) →
+>   **PĂSTREAZĂ**. La PARK munca trăiește în branch-ul `orch/<itemId>` și în worktree-ul lui; nu o arunca.
+>
+> Raportul final listează căile worktree-urilor parcate (cele păstrate) ca să le poată găsi userul.
+
+---
+
+## Reconciliere trimis-vs-întors (worktree-uri orfane de la muncitori morți)
+
+Un muncitor de implementare care **moare** nu apare în lista întoarsă de Workflow — dar și-a putut crea
+worktree-ul (prima lui acțiune) înainte să cadă, lăsându-l **orfan**. Conductorul reconciliază ID-urile trimise
+(`args.items`) cu cele întoarse; pentru fiecare `id` trimis dar neîntors, curăță worktree-ul orfan la **calea
+deterministă** (nu depinde de vreun rezultat — calea e funcție doar de `run_id`, `slug`, `id`):
+
+```bash
+git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slug>-<itemId>
+git -C <repo_path> branch -D orch/<itemId>
+```
+
+Ignoră erorile ambelor comenzi — muncitorul putea muri **înainte** de `worktree add`, caz în care nu există nimic
+de șters. Vezi SKILL.md Pas C5.0.
+
+---
+
+## Cleanup-ul dir-ului părinte al rundei (la sfârșitul rundei)
+
+După ce toate worktree-urile rundei au fost curățate sau parcate, dir-ul părinte
+`C:/Users/lakie/Desktop/.orch-worktrees/<runId>` poate rămâne gol. Curăță referințele git stale și încearcă
+să-l ștergi — dar **numai dacă e gol** (worktree-uri parcate încă vii ⇒ dir-ul NU e gol ⇒ păstrează-l):
+
+```bash
+git -C <repo_path> worktree prune
+rmdir C:/Users/lakie/Desktop/.orch-worktrees/<runId>
+```
+
+`rmdir` fără `-r` eșuează inofensiv dacă dir-ul nu e gol — deci e sigur să-l rulezi necondiționat. NU forța
+ștergerea (`rm -rf`) — ai distruge worktree-uri parcate. Vezi SKILL.md Pas C7.0.
 
 ---
 

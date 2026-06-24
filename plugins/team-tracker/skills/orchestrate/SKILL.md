@@ -489,11 +489,14 @@ args = {
 }
 ```
 
-Workflow-ul întoarce o listă de rezultate JSON (contractul cu 9 chei:
+Workflow-ul întoarce o listă de rezultate JSON (contractul cu 10 chei:
 `item_id, outcome, verify_channel, test_recommendation, effort, summary, question, worktree, branch`,
-plus `needs_preview`). Fiecare muncitor și-a creat worktree-ul, a implementat, a committuit, și (unde a
-fost cazul) a fost verificat — SQL în paralel, preview serial. **Nimic nu e încă merge-uit** — merge-ul e
-treaba ta, mai jos.
+plus `needs_preview` și **`verified`**). Fiecare muncitor și-a creat worktree-ul, a implementat, a committuit;
+unele rezultate au trecut printr-un stage de verificare (SQL paralel / preview serial), altele NU.
+**`verified` spune adevărul**: e `true` DOAR pe rezultatele întoarse de un agent de verificare viu. Dacă
+verificatorul a murit, itemul degradează la „passthrough" și revine byte-identic cu un verde verificat, DAR cu
+`verified:false`. **Nu te baza pe `outcome` singur** — un `outcome:'fixed'` cu `verified:false` NU e verificat.
+**Nimic nu e încă merge-uit** — merge-ul (și poarta de verificare) sunt treaba ta, mai jos.
 
 ### Pas C4 — Pasul de teste (pe verzi, în worktree, înainte de merge)
 
@@ -513,9 +516,47 @@ committuiește în `r.worktree`. Așteaptă finalizarea înainte de merge.
 > Pentru iteme `no_worktree` (ex. `auto-running-test-plans` în Milestone D) pasul de teste e `none` și
 > nu există merge.
 
-### Pas C5 — Merge secvențial al verzilor (firul principal)
+### Pas C5 — Reconciliere + merge secvențial al verzilor (firul principal)
 
-Procesează rezultatele verzi **unul câte unul** (NICIODATĂ două merge-uri în paralel). Pentru fiecare:
+#### C5.0 — Reconciliere trimis-vs-întors (curăță worktree-urile orfane)
+
+**Înainte de orice merge**, compară ID-urile pe care le-ai trimis cu cele care s-au întors. Un muncitor de
+implementare care **a murit** nu apare deloc în lista întoarsă de Workflow — dar și-a putut crea worktree-ul
+înainte să cadă, lăsându-l **orfan**. Calea worktree-ului e deterministă, deci o poți curăța fără să fi primit
+ceva înapoi:
+
+1. `sent = round_items.map(it => it.id)` (ID-urile pasate în `args.items`).
+2. `returned = <rezultatele Workflow-ului>.map(r => r.item_id)`.
+3. Pentru fiecare `id ∈ sent` care **NU** e în `returned` (muncitorul lui a murit):
+   - Worktree-ul orfan stă la calea deterministă `C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<id>`.
+   - Curăță-l (ignoră erorile dacă nu există — muncitorul putea muri înainte de `worktree add`):
+     ```bash
+     git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<id>
+     git -C <repo_path> branch -D orch/<id>
+     ```
+   - Raportează itemul în bucket-ul „picate" ca **„❌ Picat (muncitor mort) — reia"** (Pas C7).
+
+Asta rulează doar pentru proiecte `git=true` (cele cu worktree-uri). La `git=false` nu există worktree de curățat.
+
+#### C5.1 — Poarta de verificare (model-C: NICIUN merge neverificat)
+
+Procesează rezultatele întoarse **unul câte unul** (NICIODATĂ două merge-uri în paralel). Pentru fiecare rezultat
+`r`, **clasifică-l întâi după poarta de verificare**, NU doar după `outcome`:
+
+- **Merge DOAR dacă** `r.outcome ∈ {fixed, done}` **ȘI** `r.verified === true`. Numai atunci codul a fost
+  efectiv verificat de un agent de verificare viu → treci la C5.2 (merge).
+- **Dacă** `r.outcome ∈ {fixed, done}` **DAR** `r.verified !== true` (verificatorul a murit și itemul a degradat
+  la passthrough, SAU `verify_channel:'none'` — n-a existat stage de verificare) → **NU face merge**. PARK-ează
+  itemul (Pas C6) cu `question="verificare lipsă/eșuată — reia"` și **PĂSTREAZĂ** worktree-ul + branch-ul. Un
+  verde neverificat nu aterizează niciodată.
+- **Dacă** `r.outcome === 'blocked'` → PARK normal (Pas C6).
+
+> **Regulă pentru un Claude rece:** un `outcome:'fixed'`/`'done'` cu `verified:false` arată byte-identic cu un
+> verde real, dar **nu e verificat**. NU-l merge-ui pe baza `outcome`. Verifică TU flag-ul `verified` la fiecare
+> rezultat înainte de merge. Singura combinație care intră la merge e `outcome ∈ {fixed,done}` **ȘI**
+> `verified === true`.
+
+#### C5.2 — Merge (doar pentru verzii verificați)
 
 ```bash
 git -C <repo_path> merge --no-ff --no-edit orch/<item_id>
@@ -538,39 +579,94 @@ Interpretează **codul de ieșire** (vezi `reference/worktrees.md`):
      git -C <repo_path> merge --abort
      ```
   2. **PARK** itemul (Pas C6) cu `question="conflict de merge pe <fișierele în conflict>; rezolvă manual"`.
-  3. **PĂSTREAZĂ** worktree-ul + branch-ul `orch/<item_id>` (NU face cleanup) — munca trăiește acolo.
+     Decizia worktree (PĂSTREAZĂ vs CLEANUP) o ia Pas C6 prin `rev-list` — pentru un conflict branch-ul are
+     mereu commit-uri (`>0`), deci rezultatul e **PĂSTREAZĂ**. NU face cleanup aici.
 
 Ordinea merge-ului: după prioritate (verzii cu prioritate mai mare întâi), ca un eventual conflict să cadă
 pe itemul mai puțin prioritar.
 
-### Pas C6 — Park (blocked + conflicte)
+### Pas C6 — Park (blocked + verificare lipsă + conflicte)
 
-Pentru fiecare rezultat cu `outcome = 'blocked'` **și** pentru fiecare item picat la merge cu conflict:
+Pentru fiecare rezultat care merge la PARK — adică: `outcome = 'blocked'`; SAU verde neverificat
+(`outcome ∈ {fixed,done}` cu `verified !== true`, din C5.1); SAU item picat la merge cu conflict:
 
 - Execută SQL-ul PARK din `reference/board-queries.md` (notă pe rândul sursă + `ensureFocusRow` →
   `is_blocked=true`, `blocked_reason=question`). Vezi Pas B6 „blocked" pentru detaliile `ensureFocusRow`
   (mapare status focus, INSERT dacă `focus_task_id IS NULL`, legare).
-- **PĂSTREAZĂ** worktree-ul + branch-ul (regula PARK din `worktrees.md`). NU face cleanup.
-- `:reason` = `question`-ul itemului (din JSON pentru blocked; „conflict de merge pe …" pentru conflicte).
+- `:reason` = `question`-ul itemului (din JSON pentru blocked; `"verificare lipsă/eșuată — reia"` pentru
+  verzi neverificați; „conflict de merge pe …" pentru conflicte).
 
-### Pas C7 — Raport de rundă
+**Worktree la PARK — PĂSTREAZĂ doar dacă există muncă de reluat (NU păstra worktree-uri goale):**
+Un muncitor blocat la **Stage 1** (implement) își poate crea worktree-ul dar **nu committuiește nimic** — un
+worktree gol nu are ce relua. Verifică câte commit-uri are branch-ul peste HEAD **înainte** să decizi:
 
-Printează un raport concis al rundei:
+```bash
+git -C <repo_path> rev-list --count HEAD..orch/<item_id>
+```
+
+- **`0`** (branch fără commit-uri — tipic pentru un block la Stage 1) → **CLEANUP** worktree + branch (nimic de
+  reluat):
+  ```bash
+  git -C <repo_path> worktree remove --force C:/Users/lakie/Desktop/.orch-worktrees/<run_id>/<slug>-<item_id>
+  git -C <repo_path> branch -D orch/<item_id>
+  ```
+- **`>0`** (branch cu commit-uri — verde neverificat, sau block la verificare după ce s-a implementat, sau
+  conflict de merge) → **PĂSTREAZĂ** worktree-ul + branch-ul (regula PARK din `worktrees.md`). Munca trăiește
+  acolo; raportul listează calea.
+
+> Notă: pentru un item picat la **merge cu conflict** branch-ul are mereu commit-uri (`>0`) → PĂSTREAZĂ.
+> Distincția `rev-list` separă block-urile goale de la implement (curăță) de orice worktree cu muncă reală (ține).
+> Pentru `git=false` nu există worktree/branch — sari acest sub-pas.
+
+### Pas C7 — Cleanup dir run-id + raport de rundă
+
+#### C7.0 — Înlătură dir-ul părinte al rundei dacă a rămas gol
+
+După ce toate worktree-urile rundei au fost curățate sau parcate, dir-ul părinte
+`C:/Users/lakie/Desktop/.orch-worktrees/<run_id>` poate fi gol (toate verzii merge-uite + toate block-urile
+goale curățate). Curăță referințele git stale și încearcă să-l ștergi (ignoră eșecul dacă au rămas worktree-uri
+parcate înăuntru — atunci dir-ul NU e gol și trebuie păstrat):
+
+```bash
+git -C <repo_path> worktree prune
+rmdir C:/Users/lakie/Desktop/.orch-worktrees/<run_id>
+```
+
+`rmdir` (fără `-r`) șterge dir-ul **doar dacă e gol** — deci e sigur: dacă un worktree parcat încă trăiește acolo,
+comanda eșuează inofensiv și dir-ul rămâne. NU forța ștergerea. (Pentru `git=false` nu există acest dir.)
+
+#### C7.1 — Raport
+
+Printează un raport concis al rundei. **Fiecare item trimis apare pe EXACT o linie, într-un singur bucket:**
 
 ```
 Dispecer — rundă (Milestone C) — <slug> (project_id=<pid>) — <YYYY-MM-DD> — run_id=<run_id>
 
 ✅ Făcute & merge-uite (N):
   - [<kind> #<id>] <titlu> → <summary>   (branch orch/<id> merge-uit, worktree curățat)
-⏸️ Parcate pentru tine (M):
-  - [<kind> #<id>] <titlu> → <question / motivul conflictului>   (worktree: <cale>)
+⏸️ Parcate / picate (cu motiv) (M):
+  - [<kind> #<id>] <titlu> → <motiv>   (worktree: <cale> | curățat)
 ↩️ Amânate (coliziune de zonă / peste SOFT_CAP) (D):
   - [<kind> #<id>] <titlu> → coliziune cu #<X>; rulează din nou ca să-l prinzi
-❌ Picate la verificare (K):
-  - [<kind> #<id>] <titlu> → <motiv>
 
-Worktrees parcate (de reluat manual): <căi>
+Worktrees parcate (de reluat manual): <căi care încă există>
 ```
+
+**Regula de încadrare (un Claude rece umple exact o linie per item):**
+
+| Soarta itemului | Bucket | `<motiv>` |
+|---|---|---|
+| Merge reușit (`outcome ∈ {fixed,done}` ȘI `verified` ȘI cod-zero la merge) | ✅ Făcute | `summary` |
+| Blocat la implementare (`outcome='blocked'`, vine din Stage 1) | ⏸️ Parcate / picate | `question` (ex. „prea vag — întrebare …") + `(worktree curățat)` dacă era gol |
+| Picat la verificare (`outcome='blocked'` întors de un agent de verificare) | ⏸️ Parcate / picate | `question` (ex. „verificarea SQL a eșuat: …") |
+| Verde neverificat (`outcome ∈ {fixed,done}` dar `verified=false`) | ⏸️ Parcate / picate | „verificare lipsă/eșuată — reia" |
+| Conflict de merge | ⏸️ Parcate / picate | „conflict de merge pe <fișiere>; rezolvă manual" |
+| Muncitor mort (id trimis dar neîntors — din C5.0) | ⏸️ Parcate / picate | „❌ Picat (muncitor mort) — reia" |
+| Amânat (coliziune de zonă / peste `SOFT_CAP`, din Pas C1) | ↩️ Amânate | „coliziune cu #<X>; rulează din nou" |
+
+> Block-urile de la implementare și eșecurile de verificare întorc **amândouă** `outcome:'blocked'` — de aceea
+> stau în **același** bucket „⏸️ Parcate / picate", iar `<motiv>` (din `question`) le distinge. Nu inventa un
+> bucket separat; un singur rând per item, cu motivul corect din tabelul de mai sus.
 
 ### Notă de scope (Milestone C vs. D)
 
@@ -594,6 +690,8 @@ vin în **Milestone D**. Până atunci, pentru a procesa amânatele, rulează `/
 | Abort silențios la repo murdar | Userul nu știe de ce nu s-a întâmplat nimic | Mesaj explicit cu calea repo-ului și ce să facă |
 | A lăsa Workflow-ul să genereze `run_id` | `Date.now()`/`Math.random()`/`new Date()` ARUNCĂ în sandbox-ul Workflow | Conductorul generează `run_id` (Pas C0, `date +%s`) și-l pasează în `args.run_id` |
 | Merge în paralel al worktree-urilor | Două merge-uri simultane în `repo_path` corup indexul / se calcă | Merge **secvențial**, un singur item odată (Pas C5) |
-| Cleanup worktree la PARK/conflict | Pierzi munca muncitorului care trebuie reluată manual | PARK păstrează worktree+branch; cleanup DOAR la merge reușit (`worktrees.md`) |
+| Cleanup worktree la PARK cu muncă reală | Pierzi munca muncitorului care trebuie reluată manual | PARK păstrează worktree+branch **dacă `rev-list HEAD..orch/<id>` > 0**; cleanup la merge reușit SAU la block gol (Pas C6, `worktrees.md`) |
+| A ține worktree-uri goale la PARK | Block-urile de la Stage 1 lasă worktree-uri fără commit-uri — gunoi care nu se reia | La PARK verifică `rev-list --count HEAD..orch/<id>`; `0` → CLEANUP, `>0` → PĂSTREAZĂ (Pas C6) |
 | Fan-out paralel pe `git=false` | Nu poți edita în paralel același working tree fără izolare | `git=false` → in-place **serial**, fără merge (Pas C2) |
-| Merge fără verificare | Aterizezi cod neverificat | Doar `outcome ∈ {fixed,done}` (verificat preview/SQL) intră la merge; `blocked` → PARK |
+| Merge pe `outcome` fără să verifici `verified` | Un verde cu verificator mort (passthrough) arată byte-identic cu un verde real → aterizezi cod NEVERIFICAT | Merge DOAR dacă `outcome ∈ {fixed,done}` **ȘI `verified===true`**; altfel PARK „verificare lipsă/eșuată" (Pas C5.1) |
+| A ignora ID-urile trimise-dar-neîntoarse | Un muncitor mort lasă un worktree orfan + branch `orch/<id>` care nu se curăță niciodată | Reconciliere `sent` vs `returned` la C5.0: curăță worktree-ul orfan la calea deterministă |

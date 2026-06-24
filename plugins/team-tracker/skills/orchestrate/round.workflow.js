@@ -68,6 +68,10 @@ const RESULT_SCHEMA = {
     worktree: { type: 'string' },
     branch: { type: 'string' },
     needs_preview: { type: 'boolean' },
+    // Poarta de verificare model-C: `true` DOAR pe rezultate întoarse de un agent de
+    // verificare (Stage 2a/2b). Passthrough (verifier mort) și itemele care n-au trecut
+    // prin niciun stage de verificare poartă `false` → conductorul NU le face merge.
+    verified: { type: 'boolean' },
   },
 }
 
@@ -173,11 +177,19 @@ const blocked = impl.filter((r) => r.outcome === 'blocked')
 // Stage 2a — VERIFICARE SQL (paralel; n-au resursă comună)
 // ============================================================================
 const sqlItems = impl.filter((r) => r.outcome !== 'blocked' && r.verify_channel === 'sql' && !r.needs_preview)
-const sqlVerified = sqlItems.length
-  ? (await parallel(sqlItems.map((r) => () =>
+// `parallel` întoarce un array index-aliniat cu `sqlItems`, cu `null` pentru agenții
+// morți. Stampilăm `verified:true` DOAR pe pozițiile non-null și FORȚĂM `item_id` din
+// sursa `sqlItems[i].item_id` (nu avem încredere în id-ul ecou al agentului — fix și
+// pentru id-uri fantomă). Itemele cu agent mort (null) NU sunt verificate → cad în
+// passthrough mai jos (cu `verified:false`).
+const sqlRaw = sqlItems.length
+  ? await parallel(sqlItems.map((r) => () =>
       agent(verifyPrompt(r, 'sql'), { label: `verify-sql:${r.item_id}`, phase: 'Verify', schema: RESULT_SCHEMA })
-    ))).filter(Boolean)
+    ))
   : []
+const sqlVerified = sqlRaw
+  .map((v, i) => (v ? { ...v, item_id: sqlItems[i].item_id, verified: true } : null))
+  .filter(Boolean)
 
 // ============================================================================
 // Stage 2b — VERIFICARE PREVIEW (SERIAL; lease unic pe preview)
@@ -190,24 +202,35 @@ const previewItems = HAS_PREVIEW
 const previewVerified = []
 for (const r of previewItems) {
   const v = await agent(verifyPrompt(r, 'preview'), { label: `verify-prev:${r.item_id}`, phase: 'Verify', schema: RESULT_SCHEMA })
-  if (v) previewVerified.push(v)
+  // Doar dacă verificatorul a întors ceva: stampilează `verified:true` și FORȚEAZĂ
+  // `item_id` din sursa `r.item_id` (nu din id-ul ecou al agentului). Dacă verificatorul
+  // a murit (v === null), itemul NU e împins aici — cade în passthrough cu `verified:false`.
+  if (v) previewVerified.push({ ...v, item_id: r.item_id, verified: true })
 }
 
-// Catch-all: orice rezultat din `impl` care NU a fost nici blocat, nici trimis la
-// verificare SQL, nici la verificare preview (ex. verify_channel="none", sau
-// needs_preview fără preview disponibil) — îl trecem mai departe NEMODIFICAT ca
-// rezultat de implementare, ca să nu dispară din ce vede conductorul. Conductorul
-// decide ce face cu un verde neverificat (poarta de verificare e treaba lui).
-const accountedIds = new Set([
-  ...blocked.map((r) => r.item_id),
+// Catch-all: orice rezultat din `impl` care NU a fost nici blocat, nici verificat cu
+// succes prin SQL, nici prin preview (ex. verify_channel="none"; needs_preview fără
+// preview disponibil; SAU verificatorul a murit și parallel/await a întors null) — îl
+// trecem mai departe ca rezultat de implementare cu `verified:false`, ca să nu dispară
+// din ce vede conductorul, dar marcat clar drept NEVERIFICAT. Conductorul refuză să
+// facă merge pe un verde cu `verified !== true` (poarta de verificare e treaba lui).
+// Contul se face pe ID-uri din SURSĂ (impl), nu pe id-uri ecou — un verificator viu
+// dar cu id greșit nu poate „fura" contabilitatea unui alt item.
+const verifiedIds = new Set([
   ...sqlVerified.map((r) => r.item_id),
   ...previewVerified.map((r) => r.item_id),
 ])
-const passthrough = impl.filter((r) => !accountedIds.has(r.item_id))
+const blockedIds = new Set(blocked.map((r) => r.item_id))
+const passthrough = impl
+  .filter((r) => !blockedIds.has(r.item_id) && !verifiedIds.has(r.item_id))
+  .map((r) => ({ ...r, verified: false }))
+
+// Itemele blocate la implementare n-au trecut prin niciun stage de verificare → `false`.
+const blockedOut = blocked.map((r) => ({ ...r, verified: false }))
 
 // ============================================================================
 // REZULTAT — fiecare item din `impl` apare EXACT o dată: blocate la implementare
 // + verificate SQL + verificate preview + restul (passthrough). Conductorul (firul
-// principal) face merge secvențial pe verzi și park pe blocate/conflicte.
+// principal) face merge secvențial DOAR pe verzi cu `verified===true`; restul → PARK.
 // ============================================================================
-return [...blocked, ...sqlVerified, ...previewVerified, ...passthrough]
+return [...blockedOut, ...sqlVerified, ...previewVerified, ...passthrough]
