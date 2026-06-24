@@ -193,17 +193,21 @@ for (const r of previewItems) {
   if (v) previewVerified.push(v)
 }
 
-// Itemele care cer preview dar proiectul n-are unul: rămân ca atare (muncitorul
-// le-a marcat deja blocked în Stage 1 conform promptului). Le includem din `impl`
-// prin filtrul de blocked de mai sus; dacă vreunul a rămas needs_preview fără
-// preview disponibil și nu e blocked, îl trecem mai departe ca rezultat de implement.
-const strandedNoPreview = !HAS_PREVIEW
-  ? impl.filter((r) => r.outcome !== 'blocked' && r.needs_preview === true)
-  : []
+// Catch-all: orice rezultat din `impl` care NU a fost nici blocat, nici trimis la
+// verificare SQL, nici la verificare preview (ex. verify_channel="none", sau
+// needs_preview fără preview disponibil) — îl trecem mai departe NEMODIFICAT ca
+// rezultat de implementare, ca să nu dispară din ce vede conductorul. Conductorul
+// decide ce face cu un verde neverificat (poarta de verificare e treaba lui).
+const accountedIds = new Set([
+  ...blocked.map((r) => r.item_id),
+  ...sqlVerified.map((r) => r.item_id),
+  ...previewVerified.map((r) => r.item_id),
+])
+const passthrough = impl.filter((r) => !accountedIds.has(r.item_id))
 
 // ============================================================================
-// REZULTAT — blocate la implementare + verificate SQL + verificate preview +
-// (eventualele) iteme care cereau preview indisponibil.
-// Conductorul (firul principal) face merge secvențial pe verzi și park pe blocate.
+// REZULTAT — fiecare item din `impl` apare EXACT o dată: blocate la implementare
+// + verificate SQL + verificate preview + restul (passthrough). Conductorul (firul
+// principal) face merge secvențial pe verzi și park pe blocate/conflicte.
 // ============================================================================
-return [...blocked, ...sqlVerified, ...previewVerified, ...strandedNoPreview]
+return [...blocked, ...sqlVerified, ...previewVerified, ...passthrough]
