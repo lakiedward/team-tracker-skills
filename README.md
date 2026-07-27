@@ -7,7 +7,9 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 
 | Skill | Ce face |
 |-------|---------|
+| `orchestrate` | Mătură board-ul Focus al unui proiect și coordonează lucrul pe itemele active. |
 | `pontaj` | Pontează orele tale de lucru din sesiunea curentă în `tt_work_logs` (pagina „Pontaj"). |
+| `plan-deadlines` | Analizează repo-urile și backlog-ul, estimează livrarea și propune un plan până la deadline; scrie numai după confirmare. |
 | `writing-tester-test-plans` | Scrie un plan de test pentru un tester uman (tt_test_plans / tt_test_items). |
 | `writing-ai-test-plans` | Scrie un plan de test rulat automat de AI. |
 | `auto-running-test-plans` | Rulează automat planurile neatinse pe preview-ul local. |
@@ -92,5 +94,5 @@ următorul start de Claude (sau prin `/plugin marketplace update team-tracker`).
 .claude-plugin/marketplace.json          # catalogul (un singur plugin)
 plugins/team-tracker/
   .claude-plugin/plugin.json             # manifest plugin
-  skills/<nume>/SKILL.md                 # cele 8 skill-uri (+ scripts/ unde e cazul)
+  skills/<nume>/SKILL.md                 # cele 10 skill-uri (+ scripts/ unde e cazul)
 ```

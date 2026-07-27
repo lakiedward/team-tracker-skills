@@ -1,11 +1,11 @@
 ---
 name: pontaj
-description: Use when the user wants to log (pontaj / pontat) their own work hours on the team-tracker dashboard — or invokes "/pontaj". On the FIRST run it asks which team member you are (picked from the live tt_members list) and remembers the choice on this machine, so it never asks again; an explicit name in the invocation or the TT_MEMBER env var overrides. Resolves the current project from the working directory, summarizes what was worked on in the CURRENT chat session (git diff + the conversation), computes the hours automatically from the chat session's active duration (rounded to 0.5h, idle gaps excluded) unless you state the hours explicitly, and inserts ONE row into the Supabase table tt_work_logs (member = remembered identity, project_id from cwd) which the team-tracker "Pontaj" page renders. Triggers on "ponteaza", "ponteaza-ma", "pontaj", "pontează ce am lucrat", "ponteaza orele", "pontaj pe proiectul asta", "trece-mi orele", "log my hours", "log my time", "clock my work", "add a worklog", "ponteaza azi", "ponteaza X ore". Use it even when the user only says "ponteaza" with no other detail — that is the whole point of this skill.
+description: Use when the user wants to log (pontaj / pontat) their own work hours on the team-tracker dashboard — or invokes "/pontaj". On the FIRST run it asks which team member you are (picked from the live tt_members list) and remembers the choice on this machine, so it never asks again; an explicit name in the invocation or the TT_MEMBER env var overrides. Resolves the current project from the working directory, summarizes what was worked on in the CURRENT chat session (git diff + the conversation), computes the hours automatically from the chat session's active duration (rounded to 0.5h, idle gaps excluded) unless you state the hours explicitly, inserts ONE row into tt_work_logs, then links only tracker items that are explicitly and confidently identified in the same project. Triggers on "ponteaza", "ponteaza-ma", "pontaj", "pontează ce am lucrat", "ponteaza orele", "pontaj pe proiectul asta", "trece-mi orele", "log my hours", "log my time", "clock my work", "add a worklog", "ponteaza azi", "ponteaza X ore". Use it even when the user only says "ponteaza" with no other detail — that is the whole point of this skill.
 ---
 
 # Pontaj
 
-Turn the work done in the **current chat session** into one time-log entry for **the person running it** and write it to the team-tracker Supabase database, so it shows up on the "Pontaj" page. One run = one `tt_work_logs` row: who (resolved from `TT_MEMBER`), which project (resolved from the working directory), what category, what was done, how many hours, on what date.
+Turn the work done in the **current chat session** into one time-log entry for **the person running it** and write it to the team-tracker Supabase database, so it shows up on the "Pontaj" page. One run = one `tt_work_logs` row: who (resolved from `TT_MEMBER`), which project (resolved from the working directory), what category, what was done, how many hours, on what date. The same write may add zero or more `tt_work_log_items` links when this session names exact tracker items with high confidence.
 
 ## Why this skill exists
 
@@ -22,6 +22,7 @@ The Pontaj page in team-tracker reads `tt_work_logs` and groups by member / proj
 | Project source root (what we summarize) | the current working directory — **resolved in Step 0** |
 | Supabase project id (holds tt_* tables) | `ntjzghsbrzkvpkniotaj` |
 | Table | `public.tt_work_logs` |
+| Optional link table | `public.tt_work_log_items` — one high-confidence row per linked bug/feature/test plan/To-Do |
 | Supabase MCP tool | a connected Supabase MCP pointed at project ref `ntjzghsbrzkvpkniotaj` (e.g. `mcp__supabase-mcp-server__execute_sql`, or whatever Supabase MCP server name is connected in this client). |
 | `project_id` to write | **resolved in Step 0** from the cwd — never hardcoded; a `NULL` project_id is invisible on the Pontaj page's per-project view |
 | Allowed `category` values | `Development`, `Testing`, `Content`, `Design`, `Research`, `Meeting`, `Other` — pick exactly one |
@@ -49,6 +50,8 @@ tt_work_logs (
 ```
 
 `member` is a free TEXT column (not a FK), so casing matters for grouping — always write the name **exactly** as it appears on the Pontaj page (e.g. `Edy`, not `edy`/`EDY`), or a casing variant splits one person's hours into a phantom second person. RLS is on with the standard permissive policy, so the anon MCP connection can insert.
+
+`tt_work_log_items` accepts `source_type IN ('bug', 'feature', 'test_plan', 'todo')`. Its DB trigger rejects missing sources and cross-project links. A Pontaj row does not require any link.
 
 ## Step 0 — Resolve which project this pontaj is for
 
@@ -129,6 +132,44 @@ Use git to ground the summary in real files, but don't log work that wasn't part
 If there is genuinely nothing to log — the conversation has no implementation/investigation work **and** git shows no changes — don't invent something. Ask:
 > "Nu vad nimic lucrat in sesiunea asta (fara modificari in git, fara munca in chat). Ce sa pontez? Spune-mi pe scurt si cate ore."
 
+### Step 1b — Identify link candidates without asking
+
+Build a candidate list only from evidence already present in this session:
+
+- an explicit typed reference such as `bug #123`, `feature #45`, `test plan #9`, or `todo #31`;
+- an item ID returned by the tracker while this session directly read, updated, implemented, fixed, or tested that item;
+- an unambiguous source row already loaded in this session where both type and ID are known.
+
+Do **not** link from title similarity alone, a broad topic, a file name, a project-level request, or a guessed numeric token. Do not ask a new question just to obtain links.
+
+Validate all candidates before inserting:
+
+```sql
+SELECT 'bug' AS source_type, id AS source_id, project_id, title
+FROM public.tt_bugs
+WHERE id IN (<candidate_bug_ids>)
+UNION ALL
+SELECT 'feature', id, project_id, title
+FROM public.tt_features
+WHERE id IN (<candidate_feature_ids>)
+UNION ALL
+SELECT 'test_plan', id, project_id, title
+FROM public.tt_test_plans
+WHERE id IN (<candidate_test_plan_ids>)
+UNION ALL
+SELECT 'todo', id, project_id, title
+FROM public.tt_todos
+WHERE id IN (<candidate_todo_ids>);
+```
+
+Keep only rows whose `project_id = <project_id>` from Step 0. Assign:
+
+- `link_method = 'explicit'` for literal type + ID references;
+- `link_method = 'session_context'` when the exact row was loaded and acted on in this session;
+- `confidence = 'high'` in both cases.
+
+If nothing survives, create no links and continue silently.
+
 ## Step 2 — Build the entry (member, category, description, work_date)
 
 - **member** = `<member>` resolved in Step 0b (from `TT_MEMBER`, an explicit override, or the one-time ask). Never a hardcoded name.
@@ -175,7 +216,7 @@ Keep `raw_hours` and `active_hours` for the Step 5 report so the basis is visibl
 
 **Fallback (only on failure):** if the JSON has an `"error"` field (no transcript dir, fewer than 2 timestamps), the duration couldn't be measured — *then* ask once: `"Nu am putut citi durata chat-ului — câte ore să pontez?"` and validate `0 < hours <= 24`. Don't fall back to asking for any other reason; a successfully computed small number (e.g. 0.5h for a short chat) is correct, not an error.
 
-## Step 4 — Insert the row (directly, no confirmation)
+## Step 4 — Insert the row and validated links (directly, no confirmation)
 
 Once hours are known, insert immediately — the user chose direct insert, so there's no separate "OK?" prompt. **Escape single quotes** in `description` (and in `member`, if a name contains one) by doubling them (`'` → `''`) or the SQL breaks.
 
@@ -194,6 +235,62 @@ RETURNING id, member, project_id, category, hours, work_date;
 
 If the INSERT errors on the CHECK constraint, the hours were out of range — re-ask (Step 3) rather than retrying the same value. If it errors on a NULL `project_id`, Step 0 didn't resolve — go back and fix it; never insert a pontaj with no project.
 
+When Step 1b produced validated candidates, insert the work log and all links atomically. Use one `VALUES` row per validated source:
+
+```sql
+WITH inserted_log AS (
+  INSERT INTO public.tt_work_logs (
+    member, project_id, category, description, hours, work_date
+  )
+  VALUES (
+    '<member>',
+    <project_id>,
+    '<category>',
+    '<description>',
+    <hours>,
+    CURRENT_DATE
+  )
+  RETURNING id, member, project_id, category, hours, work_date
+),
+inserted_links AS (
+  INSERT INTO public.tt_work_log_items (
+    work_log_id, source_type, source_id, link_method, confidence
+  )
+  SELECT
+    inserted_log.id,
+    candidate.source_type,
+    candidate.source_id,
+    candidate.link_method,
+    'high'
+  FROM inserted_log
+  CROSS JOIN (
+    VALUES
+      ('feature', 45::bigint, 'explicit'),
+      ('bug', 123::bigint, 'session_context')
+  ) AS candidate(source_type, source_id, link_method)
+  ON CONFLICT DO NOTHING
+  RETURNING source_type, source_id, link_method
+)
+SELECT
+  inserted_log.*,
+  COALESCE(
+    jsonb_agg(to_jsonb(inserted_links))
+      FILTER (WHERE inserted_links.source_id IS NOT NULL),
+    '[]'::jsonb
+  ) AS linked_items
+FROM inserted_log
+LEFT JOIN inserted_links ON true
+GROUP BY
+  inserted_log.id,
+  inserted_log.member,
+  inserted_log.project_id,
+  inserted_log.category,
+  inserted_log.hours,
+  inserted_log.work_date;
+```
+
+The two example `VALUES` rows are placeholders; never insert them literally. With no validated candidates, use the simpler `tt_work_logs` INSERT shown above. If a link still fails validation, fix or remove only that candidate and retry the atomic statement; never fabricate a different source.
+
 ## Step 5 — Report
 
 Print the confirmation and the basis for the hours, nothing more:
@@ -205,6 +302,14 @@ Ore: <hours>h — calculat din chat (~<active_hours>h activ din <raw_hours>h tot
 ```
 
 The third line lets the user sanity-check the auto figure at a glance. When the hours came from an explicit number in the invocation instead of the script, say so: `Ore: <hours>h — specificat de tine`. If `raw_hours` is much larger than `active_hours`, add ` (au fost pauze lungi în chat)` so the gap is explained rather than surprising.
+
+If links were inserted, add one final compact line:
+
+```
+Legat: feature #45, bug #123
+```
+
+If no link was safe, omit the line. Do not apologize and do not ask for item IDs.
 
 No "anything else?" epilogue — the row is the deliverable and the user can see it on the Pontaj page. If the figure is wrong, the user re-runs with an explicit number (`ponteaza 2 ore`) or fixes it on the Pontaj page.
 
@@ -227,6 +332,9 @@ No "anything else?" epilogue — the row is the deliverable and the user can see
 | Logging the whole day / since-last-pontaj instead of this session | Scope is the current chat session; pulling in unrelated commits double-counts. | Summarize only this session's work (conversation + this session's git changes). |
 | Inventing work when nothing was done | A fake pontaj corrupts the hours data. | If there's no session work and no git change, ask the user what to log. |
 | A vague description ("work", "diverse") | Useless on the Pontaj page; the person won't remember what it was. | Name the concrete features/fixes/pages in 1–3 sentences. |
+| Linking from a title guess or arbitrary number | Corrupts direct velocity and attributes hours to the wrong work. | Link only an exact typed ID or an exact source row acted on in this session. |
+| Linking an item from another project | Cross-project velocity becomes false; the DB trigger rejects it. | Validate every candidate's `project_id` against the resolved Pontaj project. |
+| Asking which items to link | Turns the frictionless command into a questionnaire. | Link safe candidates automatically; otherwise insert only the work log. |
 | Editing project source while pontaj-ing | This skill only writes a DB row; it changes no code. | Never edit files — the deliverable is one `tt_work_logs` INSERT. |
 
 ## When to self-abort

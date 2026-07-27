@@ -1,0 +1,5 @@
+interface:
+  display_name: "Plan Deadlines"
+  short_description: "Planifica livrarile dupa deadline si capacitate"
+  brand_color: "#F59E0B"
+  default_prompt: "Use $plan-deadlines to analyze configured projects and propose a deadline-safe delivery plan."
