@@ -12,7 +12,7 @@ Read this reference before querying or writing delivery-planning data.
 - `tt_todos.planning_key`: stable UUID for idempotent generated gaps.
 - `tt_project_velocity`: fast RLS-invoker snapshot of rolling 90-day velocity.
 
-Never store repository paths, source contents, credentials, environment variables, or raw prompts.
+Never store source-code contents, credentials, environment variables, expiring signed URLs, or raw execution prompts. Tracker descriptions and attachment storage paths remain on their owning source rows; Productivitate resolves them only when the user copies a prompt.
 
 ## Read configured scope
 
@@ -64,12 +64,14 @@ The view exposes a usable P25 only after at least 4 sampled weeks and 10 feature
 Read a lightweight project-scoped catalog without status or archive filters. Paginate rather than truncate.
 
 ```sql
-SELECT id, title, status, priority, effort, focus_task_id, is_archived, updated_at
+SELECT id, title, status, priority, effort, focus_task_id, is_archived,
+       image_urls, updated_at
 FROM public.tt_features
 WHERE project_id = <project_id>
 ORDER BY id;
 
-SELECT id, title, status, priority, effort, focus_task_id, is_archived, updated_at
+SELECT id, title, status, priority, effort, focus_task_id, is_archived,
+       image_urls, updated_at
 FROM public.tt_bugs
 WHERE project_id = <project_id>
 ORDER BY id;
@@ -94,6 +96,7 @@ SELECT
       'id', item.id,
       'description', item.description,
       'result', item.result,
+      'image_paths', item.image_paths,
       'order_index', item.order_index
     )
     ORDER BY item.order_index
@@ -105,7 +108,7 @@ GROUP BY plan.id
 ORDER BY plan.id;
 ```
 
-After counting the complete catalog, expand descriptions for all active rows and only relevant completed or archived evidence. Never load an unfiltered cross-project archive.
+After counting the complete catalog, expand descriptions for all active rows and only relevant completed or archived evidence. Never load an unfiltered cross-project archive. Treat `tt_bugs.image_urls`, `tt_features.image_urls`, and `tt_test_items.image_paths` as private Storage paths. Generate short-lived signed URLs only for selected or seriously considered candidates and inspect every selected attachment.
 
 ## Read current daily queue and overrides
 
@@ -174,6 +177,20 @@ Merge the selected velocity row with:
   "selected_hours": 4.75,
   "selected_count": 4,
   "candidate_count": 78,
+  "candidate_counts": {
+    "bug": 26,
+    "feature": 6,
+    "test_plan": 15,
+    "todo": 0,
+    "codebase_gap": 2
+  },
+  "selected_counts": {
+    "bug": 3,
+    "feature": 0,
+    "test_plan": 0,
+    "todo": 0,
+    "codebase_gap": 0
+  },
   "working_days_left": 26,
   "required_daily_hours": 10.63,
   "overload_hours_per_day": 5.63
@@ -194,10 +211,26 @@ Compute SHA-256 over canonical JSON with sorted keys containing:
 - repository labels, HEAD SHAs, and dirty flags;
 - complete tracker source counts;
 - sorted daily selected stable keys, source ids, daily estimates, completion criteria, and dependencies;
+- attachment storage paths for selected sources, never signed URLs;
 - selected generated To-Do keys;
 - preserved overrides.
 
 Do not include prose, local paths, scan timestamps, unselected candidate ordering, or other presentation-only values.
+
+## Copy-ready execution prompt
+
+Do not persist a prompt blob on `tt_delivery_plan_items`. Productivitate builds it on demand from:
+
+- the plan's brief, definition of done, deadline, summary, and repo snapshot;
+- the selected plan item's action title, complete description snapshot, estimate, dependencies, and `scope_reason`;
+- the current source title, status, priority, and full tracker description;
+- private attachment storage paths resolved to new signed URLs at read time.
+
+For an attachment-bearing source, the prompt must include both the stable Storage path and the temporary URL, say that every image must be inspected before editing, and explain how to regenerate an expired signed URL. For test plans, retain the owning test step in each attachment label.
+
+`scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, and the required tests or build checks. A copied prompt must still be actionable when the source has no attachments.
+
+The final prompt instruction must update the owning tracker source only after the completion criterion and verification pass: bugs to `Fixed`, features and To-Dos to `Gata`, and test-plan results per executed step. If the tracker write fails, the execution is not fully complete and the exact error must be reported.
 
 ## Transactional daily apply
 
@@ -351,7 +384,7 @@ VALUES
     '<confidence>',
     ARRAY['<dependency_stable_key>']::text[],
     <required_for_deadline>,
-    '<why_now_and_observable_completion_criterion>'
+    '<why_now_completion_criterion_code_starting_points_and_verification>'
   );
 
 COMMIT;
