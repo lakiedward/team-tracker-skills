@@ -108,7 +108,8 @@ For each active tracker item:
 3. Estimate remaining low/high hours and confidence.
 4. Record unfinished dependencies.
 5. Identify an observable completion criterion for the next work session.
-6. Inspect every attached screenshot when the item remains executable. Never select an attachment-bearing item from title/description alone.
+6. Classify verification as `browser` or `non_browser`. Browser verification is mandatory for user-visible UI, responsive behavior, navigation, forms, auth, payments, browser state, and end-to-end web flows; when uncertain, classify it as `browser`. Record the exact scenario and relevant viewports/devices.
+7. Inspect every attached screenshot when the item remains executable. Never select an attachment-bearing item from title/description alone.
 
 For every codebase gap:
 
@@ -209,6 +210,7 @@ Use this order for every project:
    - dependency;
    - codebase and starting area when evidence supports it.
    - attachment count and what the screenshots prove, when attachments exist.
+   - verification mode; for `browser`, the exact scenario and viewports/devices that must pass before the source may become `Fixed`/`Gata`.
 4. **Ce a fost verificat** — complete tracker counts and exclusions by source.
 5. **Ce lipsește din tracker** — codebase gaps, including unselected gaps.
 6. **Ritm din Pontaj** — chosen P25, fallback, sample, and confidence.
@@ -291,7 +293,7 @@ Every inserted plan item must:
 - represent one selected tracker source or approved generated To-Do;
 - use today's actionable estimate, which may be a slice of a larger item;
 - snapshot the complete tracker description in `description_snapshot`;
-- include in `scope_reason`: why now, the observable daily completion criterion, verified code starting points, and the required verification;
+- include in `scope_reason`: why now, the observable daily completion criterion, verified code starting points, `verification_mode=browser|non_browser`, and the required verification. For browser mode, include the scenario and viewports/devices;
 - keep dependencies limited to keys relevant to today's execution.
 
 Do not persist signed URLs or a raw execution prompt. Productivitate constructs the copy-ready prompt at read time from the immutable plan snapshot, current tracker source, repository snapshot, and freshly signed attachment paths.
@@ -310,10 +312,12 @@ After commit, query the new plan and item count. Report version, planning date, 
 - [ ] Deadline pressure changed buffer only within gross capacity.
 - [ ] Every selected action is dependency-ready or is the blocking dependency.
 - [ ] Every selected action has an observable completion criterion.
+- [ ] Every selected action has an explicit verification mode; uncertain user-visible work defaults to `browser`.
 - [ ] Every selected attachment was inspected and its storage path remains on the source item.
 - [ ] Candidate and selected counts by source explain any single-source daily queue.
 - [ ] Every selected item carries enough description, code evidence, and verification detail for Productivitate to build a complete execution prompt.
-- [ ] The copy-ready prompt closes the tracker loop: a verified bug becomes `Fixed`; a feature or To-Do becomes `Gata`; test results are recorded per step. A failed tracker update must be reported and must not be presented as a completed task.
+- [ ] Browser-required work moves to Focus `În testare` after implementation and remains there until the recorded browser scenario passes. A failed, unavailable, or undocumented browser test can never become `Fixed`/`Gata`.
+- [ ] The copy-ready prompt closes the tracker loop only after every required verification passes: a verified bug becomes `Fixed`; a feature or To-Do becomes `Gata`; test results are recorded per step. A failed tracker update must be reported and must not be presented as a completed task.
 - [ ] No full backlog timeline was generated or persisted.
 - [ ] Only selected daily gap To-Dos are created after approval.
 - [ ] The exact daily diff is visible.

@@ -228,9 +228,11 @@ Do not persist a prompt blob on `tt_delivery_plan_items`. Productivitate builds 
 
 For an attachment-bearing source, the prompt must include both the stable Storage path and the temporary URL, say that every image must be inspected before editing, and explain how to regenerate an expired signed URL. For test plans, retain the owning test step in each attachment label.
 
-`scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, and the required tests or build checks. A copied prompt must still be actionable when the source has no attachments.
+`scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, `verification_mode=browser|non_browser`, and the required tests or build checks. For browser mode, record the exact scenario plus relevant viewports/devices. A copied prompt must still be actionable when the source has no attachments.
 
-The final prompt instruction must update the owning tracker source only after the completion criterion and verification pass: bugs to `Fixed`, features and To-Dos to `Gata`, and test-plan results per executed step. If the tracker write fails, the execution is not fully complete and the exact error must be reported.
+Classify user-visible UI, responsive behavior, navigation, forms, auth, payments, browser state, and end-to-end web flows as `browser`; uncertainty defaults to `browser`. After implementation, browser-required work moves to Focus `În testare`. A failed, unavailable, or undocumented browser test leaves it there and forbids `Fixed`/`Gata`. Browser evidence must state the tested URL/scenario, viewports/devices, steps, observed result, and console-error state.
+
+The final prompt instruction must update the owning tracker source only after the completion criterion and every required verification pass: bugs to `Fixed`, features and To-Dos to `Gata`, and test-plan results per executed step. If the tracker write fails, the execution is not fully complete and the exact error must be reported.
 
 ## Transactional daily apply
 
