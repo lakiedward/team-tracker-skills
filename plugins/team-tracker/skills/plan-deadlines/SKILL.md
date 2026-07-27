@@ -1,11 +1,13 @@
 ---
 name: plan-deadlines
-description: Analyze one configured Team Tracker project or the whole active portfolio against its delivery brief, definition of done, deadline, manually assigned weekly capacity, tracker backlog, work-log velocity, and registered codebases. Use when the user invokes "/plan-deadlines", asks what must be finished by each project deadline, wants a delivery plan refreshed, or wants to know whether a deadline is realistic. Produce a read-only proposal and diff first; write a new approved plan version and idempotent generated To-Dos only after explicit confirmation in chat.
+description: Analyze one configured Team Tracker project or the whole active portfolio against its delivery brief, definition of done, deadline, manually assigned weekly capacity, complete project backlog, work-log velocity, and registered codebases. Use when the user invokes "/plan-deadlines", asks for the next three things to do, asks what must be finished by a deadline, wants a delivery plan refreshed, or wants to know whether a deadline is realistic. Lead every successful scan with three concrete next actions. Produce a read-only proposal and diff first; write a new approved plan version and idempotent generated To-Dos only after explicit confirmation in chat.
 ---
 
 # Plan Deadlines
 
-Turn configured project outcomes into evidence-backed delivery plans. Scan only registered codebases, combine them with the live tracker, estimate conservatively from the latest 90-day velocity, schedule on working days with a 20% buffer, and show the exact plan diff before writing.
+Turn configured project outcomes into evidence-backed delivery plans and an executable action queue. Scan only registered codebases, combine them with the complete project backlog, estimate conservatively from the latest 90-day velocity, schedule on working days with a 20% buffer, and show the exact plan diff before writing.
+
+Deadline health is context, never the whole answer. Every successful scan must answer first: **which three concrete things should be done next?**
 
 ## Commands
 
@@ -60,11 +62,14 @@ For each project:
    - otherwise use the legacy `repo_path` as one codebase;
    - if no registered path exists, continue from tracker data and set coverage to `tracker_only`.
 3. Do not search other folders when a path is missing. Mark that codebase missing and coverage incomplete.
-4. Query the project’s active and recently completed:
-   - bugs;
-   - features;
-   - test plans plus test items;
-   - To-Dos;
+4. Build a complete lightweight catalog of every project-scoped:
+   - bug;
+   - feature;
+   - test plan plus test-item status;
+   - To-Do.
+5. Do not sample or silently truncate this catalog. Paginate when a Data API response limit applies. Record total, active, completed, and archived counts per source type so coverage is visible.
+6. Expand descriptions and other heavy fields for all active items and for completed/archived items that may prove a definition-of-done outcome. Never fetch the unfiltered cross-project archive.
+7. Query:
    - current delivery plan and its items;
    - velocity rows;
    - relevant work-log links.
@@ -119,18 +124,19 @@ Set analysis coverage:
 
 Translate the definition of done into verifiable outcomes. For each outcome:
 
-1. Reuse relevant existing items.
-2. Exclude unrelated backlog even when it is high priority.
-3. Include already completed items that materially prove progress toward the outcome.
-4. Propose a new To-Do only when no existing bug, feature, test plan, or To-Do represents a necessary gap.
-5. Give every gap a canonical key and generate its stable UUID:
+1. Review the complete project source catalog before excluding anything.
+2. Reuse relevant existing items.
+3. Exclude unrelated backlog even when it is high priority, but retain an exclusion reason and source count for the proposal.
+4. Include already completed items that materially prove progress toward the outcome.
+5. Propose a new To-Do only when no existing bug, feature, test plan, or To-Do represents a necessary gap.
+6. Give every gap a canonical key and generate its stable UUID:
 
 ```bash
 node "<skill_dir>/scripts/planning-key.mjs" "<project_id>" "<canonical-gap-key>"
 ```
 
-6. Keep the same canonical key on later scans.
-7. Never change the status of an existing or generated source item during planning.
+7. Keep the same canonical key on later scans.
+8. Never change the status of an existing or generated source item during planning.
 
 For each selected item produce:
 
@@ -177,6 +183,32 @@ Recalculate progress with effective estimates:
 
 Past work-log hours never enter available-capacity math.
 
+## Phase 6A — Build the next-three action queue
+
+After dependency ordering and scheduling, select at most three incomplete actions that can be started now.
+
+1. Consider every active bug, feature, test plan, and To-Do plus necessary codebase gaps before ranking.
+2. Exclude completed or archived work, unrelated backlog, and items blocked by an unfinished dependency. A blocking dependency becomes a candidate itself.
+3. Rank in this order:
+   - work that unblocks the largest part of the critical path;
+   - release blockers and critical production risks, especially auth, payments, data loss, security, migrations, build/signing, and store or deployment requirements;
+   - mandatory definition-of-done outcomes;
+   - already-started work that can be closed without delaying a stronger blocker;
+   - earliest planned due date;
+   - higher tracker priority, then higher confidence, then stable source key.
+4. Avoid three near-duplicate actions when one prerequisite would unlock all three.
+5. Return exactly three when three executable actions exist. If fewer exist, return the available actions and explain why the queue is shorter.
+6. For each action show:
+   - a verb-led concrete action;
+   - tracker source and id, or `gap propus` when no source exists;
+   - current status and whether it is already in Focus;
+   - why it is next and what it unblocks;
+   - observable completion criteria;
+   - remaining low/high hours, confidence, and planned due date;
+   - registered codebase label and the best starting file/area when repository evidence supports one.
+7. Mark gap actions as proposed. Do not create them, promote items to Focus, change status, or write a plan before approval.
+8. Recompute the queue from live state on every run; do not blindly repeat the previous three.
+
 ## Phase 7 — Handle an impossible deadline
 
 If required high estimates exceed buffered capacity, stop before the approval step and show all three:
@@ -187,26 +219,30 @@ If required high estimates exceed buffered capacity, stop before the approval st
 
 Show the blocking dependency or assumption behind each option. Write nothing to Supabase even if an older current plan exists.
 
+Still show the next-three action queue first. An impossible deadline changes the options, not the immediate work required to make progress.
+
 ## Phase 8 — Present the proposal and exact diff
 
-For every feasible project, present:
+For every analyzed project, use this order:
 
-1. deadline, working days left, manual capacity, and buffered available hours;
-2. selected velocity, fallback state, sample size, and confidence;
-3. required scope grouped by phase and week;
-4. dependencies, risks, assumptions, repo commits, dirty flags, and analysis coverage;
-5. totals: low/high hours, remaining hours, and spare capacity;
-6. diff from the current plan:
+1. one-line deadline health: status, deadline, working days left, and buffered hours;
+2. **Acum — următoarele 3**, using the Phase 6A contract;
+3. backlog coverage counts for bugs, features, test plans, and To-Dos, including how many were selected and excluded;
+4. selected velocity, fallback state, sample size, and confidence;
+5. required scope grouped by phase and week;
+6. dependencies, risks, assumptions, repo commits, dirty flags, and analysis coverage;
+7. totals: low/high hours, remaining hours, and spare capacity;
+8. diff from the current plan:
    - reused, added, removed, or moved items;
    - estimate/date/dependency changes;
    - generated To-Dos to create/update;
    - locked overrides carried forward;
    - repo HEAD changes;
-7. the canonical proposal hash.
+9. the canonical proposal hash.
 
 Do not hide removals or scope changes in prose. Use a compact table.
 
-End with one explicit question:
+For a feasible proposal, end with one explicit question:
 
 > Aplic planul propus pentru `<project>` ca versiune nouă?
 
@@ -251,7 +287,10 @@ Before showing a proposal:
 - [ ] Every repo came from the registry.
 - [ ] Static inventory ran before targeted analysis.
 - [ ] No analyzer changed tracked files.
+- [ ] Every project bug, feature, test plan, and To-Do was counted before scope selection.
 - [ ] Existing tracker items were considered before gap To-Dos.
+- [ ] The first result section contains up to three executable, dependency-ready actions.
+- [ ] Every next action has a source, reason, completion criterion, estimate, and due date.
 - [ ] Estimates are intervals with confidence.
 - [ ] Dependencies are acyclic and all referenced keys exist.
 - [ ] Weekends are excluded and 20% is reserved.

@@ -1,5 +1,5 @@
 interface:
   display_name: "Plan Deadlines"
-  short_description: "Planifica livrarile dupa deadline si capacitate"
+  short_description: "Arată următoarele 3 acțiuni până la deadline"
   brand_color: "#F59E0B"
-  default_prompt: "Use $plan-deadlines to analyze configured projects and propose a deadline-safe delivery plan."
+  default_prompt: "Use $plan-deadlines to scan the deadline, registered codebases, and complete tracker backlog, then show the next three concrete actions."

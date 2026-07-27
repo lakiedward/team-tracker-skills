@@ -61,34 +61,30 @@ The view already enforces the minimum 4 sampled weeks and 10 features before exp
 
 `raw_items_per_hour` is informational only.
 
-## Read source backlog
+## Read the complete source backlog
 
-Use bounded, project-scoped queries. Include IDs, status, priority/effort, descriptions, timestamps, and Focus links where available.
+First read a lightweight project-scoped catalog without a status or archive filter. Paginate rather than truncating when the client imposes a row limit. This catalog is the proof that every bug, feature, and To-Do was considered before scope selection.
 
 ```sql
-SELECT id, title, description, status, priority, effort, focus_task_id, updated_at
+SELECT id, title, status, priority, effort, focus_task_id, is_archived, updated_at
 FROM public.tt_features
 WHERE project_id = <project_id>
-  AND (is_archived = false OR status = 'Gata')
-ORDER BY is_archived, updated_at DESC;
+ORDER BY id;
 
-SELECT id, title, description, status, priority, effort, focus_task_id, updated_at
+SELECT id, title, status, priority, effort, focus_task_id, is_archived, updated_at
 FROM public.tt_bugs
 WHERE project_id = <project_id>
-  AND (is_archived = false OR status = 'Fixed')
-ORDER BY is_archived, updated_at DESC;
+ORDER BY id;
 
-SELECT id, title, description, status, priority, effort, focus_task_id,
+SELECT id, title, status, priority, effort, focus_task_id, is_archived,
        origin, planning_key, updated_at
 FROM public.tt_todos
 WHERE project_id = <project_id>
-  AND (is_archived = false OR status = 'Gata')
-ORDER BY is_archived, updated_at DESC;
+ORDER BY id;
 
 SELECT
   plan.id,
   plan.title,
-  plan.description,
   plan.priority,
   plan.effort,
   plan.test_type,
@@ -107,8 +103,10 @@ FROM public.tt_test_plans plan
 LEFT JOIN public.tt_test_items item ON item.test_plan_id = plan.id
 WHERE plan.project_id = <project_id>
 GROUP BY plan.id
-ORDER BY plan.is_archived, plan.updated_at DESC;
+ORDER BY plan.id;
 ```
+
+After counting the full catalog, expand `description` and other heavy fields for every active row and for the specific completed/archived rows that may prove a definition-of-done outcome. Keep every expansion project-scoped and query selected archived IDs explicitly. Never load the unfiltered cross-project archive.
 
 ## Read current plan and overrides
 
