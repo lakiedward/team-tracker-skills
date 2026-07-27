@@ -5,13 +5,13 @@
     "email": "lakiedward03@gmail.com"
   },
   "metadata": {
-    "description": "Skill-uri Claude Code pentru team-tracker (Supabase): orchestrare, pontaj, planificare după deadline, QA, bug-uri, features și triage."
+    "description": "Skill-uri Claude Code pentru team-tracker (Supabase): orchestrare, pontaj, planificare zilnică după deadline și ritm, QA, bug-uri, features și triage."
   },
   "plugins": [
     {
       "name": "team-tracker",
       "source": "./plugins/team-tracker",
-      "description": "Orchestrare, pontaj, deadline planning, QA, bugs, features și triage peste Supabase team-tracker."
+      "description": "Orchestrare, pontaj, planificare zilnică după deadline și ritm, QA, bugs, features și triage peste Supabase team-tracker."
     }
   ]
 }

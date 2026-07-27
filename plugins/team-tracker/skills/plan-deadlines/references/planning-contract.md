@@ -1,18 +1,18 @@
-# Planning contract
+# Daily planning contract
 
 Read this reference before querying or writing delivery-planning data.
 
-## Tables and ownership
+## Data ownership
 
-- `tt_delivery_profiles`: human-owned project configuration. The Productivitate page is the normal writer.
-- `tt_delivery_plans`: approved immutable planning snapshots, except `status` when superseded.
-- `tt_delivery_plan_items`: approved source-item schedule. Manual override columns are human-owned.
-- `tt_work_log_items`: high-confidence links from a Pontaj row to a tracker source.
+- `tt_delivery_profiles`: human-owned outcome, definition of done, deadline, owner, and future weekly capacity.
+- `tt_delivery_plans`: approved immutable daily snapshots, except `status` when superseded.
+- `tt_delivery_plan_items`: only the approved queue for one workday. Manual override columns remain human-owned.
+- `tt_work_log_items`: high-confidence Pontaj links used to improve velocity.
 - `tt_todos.origin`: `manual` or `deadline_skill`.
-- `tt_todos.planning_key`: stable UUID for idempotent generated To-Dos.
-- `tt_project_velocity`: `security_invoker` view over a rolling 90-day window.
+- `tt_todos.planning_key`: stable UUID for idempotent generated gaps.
+- `tt_project_velocity`: fast RLS-invoker snapshot of rolling 90-day velocity.
 
-Never store repository paths, source contents, credentials, environment variables, or raw prompts in these tables.
+Never store repository paths, source contents, credentials, environment variables, or raw prompts.
 
 ## Read configured scope
 
@@ -40,9 +40,9 @@ WHERE project.is_archived = false
 ORDER BY project.sort_order, project.name;
 ```
 
-An enabled profile is valid only when the brief and definition are non-empty and deadline, owner, and positive weekly capacity are present.
+An enabled profile is valid only when brief and definition are non-empty and deadline, owner, and positive weekly capacity are present.
 
-## Read velocity and choose fallback
+## Read velocity
 
 ```sql
 SELECT *
@@ -53,17 +53,15 @@ ORDER BY scope;
 
 Selection:
 
-1. use the project row when `method IN ('direct', 'weekly')`;
-2. otherwise use the personal row when `method = 'personal_fallback'`;
-3. otherwise report insufficient history.
+1. project row with `method IN ('direct', 'weekly')`;
+2. otherwise personal row with `method = 'personal_fallback'`;
+3. otherwise insufficient history.
 
-The view already enforces the minimum 4 sampled weeks and 10 features before exposing a usable P25. Snapshot the exact row used. Do not hardcode a rate from a previous run.
+The view exposes a usable P25 only after at least 4 sampled weeks and 10 features. Snapshot the selected row. Never hardcode a previous rate. `raw_items_per_hour` is informational only.
 
-`raw_items_per_hour` is informational only.
+## Read every tracker source
 
-## Read the complete source backlog
-
-First read a lightweight project-scoped catalog without a status or archive filter. Paginate rather than truncating when the client imposes a row limit. This catalog is the proof that every bug, feature, and To-Do was considered before scope selection.
+Read a lightweight project-scoped catalog without status or archive filters. Paginate rather than truncate.
 
 ```sql
 SELECT id, title, status, priority, effort, focus_task_id, is_archived, updated_at
@@ -85,6 +83,7 @@ ORDER BY id;
 SELECT
   plan.id,
   plan.title,
+  plan.description,
   plan.priority,
   plan.effort,
   plan.test_type,
@@ -106,9 +105,9 @@ GROUP BY plan.id
 ORDER BY plan.id;
 ```
 
-After counting the full catalog, expand `description` and other heavy fields for every active row and for the specific completed/archived rows that may prove a definition-of-done outcome. Keep every expansion project-scoped and query selected archived IDs explicitly. Never load the unfiltered cross-project archive.
+After counting the complete catalog, expand descriptions for all active rows and only relevant completed or archived evidence. Never load an unfiltered cross-project archive.
 
-## Read current plan and overrides
+## Read current daily queue and overrides
 
 ```sql
 SELECT *
@@ -123,60 +122,90 @@ WHERE plan.project_id = <project_id>
 ORDER BY plan.version DESC, item.sequence;
 ```
 
-For the diff, compare stable keys. A locked override remains authoritative even when a new static estimate or schedule differs. The insert trigger also carries the latest locked values into a new plan item with the same stable key.
+A current daily plan has:
 
-## Planning calculations
+```sql
+status = 'current'
+AND velocity_snapshot->>'planning_mode' = 'daily_execution'
+```
+
+Use `velocity_snapshot->>'planning_date'` as its workday. Compare stable keys for the diff. Carry locked values for a stable key, but never let a stale locked date silently move an item away from the newly approved workday; show the conflict before approval.
+
+## Daily calculations
+
+Run `scripts/daily-budget.mjs`. Its output is the calculation contract.
 
 Let:
 
 - `W` = manually assigned weekly hours;
-- `D` = working days from today through deadline, inclusive;
-- `B` = `0.20`;
-- `R` = total remaining high-estimate hours.
+- `D` = working days from the planning date through the deadline;
+- `R` = aggregate remaining high hours;
+- `G` = gross daily hours = `W / 5`;
+- `B` = urgency buffer: 20% when `D > 15`, 10% when `6 <= D <= 15`, otherwise 0%;
+- `P` = buffered daily hours = `G × (1 - B)`;
+- `Q` = required daily pace = `R / D`.
 
 Then:
 
-- gross daily capacity = `W / 5`;
-- usable daily capacity = `(W / 5) × (1 - B)`;
-- gross available hours = `D × W / 5`;
-- buffered available hours = `D × W / 5 × 0.80`;
-- shortfall = `max(0, R - buffered available hours)`;
-- required weekly capacity = `R / (D / 5 × 0.80)`;
-- average extra hours/week = `max(0, required weekly capacity - W)`.
-
-For the first realistic deadline, start today and consume only Monday–Friday slots of `W / 5 × 0.80` until `R` reaches zero. Respect dependencies and locked dates while consuming slots.
+- today's target = `min(G, max(P, Q))`;
+- gross remaining capacity = `D × G`;
+- overload/day = `max(0, Q - G)`;
+- overload/week = overload/day × 5.
 
 Feasibility:
 
-- `on_track`: `R <= buffered available hours`;
-- `at_risk`: buffered capacity is insufficient but `R <= gross available hours`;
-- `infeasible`: `R > gross available hours`, deadline is past with remaining work, dependency ordering crosses the deadline, or a locked override makes the schedule impossible.
+- `on_track`: `Q <= P`;
+- `at_risk`: `P < Q <= G`;
+- `infeasible`: `Q > G`, deadline passed with work remaining, a mandatory dependency cannot fit, or a locked override makes delivery impossible;
+- `incomplete`: codebase coverage is insufficient to make a reliable determination.
 
-Use high estimates for feasibility. Show both low and high totals.
+Use high estimates for capacity and show low/high totals. These calculations evaluate the deadline; they do not create a dated release roadmap.
+
+## Daily snapshot shape
+
+Merge the selected velocity row with:
+
+```json
+{
+  "planning_mode": "daily_execution",
+  "planning_date": "2026-07-27",
+  "gross_daily_hours": 5,
+  "target_hours": 5,
+  "selected_hours": 4.75,
+  "selected_count": 4,
+  "candidate_count": 78,
+  "working_days_left": 26,
+  "required_daily_hours": 10.63,
+  "overload_hours_per_day": 5.63
+}
+```
+
+Numbers are examples only. Recalculate them on every run.
 
 ## Proposal hash
 
 Compute SHA-256 over canonical JSON with sorted keys containing:
 
 - project id;
-- profile `updated_at` and all profile values;
+- profile values and `updated_at`;
 - previous current plan id/version;
+- planning date and daily-budget output;
 - selected velocity snapshot;
-- sorted repository labels + HEAD SHAs + dirty flags;
-- sorted item stable keys, sources, estimates, dependencies, phases, and planned dates;
-- sorted generated To-Do planning keys;
+- repository labels, HEAD SHAs, and dirty flags;
+- complete tracker source counts;
+- sorted daily selected stable keys, source ids, daily estimates, completion criteria, and dependencies;
+- selected generated To-Do keys;
 - preserved overrides.
 
-Do not include presentation text, absolute paths, timestamps generated by the scan, or array order that has no semantic meaning.
+Do not include prose, local paths, scan timestamps, unselected candidate ordering, or other presentation-only values.
 
-## Transactional apply sequence
+## Transactional daily apply
 
-Use one transaction per project. Substitute only the already displayed and approved values. Escape every text literal safely.
+Use one transaction per approved project. Substitute only displayed and approved values. Escape text safely.
 
 ```sql
 BEGIN;
 
--- Serialize against profile edits and competing plan writers.
 SELECT *
 FROM public.tt_delivery_profiles
 WHERE project_id = <project_id>
@@ -187,13 +216,14 @@ FROM public.tt_delivery_plans
 WHERE project_id = <project_id> AND status = 'current'
 FOR UPDATE;
 
--- Idempotent retry guard. If this returns a row, ROLLBACK and report it already applied.
+-- Idempotent retry guard. If present, ROLLBACK and report already applied.
 SELECT id, version, status
 FROM public.tt_delivery_plans
 WHERE project_id = <project_id>
   AND proposal_hash = '<sha256>';
 
--- Repeat for each approved gap. Never set status here: preserve human progress.
+-- Repeat only for approved codebase gaps selected today.
+-- Never set status during an upsert: preserve human progress.
 INSERT INTO public.tt_todos (
   title,
   description,
@@ -262,32 +292,32 @@ VALUES (
   <previous_version_plus_one>,
   'current',
   '<sha256>',
-  '<on_track_or_at_risk>',
+  '<on_track_at_risk_infeasible_or_incomplete>',
   '<brief>',
   '<definition_of_done>',
   '<deadline>',
   <owner_member_id>,
   '<owner_name>',
   <weekly_capacity_hours>,
-  20,
-  <total_high_hours>,
-  <remaining_high_hours>,
-  <buffered_available_hours>,
+  <daily_buffer_percent>,
+  <aggregate_total_high_hours>,
+  <aggregate_remaining_high_hours>,
+  <gross_remaining_capacity>,
   <rate_or_null>,
   <hours_per_feature_or_null>,
-  '<direct_weekly_or_personal_fallback>',
+  '<direct_weekly_personal_fallback_or_insufficient>',
   '<high_medium_or_low>',
-  '<velocity_json>'::jsonb,
+  '<velocity_plus_daily_json>'::jsonb,
   '<full_tracker_only_or_incomplete>',
-  '<repo_state_json_without_paths>'::jsonb,
+  '<repo_state_without_paths>'::jsonb,
   '<risks_json>'::jsonb,
   '<assumptions_json>'::jsonb,
-  '[]'::jsonb,
-  '<summary>'
+  '<deadline_alternatives_json>'::jsonb,
+  '<daily_summary>'
 )
 RETURNING id, version;
 
--- Insert every approved item using the returned plan id. Generated To-Dos use the ids returned above.
+-- Insert ONLY the approved queue for planning_date.
 INSERT INTO public.tt_delivery_plan_items (
   plan_id,
   stable_key,
@@ -311,27 +341,41 @@ VALUES
     '<stable_key>',
     '<bug_feature_test_plan_or_todo>',
     <source_id>,
-    '<title>',
-    '<description>',
-    '<phase>',
+    '<daily_action_title>',
+    '<source_description_snapshot>',
+    '<daily_phase>',
     <sequence>,
-    '<planned_due_date>',
-    <low_hours>,
-    <high_hours>,
+    '<planning_date>',
+    <today_low_hours>,
+    <today_high_hours>,
     '<confidence>',
     ARRAY['<dependency_stable_key>']::text[],
-    true,
-    '<scope_reason>'
+    <required_for_deadline>,
+    '<why_now_and_observable_completion_criterion>'
   );
 
 COMMIT;
 ```
 
-If any validation or write fails, issue `ROLLBACK`. Do not mark the old plan superseded outside this transaction.
+On error, roll back the whole project. Never supersede the old plan outside this transaction.
 
-## Pontaj linkage contract
+## Focus integration
 
-After creating a work-log row, link only explicit or unmistakable session items:
+Focus derives **Plan azi** from the current plan:
+
+1. require `planning_mode = daily_execution`;
+2. require `planning_date` equal to today's Bucharest workday;
+3. map sources to Focus card keys:
+   - `bug:<id>`;
+   - `feature:<id>`;
+   - `todo:<id>`;
+   - `test:<id>` for `source_type = test_plan`.
+
+Do not change source statuses or create focus overlay rows merely to make a daily item visible. The approved plan-item membership is the queue filter.
+
+## Pontaj linkage
+
+After inserting a work log, link only explicit or unmistakable session items:
 
 ```sql
 INSERT INTO public.tt_work_log_items (
@@ -345,4 +389,4 @@ VALUES (<work_log_id>, '<source_type>', <source_id>, '<explicit_or_session_conte
 ON CONFLICT DO NOTHING;
 ```
 
-The DB trigger rejects a missing source or a source from a different project. If no item clears the high-confidence threshold, create no link and ask no extra question.
+The trigger rejects missing and cross-project sources. If no item clears high confidence, create no link and ask no extra question.
