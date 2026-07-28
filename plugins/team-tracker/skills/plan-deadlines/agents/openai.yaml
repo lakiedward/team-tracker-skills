@@ -1,4 +1,4 @@
 interface:
   display_name: "Planul de azi"
-  short_description: "Alege zilnic taskurile care încap în ore"
-  default_prompt: "Use $plan-deadlines to rescan the tracker and codebases, then propose today's variable task queue from my hours and Pontaj pace."
+  short_description: "Plan zilnic din tracker, cod si UI Coverage"
+  default_prompt: "Use $plan-deadlines to rebuild tracker, codebase and UI launch readiness, then propose committed work plus reserve up to today's capacity."

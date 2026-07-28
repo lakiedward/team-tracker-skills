@@ -44,12 +44,6 @@ export function workingDaysInclusive(from, through) {
   return count;
 }
 
-export function bufferPercentFor(workingDaysLeft) {
-  if (workingDaysLeft <= 5) return 0;
-  if (workingDaysLeft <= 15) return 10;
-  return 20;
-}
-
 function round(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
@@ -73,26 +67,37 @@ export function calculateDailyBudget({
   const workingDaysLeft = workingDaysInclusive(planningDate, deadline);
   const deadlinePassed = workingDaysLeft === 0;
   const grossDailyHours = weekly / 5;
-  const bufferPercent = bufferPercentFor(workingDaysLeft);
-  const bufferedDailyHours = grossDailyHours * (1 - bufferPercent / 100);
-  const requiredDailyHours = deadlinePassed ? null : remaining / workingDaysLeft;
-  const targetHours = deadlinePassed
+  const baseCommittedHours = grossDailyHours <= 1
     ? grossDailyHours
-    : Math.min(grossDailyHours, Math.max(bufferedDailyHours, requiredDailyHours));
+    : grossDailyHours - 1;
+  const requiredDailyHours = deadlinePassed ? null : remaining / workingDaysLeft;
+  const committedTargetHours = deadlinePassed
+    ? grossDailyHours
+    : Math.min(grossDailyHours, Math.max(baseCommittedHours, requiredDailyHours));
+  const bufferHours = Math.max(0, grossDailyHours - committedTargetHours);
+  const bufferPercent = grossDailyHours > 0
+    ? (bufferHours / grossDailyHours) * 100
+    : 0;
   const overloadHoursPerDay = requiredDailyHours === null
     ? null
     : Math.max(0, requiredDailyHours - grossDailyHours);
 
   return {
+    planning_contract_version: 2,
     planning_date: planningDate,
     working_days_left: workingDaysLeft,
     deadline_passed: deadlinePassed,
     gross_daily_hours: round(grossDailyHours),
-    buffer_percent: bufferPercent,
-    buffered_daily_hours: round(bufferedDailyHours),
+    base_committed_hours: round(baseCommittedHours),
+    committed_target_hours: round(committedTargetHours),
+    target_hours: round(committedTargetHours),
+    buffer_hours: round(bufferHours),
+    buffer_percent: round(bufferPercent),
     required_daily_hours: requiredDailyHours === null ? null : round(requiredDailyHours),
-    target_hours: round(targetHours),
     overload_hours_per_day: overloadHoursPerDay === null ? null : round(overloadHoursPerDay),
+    overload_hours_per_week: overloadHoursPerDay === null
+      ? null
+      : round(overloadHoursPerDay * 5),
   };
 }
 

@@ -1,6 +1,6 @@
 ---
 name: pontaj
-description: Use when the user wants to log (pontaj / pontat) their own work hours on the team-tracker dashboard — or invokes "/pontaj". On the FIRST run it asks which team member you are (picked from the live tt_members list) and remembers the choice on this machine, so it never asks again; an explicit name in the invocation or the TT_MEMBER env var overrides. Resolves the current project from the working directory, summarizes what was worked on in the CURRENT chat session (git diff + the conversation), computes the hours automatically from the chat session's active duration (rounded to 0.5h, idle gaps excluded) unless you state the hours explicitly, inserts ONE row into tt_work_logs, then links only tracker items that are explicitly and confidently identified in the same project. Triggers on "ponteaza", "ponteaza-ma", "pontaj", "pontează ce am lucrat", "ponteaza orele", "pontaj pe proiectul asta", "trece-mi orele", "log my hours", "log my time", "clock my work", "add a worklog", "ponteaza azi", "ponteaza X ore". Use it even when the user only says "ponteaza" with no other detail — that is the whole point of this skill.
+description: Use when the user wants to log their own work hours in Team Tracker or invokes "/pontaj". Resolve the project from the current codebase, ask for the team member only on the first run and remember it, summarize only the current chat, compute active chat duration rounded to 0.5h unless hours are explicit, and insert one tt_work_logs row. Link every exact same-project tracker item worked in the session, including source IDs from copied Productivitate or Focus prompts, and snapshot its planned estimate for calibration. Triggers include "ponteaza", "pontaj", "pontează ce am lucrat", "trece-mi orele", "log my hours", "clock my work", "add a worklog", and variants with explicit hours. Run unattended after identity setup.
 ---
 
 # Pontaj
@@ -57,11 +57,18 @@ tt_work_logs (
 
 Team members work across several app repos, all stored in the same team-tracker Supabase under different `tt_projects.id`. Detect the project from the cwd before anything else — the row's `project_id` depends on it.
 
-```bash
-basename "$(pwd)"
+First load the shared registry at `<skill_dir>/../orchestrate/projects.json`. Normalize the cwd and every registered `repo_path` to absolute paths with forward slashes and case-insensitive comparison. A project matches when the cwd is exactly its `repo_path` or is inside it. Check both the top-level `repo_path` and every `codebases[].repo_path`; if multiple entries match, choose the longest path. This is required for nested repos such as Culcush, whose real cwd ends in `culcus.ro/culcus.ro` and does not resemble the tracker slug.
+
+Use the matched registry entry's `project_id` to verify the live tracker row:
+
+```sql
+SELECT id, name, slug
+FROM tt_projects
+WHERE id = <registry_project_id>
+LIMIT 1;
 ```
 
-Then resolve to a row in `tt_projects` via the Supabase MCP:
+If the registry is missing, cannot be read, or has no matching path, fall back to the cwd basename and resolve it via the Supabase MCP:
 
 ```sql
 SELECT id, name, slug FROM tt_projects
@@ -72,12 +79,12 @@ WHERE LOWER(slug) = LOWER('<dirname>')
 LIMIT 1;
 ```
 
-Substitute `<dirname>` with the basename output. Examples (the live list drifts — never hardcode an id, always resolve): folder `team-tracker` → slug `team_tracker` (underscore/hyphen normalization); folder `BETRO` → slug `betro`; folder `culcush` → slug `culcush`. The match is on the folder name, so it works the same on any machine/OS regardless of where the repos live.
+Substitute `<dirname>` with the basename of the cwd. Examples for the fallback: folder `team-tracker` → slug `team_tracker` (underscore/hyphen normalization); folder `BETRO` → slug `betro`. Do not expect the fallback to resolve nested or differently named repos; the registry is authoritative for those.
 
 Capture the returned `id` as `<project_id>`, the `name` as `<project_name>`, and the cwd as `<source_root>`.
 
 If no row matches, abort:
-> "Nu am putut identifica proiectul din folderul curent ('<dirname>'). Folderul ar trebui sa aiba numele slug-ului din tt_projects. Spune-mi explicit pe ce proiect sa pontez sau muta-te in folderul corect."
+> "Nu am putut identifica proiectul din folderul curent ('<cwd>') nici în registrul codebase-urilor, nici după numele folderului. Spune-mi explicit pe ce proiect să pontez sau actualizează registrul."
 
 ## Step 0b — Resolve who to log as (member)
 
@@ -137,8 +144,13 @@ If there is genuinely nothing to log — the conversation has no implementation/
 Build a candidate list only from evidence already present in this session:
 
 - an explicit typed reference such as `bug #123`, `feature #45`, `test plan #9`, or `todo #31`;
+- the exact `Sursă: Bug/Funcționalitate/Plan de test/To-Do #<id>` line from a copied Productivitate or Focus execution prompt;
 - an item ID returned by the tracker while this session directly read, updated, implemented, fixed, or tested that item;
 - an unambiguous source row already loaded in this session where both type and ID are known.
+
+When the session executes one or more copied daily-plan prompts, link every exact
+source that was actually worked on. Do not drop those links merely because the
+final human-facing summary omitted the numeric IDs.
 
 Do **not** link from title similarity alone, a broad topic, a file name, a project-level request, or a guessed numeric token. Do not ask a new question just to obtain links.
 
@@ -170,6 +182,34 @@ Keep only rows whose `project_id = <project_id>` from Step 0. Assign:
 
 If nothing survives, create no links and continue silently.
 
+For every surviving candidate, read the latest planned estimate that existed
+before this Pontaj:
+
+```sql
+SELECT DISTINCT ON (item.source_type, item.source_id)
+  item.source_type,
+  item.source_id,
+  item.effective_estimate_hours
+FROM public.tt_delivery_plan_items item
+JOIN public.tt_delivery_plans plan ON plan.id = item.plan_id
+WHERE plan.project_id = <project_id>
+  AND (item.source_type, item.source_id) IN (
+    ('bug', 123),
+    ('feature', 45)
+  )
+  AND plan.generated_at <= now()
+ORDER BY
+  item.source_type,
+  item.source_id,
+  plan.generated_at DESC,
+  item.id DESC;
+```
+
+The tuple list is illustrative; substitute only validated candidates. Store the
+returned value as `estimated_hours_snapshot`. Use `NULL` when an exact source
+has no plan item. Database triggers split a batch Pontaj proportionally when all
+estimates exist and equally otherwise.
+
 ## Step 2 — Build the entry (member, category, description, work_date)
 
 - **member** = `<member>` resolved in Step 0b (from `TT_MEMBER`, an explicit override, or the one-time ask). Never a hardcoded name.
@@ -187,6 +227,7 @@ If nothing survives, create no links and continue silently.
 
   Default to `Development` when in doubt — it's the most common. If the user named a category in the invocation ("ponteaza 3 ore testing"), use that (mapped to the closest allowed value).
 - **description** — a short, honest Romanian summary of what was worked on this session: 1–3 sentences (≤ ~300 chars). Concrete: name the features/pages/fixes in plain terms. Light technical wording is fine (this is the person's own log, not a tester plan) — but skip file-by-file dumps and raw diffs. If the user gave their own note ("ponteaza 2 ore: am pregatit demo-ul"), use their text as the description.
+  - When links are validated, include their compact IDs in the description, for example `Bug #639, #640 și #641`, so the Pontaj remains auditable even outside the link table.
   - Good: `"Adăugat project switcher pe paginile Focus, Testing și Bug Reports; fix la butonul de delete screenshot la bug-uri (era doar pe hover)."`
   - Bad: `"work"` / `"diverse"` / a pasted git diff.
 - **work_date** — today by default (`CURRENT_DATE`). If the user said a different day, honor it: `"ieri"` → today − 1 day; an explicit `YYYY-MM-DD` → that date. Pass the date as a literal `'YYYY-MM-DD'` (or use `CURRENT_DATE` for today).
@@ -254,22 +295,37 @@ WITH inserted_log AS (
 ),
 inserted_links AS (
   INSERT INTO public.tt_work_log_items (
-    work_log_id, source_type, source_id, link_method, confidence
+    work_log_id,
+    source_type,
+    source_id,
+    link_method,
+    confidence,
+    estimated_hours_snapshot
   )
   SELECT
     inserted_log.id,
     candidate.source_type,
     candidate.source_id,
     candidate.link_method,
-    'high'
+    'high',
+    candidate.estimated_hours_snapshot
   FROM inserted_log
   CROSS JOIN (
     VALUES
-      ('feature', 45::bigint, 'explicit'),
-      ('bug', 123::bigint, 'session_context')
-  ) AS candidate(source_type, source_id, link_method)
+      ('feature', 45::bigint, 'explicit', 1.5::numeric),
+      ('bug', 123::bigint, 'session_context', 0.75::numeric)
+  ) AS candidate(
+    source_type,
+    source_id,
+    link_method,
+    estimated_hours_snapshot
+  )
   ON CONFLICT DO NOTHING
-  RETURNING source_type, source_id, link_method
+  RETURNING
+    source_type,
+    source_id,
+    link_method,
+    estimated_hours_snapshot
 )
 SELECT
   inserted_log.*,
@@ -290,6 +346,12 @@ GROUP BY
 ```
 
 The two example `VALUES` rows are placeholders; never insert them literally. With no validated candidates, use the simpler `tt_work_logs` INSERT shown above. If a link still fails validation, fix or remove only that candidate and retry the atomic statement; never fabricate a different source.
+
+After the statement, require the returned `linked_items` count to equal the
+validated candidate count. If it does not, do not accept an unlinked log as a
+successful result: delete that just-created work log in the same corrective
+transaction, repair the exact conflict, and retry once. Report the database
+error if the retry fails.
 
 ## Step 5 — Report
 
@@ -335,6 +397,7 @@ No "anything else?" epilogue — the row is the deliverable and the user can see
 | Linking from a title guess or arbitrary number | Corrupts direct velocity and attributes hours to the wrong work. | Link only an exact typed ID or an exact source row acted on in this session. |
 | Linking an item from another project | Cross-project velocity becomes false; the DB trigger rejects it. | Validate every candidate's `project_id` against the resolved Pontaj project. |
 | Asking which items to link | Turns the frictionless command into a questionnaire. | Link safe candidates automatically; otherwise insert only the work log. |
+| Finishing a copied Productivitate/Focus prompt but creating zero links | The planner cannot compare the estimate with actual time and repeats the same overestimate. | Treat the prompt's exact source type/ID as session context, validate it, snapshot its planned estimate, and require the returned link count. |
 | Editing project source while pontaj-ing | This skill only writes a DB row; it changes no code. | Never edit files — the deliverable is one `tt_work_logs` INSERT. |
 
 ## When to self-abort

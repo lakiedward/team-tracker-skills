@@ -1,10 +1,10 @@
 {
   "name": "team-tracker",
-  "description": "Skill-uri team-tracker: orchestrare Focus, pontaj cu legături către iteme, planificare zilnică după deadline, capacitate și ritm, planuri de test human/AI, rezolvare pași failed/blocați, bug-uri, features și triage global. Toate citesc/scriu controlat în Supabase project ref ntjzghsbrzkvpkniotaj.",
-  "version": "1.8.2",
+  "description": "Skill-uri team-tracker: orchestrare Focus, pontaj, planificare zilnică după deadline, audit UI versionat cu dovezi desktop/mobil, planuri de test human/AI, rezolvare pași failed/blocați, bug-uri, features și triage global. Toate citesc/scriu controlat în Supabase project ref ntjzghsbrzkvpkniotaj.",
+  "version": "1.11.0",
   "author": {
     "name": "Edy",
     "email": "lakiedward03@gmail.com"
   },
-  "keywords": ["team-tracker", "pontaj", "deadlines", "productivity", "planning", "supabase", "qa", "testing", "bugs", "features", "triage", "backlog"]
+  "keywords": ["team-tracker", "pontaj", "deadlines", "productivity", "planning", "ui-audit", "responsive", "accessibility", "supabase", "qa", "testing", "bugs", "features", "triage", "backlog"]
 }

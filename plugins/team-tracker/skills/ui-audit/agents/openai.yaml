@@ -1,0 +1,8 @@
+interface:
+  display_name: "Audit UI"
+  short_description: "Audit UI versionat, cu dovezi desktop si mobil"
+  brand_color: "#7C3AED"
+  default_prompt: "Use $ui-audit to inventory and browser-audit one configured project, then save a versioned UI Coverage snapshot."
+
+policy:
+  allow_implicit_invocation: true
