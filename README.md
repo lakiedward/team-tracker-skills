@@ -53,6 +53,25 @@ export TT_MEMBER="Popa"        # Mac/Linux
 Schimbi identitatea mai târziu: rulezi o dată cu nume explicit („ponteaza pe numele lui X"),
 sau `node <plugin>/skills/pontaj/scripts/member.mjs set "AltNume"`, ori ștergi fișierul de mai sus.
 
+### 3. (doar pentru `ui-audit` și `plan-deadlines`) o cheie `service_role` pentru Storage
+
+Bucket-urile de capturi (`ui-review-evidence`, `bug-screenshots`, `feature-screenshots`,
+`test-screenshots`) sunt private și acceptă doar admini autentificați. Cheia `anon` — cea care
+ajunge în bundle-ul public al aplicației — **nu** mai poate încărca, șterge sau semna nimic
+acolo. Skill-urile care ating Storage citesc cheia din mediu:
+
+```powershell
+setx SUPABASE_SERVICE_ROLE_KEY "<cheia>"     # Windows (redeschide terminalul)
+```
+```bash
+export SUPABASE_SERVICE_ROLE_KEY="<cheia>"   # Mac/Linux
+```
+
+O iei din Supabase Dashboard → Project Settings → API → `service_role`. Ocolește complet RLS,
+deci tratează-o ca pe o parolă: nu o pune în repo, nu o scrie într-un rând din tracker, nu o
+afișa în output. Fără ea, `/ui-audit` nu poate încărca evidența, iar `/plan-deadlines` nu poate
+semna atașamentele bug-urilor.
+
 ---
 
 ## Instalare (per coleg)

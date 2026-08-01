@@ -201,6 +201,13 @@ Upload audit screenshots to the private `ui-review-evidence` bucket using:
 <project_id>/audit/<run_key>/<surface_stable_key>/<viewport>-<name>.png
 ```
 
+The bucket accepts writes only from an authenticated admin, so upload and delete
+through the Storage REST API with the `service_role` key read from the
+`SUPABASE_SERVICE_ROLE_KEY` environment variable. Never use the `anon` key for
+this bucket — it is rejected by row-level security. If the variable is missing,
+stop and report it; do not guess a credential and do not fall back to `anon`.
+Never print the key or store it in a tracker row.
+
 Then call `tt_apply_ui_audit` exactly once with:
 
 - one unique deterministic `run_key`;

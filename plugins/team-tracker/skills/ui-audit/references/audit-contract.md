@@ -150,6 +150,11 @@ returns the existing version. Do not manually supersede the current audit.
 Bucket `ui-review-evidence` is private. Persist paths only. Signed URLs are
 generated at read time and expire.
 
+Every Storage call on this bucket — upload, delete and sign — requires the
+`service_role` key from the `SUPABASE_SERVICE_ROLE_KEY` environment variable.
+Row-level security rejects the `anon` key. A missing variable is a stop
+condition, never a reason to fall back to `anon`.
+
 Track exactly which paths were uploaded during the current run. If the RPC
 fails, remove only those paths. Never delete paths from a previous audit.
 
