@@ -107,7 +107,7 @@ Split the rows into three buckets:
 - **`Planificat`** → already approved in a previous run or by the user in the UI; skips triage and goes straight to the implementation queue (Step 4).
 - **`În Focus`** → human-owned by default (Focus board, possibly being worked right now) — **skip them**, with one exception: if the description's LAST appended block is an `--- Evaluat/Blocat <date> (Claude Code automation) ---` marker, the row was flipped by a previous skill run that crashed mid-implementation and never finished. Reclaim those orphans into the implementation queue; otherwise this skill's own status flips would strand features invisible to every future run.
 
-The `description` field is the canonical brief — automated scan routines usually fill it with motivation, suspected implementation area, and acceptance criteria. **Mine it before dispatching evaluators — half the analysis is often already done.** The `image_urls` JSONB column may contain signed screenshot URLs; pass them verbatim into subagent prompts for WebFetch.
+The `description` field is the canonical brief — automated scan routines usually fill it with motivation, suspected implementation area, and acceptance criteria. **Mine it before dispatching evaluators — half the analysis is often already done.** The `image_urls` JSONB column holds private Storage paths in the admin-only `feature-screenshots` bucket, not ready-to-use URLs: sign each one through the Storage REST API with the `service_role` key from `SUPABASE_SERVICE_ROLE_KEY` (the `anon` key is rejected), then pass the signed URLs into subagent prompts for WebFetch. If the variable is missing, say so and continue without the image — never fall back to `anon`.
 
 ## Effort level — assess and persist
 

@@ -106,7 +106,7 @@ Print a compact table to the user — id, priority, title (truncated to 80 chars
 
 The `description` field on each row is the canonical brief — it usually already contains evidence, suspected root cause, files involved, and acceptance criteria (this is how the `writing-tester-test-plans`-style automation populates them). **Mine the description carefully before dispatching subagents — half the investigation is often already done for you.**
 
-The `image_urls` JSONB column may contain signed screenshots URLs from `bug-screenshots` Supabase storage; pass any such URLs verbatim into subagent prompts so they can WebFetch them for visual context.
+The `image_urls` JSONB column holds **private Storage paths** in the `bug-screenshots` bucket, not ready-to-use URLs. That bucket is admin-only, so mint a short-lived signed URL for each path through the Storage REST API with the `service_role` key from `SUPABASE_SERVICE_ROLE_KEY`; the `anon` key is rejected. Pass the resulting signed URLs into subagent prompts so they can WebFetch them for visual context. If the variable is missing, say so in your report and continue without the image — never fall back to `anon`.
 
 ## Effort level — assess and persist
 
@@ -149,7 +149,7 @@ Send these two subagents in the **same message**:
 
 The `Explore` agent finds the surface area; the `code-explorer` agent traces semantics. Both share the bug context. The italicized clause exists because a previous run took a code-explorer's "table has no RLS" claim at face value and shipped a half-fix; the table did have RLS, defined in an unrelated migration.
 
-If `image_urls` is non-empty, include the URLs in the prompt and ask the explorer to WebFetch each one for visual context before reporting.
+If `image_urls` is non-empty, sign each stored path as described above and include the resulting URLs in the prompt, asking the explorer to WebFetch each one for visual context before reporting.
 
 ### 3b. Design the fix — dispatch one subagent (or do it inline if obvious)
 
