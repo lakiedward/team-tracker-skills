@@ -176,8 +176,12 @@ ORDER BY criterion.surface_id, criterion.order_index;
 
 `next_action` is authoritative. Map it straight to the queued action:
 
-- `needs_spec` — no criteria, or the spec is not approved. Propose writing the
-  criteria from `code_refs`; the human approves them in Productivitate.
+- `needs_spec` — no criteria, or the spec is not approved. Queue a guided spec
+  session: open the running section in the browser, walk the user through every
+  state at both viewports, and write the criteria from what they say. Never
+  compose them from `code_refs` alone and hand over a list to rubber-stamp; a
+  person cannot judge a description of something they have not seen. The human
+  approves the result in Productivitate.
 - `build` — spec approved, no verdict pending. Build or continue the section.
 - `blocked_on_you` — the surface is awaiting a verdict, or an approval went stale
   because `inventory_fingerprint` no longer matches `verdict_fingerprint`. Report
@@ -416,6 +420,11 @@ which are required, and states that the section is closed by its pipeline rather
 than by a status write: the agent implements, re-audits, submits for review, and
 generates one test step per criterion. The human answers Gate 1; `verified_at`
 follows from the passing steps.
+
+The prompt also carries the section's `next_action`, route and navigation hint, so
+it can describe the right step of the loop. A `needs_spec` prompt is the exception
+to the usual shape: it drops the branch and merge contract, because the session
+produces criteria rather than a diff, and it forbids touching source files.
 
 The prompt must state `queue_role`. A reserve prompt says to start only after committed work is complete or documented as blocked, inspect the planning day's Pontaj before starting, and stop when actual logged work reaches `gross_daily_hours`.
 

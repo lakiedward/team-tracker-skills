@@ -167,7 +167,7 @@ node "<skill_dir>/scripts/planning-key.mjs" "<project_id>" "<canonical-gap-key>"
 
 For every UI section, take the action from `next_action` and queue the section itself as a `ui_surface` candidate:
 
-1. `needs_spec` — the action is to propose the criteria from `code_refs` and the current audit evidence, covering the states the section can be in, its functions and its accessibility. Say explicitly that the human approves them in Productivitate before the build starts. Never write them yourself.
+1. `needs_spec` — the action is a guided spec session, not a desk exercise. The agent opens the running section in the browser, walks the user through every state it can be in at 1440×900 and 375×812, asks one concrete question per visible thing, and writes the criteria from the answers. Criteria must cover what the user disliked, what they liked (so a rewrite cannot silently break it), and the states they never saw. Estimate it as a conversation, not as code work. The human approves the list afterwards in Productivitate; the agent never approves it.
 2. `build` — build or continue the section against its approved criteria.
 3. `needs_work` — resolve exactly what `manual_note` and the current objective findings describe. Nothing more.
 4. `needs_tests` — generate one test step per criterion with `criterion_id` set, then run them. Report which criteria are still uncovered.
@@ -530,6 +530,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Current UI Coverage was read, stale fingerprints were identified, and its three metrics stayed separate.
 - [ ] No unpromoted AI finding became a candidate or generated task.
 - [ ] Every section action came from `next_action`, not from a re-derived lifecycle.
+- [ ] A `needs_spec` action was queued as a guided browser session with the user, never as criteria composed from source and handed over for a rubber stamp.
 - [ ] No human gate was answered: `spec_approved_at`, `manual_verdict`, `verified_at` and `shipped_at` were left untouched.
 - [ ] Sections reported as `blocked_on_you` consumed no planned hours and were listed separately.
 - [ ] Expired approvals were reported as such, with the reason being a changed fingerprint.
