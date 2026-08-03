@@ -71,7 +71,7 @@ For every included project:
    - To-Dos.
 3. Paginate rather than sample or truncate.
 4. Expand all active item descriptions and only relevant completed or archived evidence.
-5. Read attachment paths for active bugs and features, plus test-item attachment paths. For every selected candidate with attachments, generate temporary signed URLs and inspect every image before estimating or proposing it.
+5. Read attachment paths for active bugs and features, plus test-item attachment paths. For every selected candidate with attachments, generate temporary signed URLs and inspect every image before estimating or proposing it. The attachment buckets are admin-only: sign with the `service_role` key from `SUPABASE_SERVICE_ROLE_KEY`, never with `anon`.
 6. Read the current and recent delivery plans, their items, locked overrides, previous `release_readiness`, `tt_project_velocity`, `tt_delivery_calibration`, work logs, and high-confidence `tt_work_log_items`.
 7. Read UI Coverage:
    - every active or missing `tt_ui_surfaces` row, including manual verdict, importance, note, launch flag and relevant code refs;

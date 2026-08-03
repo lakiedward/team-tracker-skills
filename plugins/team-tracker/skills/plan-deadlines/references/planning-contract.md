@@ -130,7 +130,7 @@ GROUP BY plan.id
 ORDER BY plan.id;
 ```
 
-After counting the complete catalog, expand descriptions for all active rows and only relevant completed or archived evidence. Never load an unfiltered cross-project archive. Treat `tt_bugs.image_urls`, `tt_features.image_urls`, and `tt_test_items.image_paths` as private Storage paths. Generate short-lived signed URLs only for selected or seriously considered candidates and inspect every selected attachment.
+After counting the complete catalog, expand descriptions for all active rows and only relevant completed or archived evidence. Never load an unfiltered cross-project archive. Treat `tt_bugs.image_urls`, `tt_features.image_urls`, and `tt_test_items.image_paths` as private Storage paths. Generate short-lived signed URLs only for selected or seriously considered candidates and inspect every selected attachment. Buckets `ui-review-evidence`, `bug-screenshots`, `feature-screenshots` and `test-screenshots` are admin-only, so sign with the `service_role` key from `SUPABASE_SERVICE_ROLE_KEY`; the `anon` key is rejected. A missing variable is a stop condition — report it instead of skipping the attachment silently.
 
 ## Read current UI Coverage
 
@@ -178,9 +178,10 @@ Candidate rules:
 - subjective suggestion alone: never launch blocker or candidate.
 
 Generate signed URLs only for UI evidence attached to a selected candidate.
-Use the connected Supabase Storage signing capability for bucket
-`ui-review-evidence`, one-hour expiry. Never store the signed URL in a delivery
-plan.
+Sign through the Storage REST API for bucket `ui-review-evidence` with a
+one-hour expiry, using the `service_role` key from the
+`SUPABASE_SERVICE_ROLE_KEY` environment variable. Never store the signed URL in
+a delivery plan.
 
 ## Read current daily queue and overrides
 

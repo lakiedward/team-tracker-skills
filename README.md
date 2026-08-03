@@ -53,6 +53,35 @@ export TT_MEMBER="Popa"        # Mac/Linux
 Schimbi identitatea mai târziu: rulezi o dată cu nume explicit („ponteaza pe numele lui X"),
 sau `node <plugin>/skills/pontaj/scripts/member.mjs set "AltNume"`, ori ștergi fișierul de mai sus.
 
+### 3. O cheie `service_role` pentru Storage
+
+Bucket-urile de capturi (`ui-review-evidence`, `bug-screenshots`, `feature-screenshots`,
+`test-screenshots`) sunt private și acceptă doar admini autentificați. Cheia `anon` — cea care
+ajunge în bundle-ul public al aplicației — **nu** mai poate încărca, șterge sau semna nimic
+acolo. Skill-urile care ating Storage citesc cheia din mediu:
+
+```powershell
+setx SUPABASE_SERVICE_ROLE_KEY "<cheia>"     # Windows (redeschide terminalul)
+```
+```bash
+export SUPABASE_SERVICE_ROLE_KEY="<cheia>"   # Mac/Linux
+```
+
+O iei din Supabase Dashboard → Project Settings → API → `service_role`. Ocolește complet RLS,
+deci tratează-o ca pe o parolă: nu o pune în repo, nu o scrie într-un rând din tracker, nu o
+afișa în output.
+
+Skill-urile care au nevoie de ea:
+
+| Skill | Ce face cu Storage | Fără cheie |
+|---|---|---|
+| `ui-audit` | încarcă evidența, o șterge la rollback | se oprește |
+| `plan-deadlines` | semnează atașamentele candidaților | se oprește |
+| `resolving-tt-bugs` | semnează capturile din `image_urls` | continuă fără context vizual |
+| `resolving-tt-features` | semnează capturile din `image_urls` | continuă fără context vizual |
+
+`orchestrate` nu atinge Storage direct — deleagă către `resolving-tt-bugs` / `resolving-tt-features`.
+
 ---
 
 ## Instalare (per coleg)
