@@ -12,7 +12,9 @@ Read this reference before querying or writing delivery-planning data.
 - `tt_todos.origin`: `manual` or `deadline_skill`.
 - `tt_todos.planning_key`: stable UUID for idempotent generated gaps.
 - `tt_project_velocity`: fast RLS-invoker snapshot of rolling 90-day velocity.
-- `tt_ui_surfaces`: inventory plus manual UI authority. Audit writers must not update `manual_*` fields.
+- `tt_ui_surfaces`: inventory plus manual UI authority. Audit writers must not update `manual_*` fields. `spec_approved_at` and `manual_verdict` are the two human gates; `verified_at` is derived by a trigger and must never be written by hand.
+- `tt_ui_surface_criteria`: the per-section definition of done. One row per verifiable expectation, `required` rows must each be proven by a passing `tt_test_items` step through `criterion_id`.
+- `tt_section_pipeline`: read-only view that derives `next_action` per active surface. It is the only lifecycle input this skill needs; never recompute the lifecycle from the individual columns.
 - `tt_ui_audits` and `tt_ui_audit_items`: versioned AI/browser evidence and fingerprints.
 - `tt_ui_findings`: current objective/suggested issues, manual disposition and optional promoted Bug/Feature/To-Do link.
 
@@ -156,6 +158,46 @@ FROM public.tt_ui_findings
 WHERE project_id = <project_id>
 ORDER BY detected_in_latest DESC, last_detected_at DESC;
 ```
+
+## Read the section delivery pipeline
+
+```sql
+SELECT *
+FROM public.tt_section_pipeline
+WHERE project_id = <project_id>
+ORDER BY required_for_launch DESC, kind, label;
+
+SELECT criterion.*
+FROM public.tt_ui_surface_criteria criterion
+JOIN public.tt_ui_surfaces surface ON surface.id = criterion.surface_id
+WHERE surface.project_id = <project_id>
+ORDER BY criterion.surface_id, criterion.order_index;
+```
+
+`next_action` is authoritative. Map it straight to the queued action:
+
+- `needs_spec` — no criteria, or the spec is not approved. Propose writing the
+  criteria from `code_refs`; the human approves them in Productivitate.
+- `build` — spec approved, no verdict pending. Build or continue the section.
+- `blocked_on_you` — the surface is awaiting a verdict, or an approval went stale
+  because `inventory_fingerprint` no longer matches `verdict_fingerprint`. Report
+  it, do not queue work and do not consume planned hours.
+- `needs_work` — the human rejected it. Resolve exactly what `manual_note` and
+  the current objective findings describe.
+- `needs_tests` — design approved but `criteria_uncovered > 0` or
+  `blocking_findings > 0`. Generate one test step per criterion and run it.
+- `ready_for_production` — merge, deploy, verify, then mark `shipped_at`.
+- `shipped` — excluded from the candidate pool.
+
+Launch scope is `required_for_launch = true` across every `kind`. A section can be
+required while its page is not, and the reverse. The pipeline covers only what the
+user can see; the project `definition_of_done` remains the authority for
+everything else (emails, migrations, RLS, SEO, performance, monitoring). Both must
+be green before a release.
+
+`tt_ui_surfaces` allows only `page -> section|state`, so a section owns no child
+surfaces. Its states are expressed as `kind = 'state'` criteria, never as extra
+surfaces.
 
 Stale when:
 
@@ -369,6 +411,12 @@ Do not persist a prompt blob on `tt_delivery_plan_items`. Productivitate builds 
 
 For an attachment-bearing source, the prompt must include both the stable Storage path and the temporary URL, say that every image must be inspected before editing, and explain how to regenerate an expired signed URL. For test plans, retain the owning test step in each attachment label.
 
+A `ui_surface` prompt carries the ordered criteria as its definition of done, marks
+which are required, and states that the section is closed by its pipeline rather
+than by a status write: the agent implements, re-audits, submits for review, and
+generates one test step per criterion. The human answers Gate 1; `verified_at`
+follows from the passing steps.
+
 The prompt must state `queue_role`. A reserve prompt says to start only after committed work is complete or documented as blocked, inspect the planning day's Pontaj before starting, and stop when actual logged work reaches `gross_daily_hours`.
 
 `scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, `verification_mode=browser|non_browser`, and the required tests or build checks. For browser mode, record the exact scenario plus relevant viewports/devices. A copied prompt must still be actionable when the source has no attachments.
@@ -519,7 +567,7 @@ VALUES
   (
     <new_plan_id>,
     '<stable_key>',
-    '<bug_feature_test_plan_or_todo>',
+    '<bug_feature_test_plan_todo_or_ui_surface>',
     <source_id>,
     '<daily_action_title>',
     '<source_description_snapshot>',
@@ -539,6 +587,23 @@ VALUES
 COMMIT;
 ```
 
+A `ui_surface` item uses `source_id = tt_ui_surfaces.id` and
+`stable_key = 'ui_surface:' || surface.stable_key`. Inside the same transaction,
+move the stage forward only where the queued action requires it:
+
+```sql
+-- Only for sections queued as build/needs_work work today.
+UPDATE public.tt_ui_surfaces
+SET delivery_stage = 'in_progress', updated_at = now()
+WHERE id = ANY(ARRAY[<selected_surface_ids>]::bigint[])
+  AND shipped_at IS NULL
+  AND delivery_stage <> 'awaiting_review';
+```
+
+Never write `spec_approved_at`, `manual_verdict`, `verified_at` or `shipped_at`
+from this skill. The first two are the human gates, the third is derived by a
+trigger, and the fourth requires a verified deployment.
+
 On error, roll back the whole project. Never supersede the old plan outside this transaction.
 
 ## Focus integration
@@ -552,7 +617,9 @@ Focus derives both daily queues from the current plan:
    - `bug:<id>`;
    - `feature:<id>`;
    - `todo:<id>`;
-   - `test:<id>` for `source_type = test_plan`.
+   - `test:<id>` for `source_type = test_plan`;
+   - `section:<id>` for `source_type = ui_surface`. A section has no Focus card and
+     no status field; it opens in Productivitate under UI Coverage.
 
 The existing board filters only `committed` rows under **Plan azi**. Render `reserve` rows in a visible ordered **Dacă termini mai devreme** section and exclude them from mandatory counts and progress. Do not change source statuses or create focus overlay rows merely to make a daily item visible.
 

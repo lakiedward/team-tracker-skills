@@ -236,6 +236,29 @@ FROM tt_test_items WHERE test_plan_id = <plan_id>;
   ```
 - **Any fail or blocked** → do NOT archive. The plan now has actionable feedback for `/resolving-failed-test-plans` to consume next.
 
+### Section-backed plans
+
+When the plan has a `surface_id`, its steps carry `criterion_id` and prove a UI
+section's definition of done. You do **not** write the section's status: a database
+trigger recomputes it from the passing steps as soon as you write a result. Never
+write `verified_at`, `manual_verdict`, `spec_approved_at` or `shipped_at` by hand.
+
+After finishing such a plan, read what the section derived and report it:
+
+```sql
+SELECT label, next_action, criteria_total, criteria_uncovered, verified_at
+FROM public.tt_section_pipeline
+WHERE id = <surface_id>;
+```
+
+- `criteria_uncovered = 0` and `next_action = 'ready_for_production'` → say the
+  section is verified and one deploy away.
+- `criteria_uncovered > 0` → name each uncovered criterion and why its step did not
+  pass. A criterion with no step at all is a gap in the plan, not a test failure:
+  report it so `/writing-ai-test-plans --surface` can add the missing step.
+- A step you marked `blocked` leaves its criterion uncovered. Say so explicitly
+  instead of implying the section is nearly done.
+
 Before moving on, reset the preview to a known state: `preview_eval expression="window.location.href = 'http://localhost:<port>/'"`. This avoids the next plan starting on a leftover modal or sub-route.
 
 Move on to the next untouched plan from Step 2's list (the queue is fixed at start — do not re-query mid-run, because plans you just touched would be filtered out anyway).
@@ -305,6 +328,8 @@ For light-mode / dark-mode plans: `preview_resize colorScheme=light|dark` to fli
 | Forgetting to check `preview_console_logs` for runtime errors | A handler throws but UI doesn't show error; everything looks fine in snapshot but the feature is broken. | After every action that triggers app code, scan `preview_console_logs level=error`. |
 | Writing essays in `notes` | The notes column is searchable; multi-paragraph waffle dilutes the signal. | One short paragraph: action attempted, observed text quote, verdict reason, evidence filename. |
 | Archiving a plan with any blocked item | The plan is not fully validated; user expects to see it. | Archive only when zero blocked AND zero fail AND zero pending. |
+| Writing a section's `verified_at` / `manual_verdict` yourself | The first is derived by a trigger, the second is the user's gate. Writing them fakes an approval nobody gave. | Write only `tt_test_items.result`; read `tt_section_pipeline` to report what followed. |
+| Reporting a section as almost done while a criterion stayed `blocked` | A blocked step leaves the criterion uncovered, so the section cannot reach production. | Name every uncovered criterion in the report. |
 | Stale preview after a code change | Some edits don't HMR cleanly — you assert against old code. | If you just landed a code change in the same session, `preview_eval expression="window.location.reload()"` before the first item. |
 | Using brittle nth-child selectors | Breaks on layout changes; gives flaky `blocked` results. | Prefer `data-testid` > role+name > text > class. Document the selector you used in `notes` on `blocked` items so future runs improve. |
 | Ignoring `preview_resize` for mobile-specific plans | The plan describes phone-only UI (responsive layout, swipe gestures); checking on desktop misses the mobile-specific element. | When the plan title or description mentions "mobile" / "phone" / "iPhone" / "Android", `preview_resize preset=mobile` first. |

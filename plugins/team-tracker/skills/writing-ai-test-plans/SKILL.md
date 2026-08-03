@@ -56,6 +56,7 @@ tt_test_plans (
   is_archived  BOOLEAN DEFAULT FALSE,
   created_by   TEXT,
   project_id   BIGINT REFERENCES tt_projects(id),  -- MUST be set; NULL plans are invisible in team-tracker
+  surface_id   BIGINT REFERENCES tt_ui_surfaces(id),  -- set when the plan proves a UI section
   created_at   TIMESTAMPTZ DEFAULT NOW(),
   updated_at   TIMESTAMPTZ DEFAULT NOW()
 )
@@ -67,6 +68,7 @@ tt_test_items (
   description     TEXT NOT NULL,            -- step text / action
   expected_result TEXT DEFAULT '',          -- the observable outcome
   result          TEXT NOT NULL DEFAULT 'pending',  -- pass | fail | blocked | pending
+  criterion_id    BIGINT REFERENCES tt_ui_surface_criteria(id),  -- the section criterion this step proves
   notes           TEXT DEFAULT '',
   tested_by       TEXT,
   tested_at       TIMESTAMPTZ,
@@ -80,6 +82,51 @@ tt_test_items (
 `result` values are **singular**: `pass`, `fail`, `blocked`, `pending`. Never write `passed` / `failed`.
 
 `order_index` is 0-based and contiguous — how team-tracker and the AI runner order steps.
+
+## Section mode — `--surface <stable_key>`
+
+When the invocation names a UI section (`/writing-ai-test-plans --surface
+website:section:social:website:page:/:lang`, or plain language such as "scrie
+planul pentru secțiunea Social"), the plan is generated from that section's
+criteria instead of from the diff. This is the mode `/plan-deadlines` asks for when
+a section reports `next_action = 'needs_tests'`.
+
+1. Resolve the surface inside the project resolved in Step 0:
+
+```sql
+SELECT surface.id, surface.label, surface.route_pattern, surface.navigation_hint,
+       surface.code_refs, parent.label AS parent_label,
+       pipeline.next_action, pipeline.criteria_total, pipeline.criteria_uncovered
+FROM public.tt_ui_surfaces surface
+LEFT JOIN public.tt_ui_surfaces parent ON parent.id = surface.parent_id
+JOIN public.tt_section_pipeline pipeline ON pipeline.id = surface.id
+WHERE surface.project_id = <project_id>
+  AND surface.stable_key = '<stable_key>';
+
+SELECT id, order_index, kind, text, required
+FROM public.tt_ui_surface_criteria
+WHERE surface_id = <surface_id>
+ORDER BY order_index;
+```
+
+2. If the section has no criteria, abort: the spec is written and approved by the
+   human in Productivitate first. Do not invent criteria here.
+3. Set `surface_id` on the plan row.
+4. Write **one step per criterion**, in `order_index` order, with `criterion_id`
+   set to that criterion's id. Turn the criterion into an action plus an
+   observable `expected_result`; keep the criterion's meaning intact.
+5. A criterion of `kind = 'state'` becomes a step that puts the section into that
+   state first (empty, loading, error, full), then checks it.
+6. A criterion of `kind = 'visual'` still needs an observable check: quote the text
+   or describe the layout signal the runner can see, and name the viewport.
+7. Keep the housekeeping steps, but leave their `criterion_id` NULL. Only criterion
+   steps count toward coverage.
+8. Never leave a `required` criterion without a step: coverage is computed from
+   passing steps, so a missing step means the section can never be verified.
+
+The reverse also holds: do not attach `criterion_id` to a step that does not
+actually prove that criterion. A false link makes the database report a section as
+verified when it is not, which is the one failure this whole flow exists to prevent.
 
 ## Step 0 — Resolve which project this plan is for
 
@@ -238,6 +285,9 @@ Do not paste the full step list into the chat — the DB row is the deliverable.
 | Omitting `project_id` | team-tracker hides `project_id IS NULL` rows. | Resolve in Step 0 and include it. |
 | Using developer terminology | The plan also has to be human-readable in team-tracker. | Read each row pretending you've never coded. |
 | Confusing this with the human skill | Wrong toggle, wrong runner. | Human tester → `writing-tester-test-plans`. AI runner → this skill. |
+| In section mode, leaving a required criterion without a step | Coverage never completes, so the section can never reach production. | One step per criterion, `criterion_id` filled. |
+| Attaching `criterion_id` to a step that does not prove it | The database reports the section verified when it is not — the exact failure this flow exists to prevent. | Link only steps that genuinely prove the criterion. |
+| Inventing criteria in section mode | The spec is a human gate. | Abort and ask for the criteria to be written and approved in Productivitate. |
 
 ## Integration with the rest of the pipeline
 
