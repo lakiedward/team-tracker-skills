@@ -67,10 +67,13 @@ cp "<repo_path>/.env.local" "C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slu
 
 ## MERGE-IF-GREEN (firul principal, secvențial)
 
-**Numai după** ce muncitorul a committuit în worktree ȘI rezultatul a trecut poarta de verificare: `outcome ∈
-{fixed,done}` **ȘI `verified === true`** (vezi SKILL.md Pas C5.1 — un verde cu `verified:false` provine de la un
-verificator mort și NU se merge-uiește). Conductorul face merge **un singur item odată** (secvențial — niciodată
-două merge-uri în paralel), în `<repo_path>`:
+**Numai după** ce muncitorul a committuit în worktree, rezultatul a trecut poarta
+de verificare (`outcome ∈ {fixed,done}` **ȘI `verified === true`**) **și**
+Cursor Bugbot nu mai are findings acționabile pe diff-ul worktree-ului (vezi
+SKILL.md Pas C5.1 / C5.1.5). Un verde cu `verified:false`, un Bugbot în rulare,
+un Bugbot indisponibil sau un finding nerezolvat NU se merge-uiește. Conductorul
+face merge **un singur item odată** (secvențial — niciodată două merge-uri în
+paralel), în `<repo_path>`:
 
 ```bash
 git -C <repo_path> merge --no-ff --no-edit orch/<itemId>

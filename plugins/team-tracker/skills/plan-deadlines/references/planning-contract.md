@@ -178,10 +178,16 @@ ORDER BY criterion.surface_id, criterion.order_index;
 
 - `needs_spec` — no criteria, or the spec is not approved. Queue a guided spec
   session: open the running section in the browser, walk the user through every
-  state at both viewports, and write the criteria from what they say. Never
-  compose them from `code_refs` alone and hand over a list to rubber-stamp; a
-  person cannot judge a description of something they have not seen. The human
-  approves the result in Productivitate.
+  reachable state at 1440×900 and 375×812, ask targeted questions about the
+  visible result, and write the criteria from the answers. Save those criteria
+  to `tt_ui_surface_criteria`; the human then approves them in Productivitate.
+
+  An older PR, commit, Markdown draft, plan item, `scope_reason`, or source-code
+  note may be read as historic evidence, but can never replace the walkthrough,
+  become a copy/paste list, or define the current criteria. The task does not
+  create a source diff, branch, commit, PR, merge, document, or human-gate
+  write. If browser/preview access is unavailable, report the session blocked
+  rather than composing criteria from code.
 - `build` — spec approved, no verdict pending. Build or continue the section.
 - `blocked_on_you` — the surface is awaiting a verdict, or an approval went stale
   because `inventory_fingerprint` no longer matches `verdict_fingerprint`. Report
@@ -426,13 +432,32 @@ it can describe the right step of the loop. A `needs_spec` prompt is the excepti
 to the usual shape: it drops the branch and merge contract, because the session
 produces criteria rather than a diff, and it forbids touching source files.
 
+For an existing current plan created before this contract changed, its persisted
+`scope_reason` is historical context only. Productivitate must replace it in a
+copied `needs_spec` prompt with the current guided-session completion contract;
+otherwise an old `zero INSERT` / `draft gata` line can contradict the live flow.
+
 The prompt must state `queue_role`. A reserve prompt says to start only after committed work is complete or documented as blocked, inspect the planning day's Pontaj before starting, and stop when actual logged work reaches `gross_daily_hours`.
 
 `scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, `verification_mode=browser|non_browser`, and the required tests or build checks. For browser mode, record the exact scenario plus relevant viewports/devices. A copied prompt must still be actionable when the source has no attachments.
 
+For `ui_surface + needs_spec`, it is always `verification_mode=browser`, and its
+completion is: the guided walkthrough occurred with the user, both viewports and
+reachable states were shown, and the resulting criteria were saved to
+`tt_ui_surface_criteria`. Prohibited phrases are `zero INSERT`, `fără scriere
+DB`, `draft gata`, and any instruction to copy/paste from an old document. The
+criteria approval is Gate 0; Gate 1 is the visual verdict after build and audit.
+
 Classify user-visible UI, responsive behavior, navigation, forms, auth, payments, browser state, and end-to-end web flows as `browser`; uncertainty defaults to `browser`. After implementation, browser-required work moves to Focus `În testare`. A failed, unavailable, or undocumented browser test leaves it there and forbids `Fixed`/`Gata`. Browser evidence must state the tested URL/scenario, viewports/devices, steps, observed result, and console-error state.
 
 The final prompt instruction must update the owning tracker source only after the completion criterion and every required verification pass: bugs to `Fixed`, features and To-Dos to `Gata`, and test-plan results per executed step. If the tracker write fails, the execution is not fully complete and the exact error must be reported.
+
+For every code-changing task, the final verification sequence also includes the
+Cursor Bugbot merge gate: run Bugbot on the branch diff, wait for it to finish,
+fix all actionable findings, rerun the affected checks, then run a fresh Bugbot
+review. Merge only after Bugbot has no unresolved actionable findings. An
+ambiguous finding, unavailable Bugbot, timeout, or unusable verdict leaves the
+branch unmerged for a human decision; it is never silently waived.
 
 ## Transactional daily apply
 

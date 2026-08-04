@@ -68,7 +68,7 @@ problema activă (eșecuri/blocaje) are prioritate față de rularea pending.
 > Aceste SQL-uri sunt incluse pentru referință completă. **Nu le executa în Milestone A** —
 > dry-run-ul din A2 este strict read-only.
 
-### DONE (bug) — trigger-ul mută cardul pe coloana `done`
+### DONE (bug) — numai după verify + Cursor Bugbot + merge
 
 ```sql
 -- DONE (bug): trigger-ul mută cardul pe 'done'
@@ -77,7 +77,7 @@ UPDATE tt_bugs SET status='Fixed', effort=:effort,
 WHERE id=:id;
 ```
 
-### DONE (feature)
+### DONE (feature) — numai după verify + Cursor Bugbot + merge
 
 ```sql
 -- DONE (feature)

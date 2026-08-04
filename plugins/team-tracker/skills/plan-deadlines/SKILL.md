@@ -48,6 +48,11 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 19. Never answer a human gate. Do not write `spec_approved_at`, `manual_verdict`, `verified_at` or `shipped_at`. A section reported as `blocked_on_you` consumes no planned hours.
 20. Never mark a section verified while a required criterion has no passing test step, and never mark one shipped without a verified deployment.
 21. The section pipeline covers only what the user sees. The project `definition_of_done` remains the authority for everything else; both tracks must be green before a release.
+22. A `needs_spec` item is a live, guided browser session with the user — never a document-writing task. An existing draft, PR, old plan item, old `scope_reason`, or source-code comment is evidence only; it can never replace the walkthrough or become a list for the user to rubber-stamp.
+23. A `needs_spec` task always has `verification_mode=browser`, records both 1440×900 and 375×812 in its scenario, and ends with criteria saved to `tt_ui_surface_criteria`. It must never say `zero INSERT`, `fără scriere DB`, `draft gata`, or ask the user to copy/paste criteria from a document.
+24. A `needs_spec` task produces no source-code diff, branch, commit, PR, merge, Markdown draft, or approval. It walks the current UI, asks the user targeted questions, and writes the resulting criteria only after those answers.
+25. If the running section cannot be opened in a browser or preview, do not replace the walkthrough with code reading. Report the spec session blocked and leave the criteria unwritten.
+26. Any selected task that changes code must pass the Cursor Bugbot merge gate in `../references/cursor-bugbot-merge-gate.md` after verification and before merge. Fix all actionable findings and rerun Bugbot; unavailable, ambiguous, or unresolved Bugbot output blocks merge.
 
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
@@ -167,7 +172,11 @@ node "<skill_dir>/scripts/planning-key.mjs" "<project_id>" "<canonical-gap-key>"
 
 For every UI section, take the action from `next_action` and queue the section itself as a `ui_surface` candidate:
 
-1. `needs_spec` — the action is a guided spec session, not a desk exercise. The agent opens the running section in the browser, walks the user through every state it can be in at 1440×900 and 375×812, asks one concrete question per visible thing, and writes the criteria from the answers. Criteria must cover what the user disliked, what they liked (so a rewrite cannot silently break it), and the states they never saw. Estimate it as a conversation, not as code work. The human approves the list afterwards in Productivitate; the agent never approves it.
+1. `needs_spec` — the action is a guided spec session, not a desk exercise. Queue a live browser walkthrough at 1440×900 and 375×812; it is the task's required verification, not an optional follow-up. The executor opens the running section, walks the user through every state it can actually reach, and asks one concrete question per visible thing. Criteria come only from the answers: what the user disliked, what they liked (so a rewrite cannot silently break it), and states they did not see. Estimate it as a conversation, not code work.
+
+   Treat an existing criteria draft, PR, commit, current-plan `scope_reason`, or source-code note as historic evidence only. Do not turn it into a task to copy, paste, review, merge, or approve. Do not create or update any document while running this task. If preview/browser access is unavailable, report the task blocked rather than composing criteria from code.
+
+   The selected item's `scope_reason` must state: live browser walkthrough with the user; both required viewports; the states to attempt; criteria saved to `tt_ui_surface_criteria`; `verification_mode=browser`; and the explicit constraint that no branch, PR, document, or human-gate write is allowed. It must never contain `zero INSERT`, `fără scriere DB`, `draft gata`, or an instruction to paste text from a document. The human approves the resulting list afterwards in Productivitate; the agent never approves it.
 2. `build` — build or continue the section against its approved criteria.
 3. `needs_work` — resolve exactly what `manual_note` and the current objective findings describe. Nothing more.
 4. `needs_tests` — generate one test step per criterion with `criterion_id` set, then run them. Report which criteria are still uncovered.
@@ -290,7 +299,7 @@ shortens the launch queue fastest:
 2. `needs_work` — you already know exactly what was asked;
 3. `needs_tests` — mechanical, generated from the criteria;
 4. `build`;
-5. `needs_spec` — cheap to draft but blocks on the human afterwards.
+5. `needs_spec` — a short guided browser session that creates a concrete, reviewable spec; it blocks on the human afterwards.
 
 A section marked `manual_importance = 'polish'` never outranks launch-required
 work and never blocks a release.
@@ -344,6 +353,7 @@ Use this order for every project:
    - attachment count and what the screenshots prove, when attachments exist.
    - verification mode; for `browser`, the exact scenario and viewports/devices that must pass before the source may become `Fixed`/`Gata`.
    - for a section: its `next_action`, the criteria it advances, and which of them stay uncovered afterwards.
+   - for `needs_spec`: the exact browser walkthrough, the questions the executor will ask, the states to attempt, and the rule that no historical draft/PR/document is a substitute for the user's answers.
 9. **Ce a fost verificat** — complete tracker counts and exclusions by source, sections included.
 10. **Ce lipsește din tracker** — codebase gaps, including unselected gaps.
 11. **UI Coverage** — separate manual coverage, current AI coverage and required pages launch-ready; list stale/blocked/native surfaces, current objective blockers, promoted sources and sections without criteria. Never print a blended percentage.
@@ -506,6 +516,23 @@ Every inserted plan item must:
 - for UI-backed work, include surface stable key, page/section label, manual note, current audit id/fingerprint, objective evidence, private screenshot Storage paths and exact browser scenarios. Never let a subjective suggestion override the manual verdict;
 - keep dependencies limited to keys relevant to today's execution.
 
+For a selected `ui_surface` whose `next_action` is `needs_spec`, the normal
+generic wording is insufficient. Its `scope_reason` must use this contract:
+
+```text
+why_now=<why this launch section needs a spec now>;
+completion=Live guided browser walkthrough completed with the user; answers became criteria saved in tt_ui_surface_criteria and await only the human Gate 0 approval;
+scenario=Open <route/navigation hint> at 1440×900 and 375×812; show full, empty, loading/error when reachable, hover and keyboard focus;
+code_start=<verified starting files>;
+verification_mode=browser;
+constraint=No source edits, branch, commit, PR, document draft, copy/paste of historical criteria, or write to a human gate;
+gate=The human reviews the saved criteria and presses Aprob criteriile in Productivitate.
+```
+
+Do not use `zero INSERT`, `fără scriere DB`, `draft gata`, `Gate 1` for the
+criteria approval, or an older plan item's text. Gate 0 is the criteria approval;
+Gate 1 is the visual verdict after build and audit.
+
 Do not persist signed URLs or a raw execution prompt. Productivitate constructs the copy-ready prompt at read time from the immutable plan snapshot, current tracker source, repository snapshot, and freshly signed attachment paths.
 
 After commit, query the new plan and both queue counts. Report version, planning date, committed and reserve hours/counts, gaps, generated To-Dos, preserved overrides, feasibility, and that Focus/Productivitate refresh through Realtime.
@@ -531,6 +558,8 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] No unpromoted AI finding became a candidate or generated task.
 - [ ] Every section action came from `next_action`, not from a re-derived lifecycle.
 - [ ] A `needs_spec` action was queued as a guided browser session with the user, never as criteria composed from source and handed over for a rubber stamp.
+- [ ] Every `needs_spec` item uses `verification_mode=browser`, names 1440×900 and 375×812, and ends in criteria saved to `tt_ui_surface_criteria`.
+- [ ] No `needs_spec` item contains `zero INSERT`, `fără scriere DB`, `draft gata`, an old `scope_reason`, or instructions to copy/paste, document, branch, commit, PR, merge, or answer a human gate.
 - [ ] No human gate was answered: `spec_approved_at`, `manual_verdict`, `verified_at` and `shipped_at` were left untouched.
 - [ ] Sections reported as `blocked_on_you` consumed no planned hours and were listed separately.
 - [ ] Expired approvals were reported as such, with the reason being a changed fingerprint.
@@ -542,6 +571,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Every selected attachment was inspected and its storage path remains on the source item.
 - [ ] Candidate and selected counts by source explain any single-source daily queue.
 - [ ] Every selected item carries enough description, code evidence, and verification detail for Productivitate to build a complete execution prompt.
+- [ ] Every code-changing selected item carries the Cursor Bugbot merge gate: wait for the review, fix every actionable finding, rerun Bugbot, then merge only when clean.
 - [ ] Browser-required work moves to Focus `În testare` after implementation and remains there until the recorded browser scenario passes. A failed, unavailable, or undocumented browser test can never become `Fixed`/`Gata`.
 - [ ] The copy-ready prompt closes the tracker loop only after every required verification passes: a verified bug becomes `Fixed`; a feature or To-Do becomes `Gata`; test results are recorded per step. A failed tracker update must be reported and must not be presented as a completed task.
 - [ ] No full backlog timeline was generated or persisted.

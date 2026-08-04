@@ -1,11 +1,11 @@
 ---
 name: resolving-tt-bugs
-description: Use when the user asks to fix, resolve, process, or sweep open bugs from team-tracker — or invokes "/resolving-tt-bugs". Bugs live in Supabase table `tt_bugs`, scoped per-project via `project_id`. Resolves the current project from the cwd, discovers every `Open` and `In Progress` bug for that project, dispatches subagents to investigate each one, designs a fix, implements it under the project's source root, verifies via Vite preview (or SQL impersonation for RLS / database bugs), then sets `status='Fixed'` on success. Native-only bugs (push, biometrics, Apple Sign-In native sheet, Capacitor plugins) are left `Open` with a clear note for human follow-up. Triggers on "rezolvă bug-urile", "fix bugs", "process bugs", "sweep tt_bugs", "rezolvă toate bug-urile", "fix all open bugs", "rezolvă probleme din proiect", "fa cate un fix pentru fiecare bug", "fix open tt_bugs", "sweep bugs from team-tracker".
+description: Use when the user asks to fix, resolve, process, or sweep open bugs from team-tracker — or invokes "/resolving-tt-bugs". Bugs live in Supabase table `tt_bugs`, scoped per-project via `project_id`. Resolves the current project from the cwd, discovers every `Open` and `In Progress` bug for that project, dispatches subagents to investigate each one, designs a fix, implements it under the project's source root, verifies via Vite preview (or SQL impersonation for RLS / database bugs), requires a clean Cursor Bugbot review before merge, then sets `status='Fixed'`. Native-only bugs (push, biometrics, Apple Sign-In native sheet, Capacitor plugins) are left `Open` with a clear note for human follow-up. Triggers on "rezolvă bug-urile", "fix bugs", "process bugs", "sweep tt_bugs", "rezolvă toate bug-urile", "fix all open bugs", "rezolvă probleme din proiect", "fa cate un fix pentru fiecare bug", "fix open tt_bugs", "sweep bugs from team-tracker".
 ---
 
 # Resolving tt_bugs
 
-End-to-end sweep over team-tracker bugs (stored in the BetRO Supabase database, table `tt_bugs`, not markdown). Find the ones with `status='Open'` or `'In Progress'` for the current project, fix them on that project's codebase with specialized subagents, verify via the most reliable channel for the bug type, and flip the row to `Fixed` when proof is in hand. Bugs that can't be verified by this skill (native shell, credentials, product decisions) stay `Open` with a note so the user can finish them.
+End-to-end sweep over team-tracker bugs (stored in the BetRO Supabase database, table `tt_bugs`, not markdown). Find the ones with `status='Open'` or `'In Progress'` for the current project, fix them on a dedicated branch with specialized subagents, verify via the most reliable channel for the bug type, pass Cursor Bugbot with no unresolved actionable findings, merge, and only then flip the row to `Fixed`. Bugs that can't be verified or Bugbot-reviewed by this skill (native shell, credentials, product decisions, unavailable Bugbot) stay `Open` with a note so the user can finish them.
 
 ## Why this skill exists
 
@@ -18,7 +18,7 @@ Manually walking through bug rows in the main thread blows the context window, l
 1. Query the DB once, list all open bugs for the current project.
 2. Delegate investigation, fix design, and root-cause tracing to subagents — main thread keeps a clean orchestration view.
 3. Verify via the channel that matches the bug: **Vite preview for UI-visible work, SQL impersonation for RLS / database work**. Native-only behavior is not in scope — leave such bugs `Open` with a clear reason.
-4. Update `status='Fixed'` only when verification produced concrete evidence.
+4. Run Cursor Bugbot on the final branch diff, fix and re-review every actionable finding, merge only after a clean verdict, then update `status='Fixed'`.
 
 ## Constants
 
@@ -157,13 +157,18 @@ Once 3a returns, if the fix path is non-trivial, dispatch **`feature-dev:code-ar
 
 > "Based on this investigation: `<paste explorer + code-explorer outputs>`. Design the smallest fix that resolves this bug. Files involved: `<list>`. Original bug brief: `<paste tt_bugs.description>`. Report under 350 words with: 1) Root cause in one sentence, 2) Files to change with line ranges, 3) Exact code/text changes (not pseudo — final SQL bodies, final edited TS lines), 4) Whether this risks regressing related behavior, 5) Verification strategy (preview, SQL impersonation, or device — pick exactly one and motivate it from the bug content)."
 
-If the architect reports that the root cause is **unknown**, **requires credentials**, **requires a product decision**, **requires infrastructure access**, or **the verification channel is native-only**: leave the bug `Open` (Step 3e: blocked path) with a one-line reason. **Do not attempt the fix.**
+If the architect reports that the root cause is **unknown**, **requires credentials**, **requires a product decision**, **requires infrastructure access**, or **the verification channel is native-only**: leave the bug `Open` (Step 3f: blocked path) with a one-line reason. **Do not attempt the fix.**
 
 When the path is obvious (e.g. a string replacement in a translation file, a single regex extension, a missing null-guard), skip the architect dispatch and proceed straight to 3c. Save the architect for designs that span migrations + multiple files, or for changes whose blast radius is unclear.
 
 ### 3c. Apply the fix — main thread
 
 Apply the fix yourself with `Edit` / `Write` / `mcp__supabase-mcp-server__apply_migration`. Do not delegate edits unless the change spans more than 5 files.
+
+In standalone mode, create a dedicated `fix/bug-<id>-<slug>` branch before the
+first edit; never develop directly on main. In Orchestrator target mode, work in
+the supplied worktree/branch and do not merge or write the source status — the
+conductor owns those two actions.
 
 After editing, run any obviously relevant local checks:
 - Migration applied → re-query `pg_policy` / helper function definitions to confirm the new state in DB.
@@ -180,15 +185,35 @@ Pick the verification channel based on the bug content. **Only two channels are 
 
 2. **SQL impersonation** — first choice for any bug that depends on RLS, realtime broadcast, per-user database visibility, edge function behavior, or backend query result. Inside a single transaction, `SET LOCAL ROLE authenticated` and `SET LOCAL "request.jwt.claims" = '{"sub":"<user-uuid>","role":"authenticated"}'`, then run the SELECT/INSERT/UPDATE that the policy gates, then `ROLLBACK`. This is exactly what Supabase Realtime does per subscriber when it decides whether to broadcast a row change — it is the most faithful simulation of cross-account behavior achievable without a real second device. Use it for bugs that explicitly mention "RLS", "permissions", "alt cont", "other user", "policy".
 
-**Native-only bugs are NOT verifiable by this skill.** If the bug describes behavior that lives in the native shell (push notifications, Apple Sign-In iOS sheet, Face ID, biometrics, Capacitor plugins, share sheet, file picker, OS-level deep links), keep `status='Open'` and add a note via the blocked path in 3e. The user follow-up is a manual run on a phone.
+**Native-only bugs are NOT verifiable by this skill.** If the bug describes behavior that lives in the native shell (push notifications, Apple Sign-In iOS sheet, Face ID, biometrics, Capacitor plugins, share sheet, file picker, OS-level deep links), keep `status='Open'` and add a note via the blocked path in 3f. The user follow-up is a manual run on a phone.
 
-For each verification, capture concrete evidence: a console log snippet, a `body.innerText` slice, an `INSERT ... RETURNING` row, a screenshot file path. The evidence is what you paste into the bug's `description` (appended) at 3e.
+For each verification, capture concrete evidence: a console log snippet, a `body.innerText` slice, an `INSERT ... RETURNING` row, a screenshot file path. The evidence is what you paste into the bug's `description` (appended) at 3f.
 
 If verification fails after up to 3 retry cycles, take the blocked path. Do not enter an infinite retry loop.
 
-### 3e. Mark the bug Fixed (or leave it Open with reason)
+### 3e. Cursor Bugbot gate and merge — fail closed
 
-On verification success, UPDATE the bug:
+Read `../references/cursor-bugbot-merge-gate.md` before any merge.
+
+After the preview/SQL verification passes, but before changing the bug status:
+
+1. Commit the final diff to the dedicated branch.
+2. Launch exactly one Cursor Bugbot review with `Diff: branch changes`.
+3. Wait for Bugbot to finish. Never merge while it is running.
+4. If it reports an actionable finding, fix it on the same branch, rerun the
+   affected verification and checks, then launch a fresh Bugbot review. Repeat
+   until no actionable findings remain.
+5. If Bugbot is unavailable, cannot compute the diff, times out, or reports an
+   ambiguous finding, do not merge. Take the blocked path below and preserve the
+   branch for the human.
+6. Only after Bugbot is clean, merge the branch into main. In target mode, do not
+   run or report a Bugbot verdict yourself; return the verified result and let
+   the Orchestrator perform the Bugbot gate and merge centrally.
+
+### 3f. Mark the bug Fixed (or leave it Open with reason)
+
+Only after preview/SQL verification, a Bugbot-clean verdict, and a successful
+merge into main, UPDATE the bug:
 
 ```sql
 UPDATE tt_bugs
@@ -201,7 +226,9 @@ WHERE id = <bug_id>
 RETURNING id, status, effort, updated_at;
 ```
 
-On verification failure / blocked path (rolls back the In Progress flip if you want a clean trail, OR just appends a note and leaves it Open):
+On verification failure, Bugbot failure, unresolved/ambiguous Bugbot finding, or
+blocked path (rolls back the In Progress flip if you want a clean trail, OR just
+appends a note and leaves it Open):
 
 ```sql
 UPDATE tt_bugs
@@ -289,7 +316,8 @@ Launch independent investigations as multiple `Agent` tool calls in **one messag
 | Trusting a code-explorer "no RLS" claim without verifying `pg_policy` and `relrowsecurity` | Migration grep misses policies created in unrelated migrations. | After any RLS-related fix, query `pg_policy` directly to confirm the live state. |
 | Trying to verify a native-only bug in preview | The native shell (push, biometrics, OAuth sheets) is not in the browser DOM; you'll get a misleading false fail. | Detect native-only keywords (push, FCM, biometric, Face ID, Apple Sign-In native, share sheet, Capacitor plugin) early and take the blocked path with the right reason. |
 | Using `preview_eval` to perform clicks | Bypasses React event handlers; gives false positives. | Use `preview_click` with a stable selector; reserve `preview_eval` for navigation and read-only inspection. |
-| Marking a bug `Fixed` based on a typecheck only | TS compile success doesn't prove the user-visible behavior is fixed. | Always run preview/SQL verification; evidence in hand before `status='Fixed'`. |
+| Marking a bug `Fixed` based on a typecheck only | TS compile success doesn't prove the user-visible behavior is fixed. | Always run preview/SQL verification, Bugbot, and merge; evidence in hand before `status='Fixed'`. |
+| Merging while Cursor Bugbot is running, failed, or has open findings | A fresh diff review is the last chance to catch regressions before main moves. | Follow `references/cursor-bugbot-merge-gate.md`; fix and re-run Bugbot until clean, otherwise park the branch. |
 | Looping forever on a stubborn bug | Wastes time, won't converge. | 3 retry cycles max, then blocked path. |
 | Parallelizing across bugs | Bugs often touch overlapping code; the preview is single-tenant. | Sequential across bugs, parallel within a bug (3a). |
 | Re-running searches the subagent already did | Burns the context window for no signal. | Trust the subagent's report; only re-verify a specific assertion when you have concrete reason to doubt. |

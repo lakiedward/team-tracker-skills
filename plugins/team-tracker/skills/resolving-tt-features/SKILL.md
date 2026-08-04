@@ -1,11 +1,11 @@
 ---
 name: resolving-tt-features
-description: Use when the user asks to evaluate, triage, or implement proposed features/functionalities from team-tracker — or invokes "/resolving-tt-features". Features live in Supabase table tt_features, scoped per-project via project_id. Resolves the project from the cwd, discovers Propus/Planificat features, dispatches evaluator subagents per feature, presents recommendations (Implementează / Amână / Respinge), implements the approved ones, verifies via Vite preview or SQL, and sets status='Gata' on success. Native-only features (push, biometrics, Capacitor plugins) are deferred with a note. Triggers on "implementează funcționalitățile propuse", "triază propunerile", "evaluează propunerile", "vezi ce funcționalități merită", "triază features", "ce features merită implementate", "implementează feature-urile planificate", "rezolvă funcționalitățile propuse", "fa funcționalitățile din team-tracker", "sweep tt_features", "implement proposed features", "triage the feature backlog".
+description: Use when the user asks to evaluate, triage, or implement proposed features/functionalities from team-tracker — or invokes "/resolving-tt-features". Features live in Supabase table tt_features, scoped per-project via project_id. Resolves the project from the cwd, discovers Propus/Planificat features, dispatches evaluator subagents per feature, presents recommendations (Implementează / Amână / Respinge), implements the approved ones, verifies via Vite preview or SQL, requires a clean Cursor Bugbot review before merge, and sets status='Gata' only after merge. Native-only features (push, biometrics, Capacitor plugins) are deferred with a note. Triggers on "implementează funcționalitățile propuse", "triază propunerile", "evaluează propunerile", "vezi ce funcționalități merită", "triază features", "ce features merită implementate", "implementează feature-urile planificate", "rezolvă funcționalitățile propuse", "fa funcționalitățile din team-tracker", "sweep tt_features", "implement proposed features", "triage the feature backlog".
 ---
 
 # Resolving tt_features
 
-End-to-end sweep over team-tracker feature proposals (stored in the BetRO Supabase database, table `tt_features`, not markdown). Find the ones with `status='Propus'` (plus previously approved `'Planificat'`) for the current project, **evaluate each one and tell the user which are worth implementing and why**, then implement the approved ones on that project's codebase with specialized subagents, verify via the most reliable channel, and flip the row to `Gata` when proof is in hand. Features that don't deserve implementation yet stay `Propus` with the evaluation rationale appended so the user sees it in the team-tracker UI.
+End-to-end sweep over team-tracker feature proposals (stored in the BetRO Supabase database, table `tt_features`, not markdown). Find the ones with `status='Propus'` (plus previously approved `'Planificat'`) for the current project, **evaluate each one and tell the user which are worth implementing and why**, then implement the approved ones on a dedicated branch, verify via the most reliable channel, pass Cursor Bugbot with no unresolved actionable findings, merge, and only then flip the row to `Gata`. Features that don't deserve implementation yet stay `Propus` with the evaluation rationale appended so the user sees it in the team-tracker UI.
 
 This is the feature-side sibling of `resolving-tt-bugs`: same project resolution, same verification channels, same DB discipline — but with an extra **triage step**, because a proposed feature (unlike a reported bug) is not automatically worth doing.
 
@@ -230,9 +230,29 @@ Same two channels as `resolving-tt-bugs`, same discipline:
 
 Verify the feature's **acceptance criteria from the description**, not just that the code compiles. Capture concrete evidence: a snapshot slice showing the new UI, a screenshot path, a `RETURNING` row. If verification fails after 3 retry cycles, take the blocked path.
 
-### 4d. Mark the feature Gata (or back to Planificat with reason)
+### 4d. Cursor Bugbot gate and merge — fail closed
 
-On verified success:
+Read `../references/cursor-bugbot-merge-gate.md` before any merge.
+
+After verification succeeds, but before marking the feature `Gata`:
+
+1. In standalone mode, commit the finished diff on a dedicated feature branch.
+   In Orchestrator target mode, preserve the supplied worktree/branch and let the
+   conductor merge it.
+2. Launch exactly one Cursor Bugbot review with `Diff: branch changes` and wait
+   for it to finish.
+3. Fix every actionable finding on the same branch/worktree, rerun the affected
+   verification and checks, then run a fresh Bugbot review on the updated diff.
+4. An ambiguous finding, unavailable Bugbot, timeout, or unusable verdict blocks
+   merge and keeps the feature `Planificat`/parked for the human. Do not waive it.
+5. Merge only after Bugbot has no actionable findings. In target mode, do not run
+   or report a Bugbot verdict yourself; return the verified result and let the
+   Orchestrator perform the central Bugbot gate and merge.
+
+### 4e. Mark the feature Gata (or back to Planificat with reason)
+
+Only after preview/SQL verification, a Bugbot-clean verdict, and a successful
+merge into main:
 
 ```sql
 UPDATE tt_features
@@ -323,7 +343,8 @@ No epilogue after this block.
 | Skipping the "already exists?" check | Implementing a duplicate wastes hours and creates two competing code paths. | Every evaluator prompt asks it explicitly; trust but spot-check the claim. |
 | Processing `În Focus` rows | A human may be actively working on them; you'd collide. | Step 2 excludes them by design. |
 | Setting `is_archived = true` to "clean up" rejected features | Archiving is the user's call in the UI; a rejected proposal is still their data. | Rejected features stay `Propus` with the rationale appended. |
-| Marking `Gata` on a typecheck only | Compile success doesn't prove the acceptance criteria are met. | Verify against the description's acceptance criteria via preview/SQL; evidence in hand first. |
+| Marking `Gata` on a typecheck only | Compile success doesn't prove the acceptance criteria are met. | Verify against the description's acceptance criteria via preview/SQL, pass Bugbot, merge, then mark `Gata`. |
+| Merging while Cursor Bugbot is running, failed, or has findings | A fresh diff review catches regressions before main moves. | Follow `references/cursor-bugbot-merge-gate.md`; fix and rerun Bugbot until clean, otherwise park the branch. |
 | Re-appending the same evaluation on every run | Descriptions balloon and the UI becomes unreadable. | Skip the append when an `--- Evaluat` block with the same recommendation already exists. |
 | Parallelizing across features in Step 4 | Features touch overlapping code; the preview is single-tenant. | Sequential across features, parallel within one (evaluators in 3a are the exception — read-only). |
 | Editing team-tracker's source while implementing for another project | The features are owned by team-tracker UI; implementations belong in `<source_root>`. | Never modify `C:/Users/lakie/Desktop/team-tracker/src` unless `project_id = 2`. |

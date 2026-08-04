@@ -6,7 +6,8 @@
 // ARUNCĂ în acest sandbox — de aceea NU generăm aici niciun id/timestamp:
 //   - `run_id` vine din `args` (îl generează CONDUCTORUL în firul principal).
 //   - worktree-urile le creează MUNCITORUL (prima lui acțiune), nu scriptul.
-//   - merge / cleanup le face CONDUCTORUL după ce acest Workflow întoarce rezultate.
+//   - Cursor Bugbot, merge / cleanup le face CONDUCTORUL după ce acest Workflow
+//     întoarce rezultate verificate.
 //
 // Model A (preview single-tenant): implementare în PARALEL → verificare SQL în
 // PARALEL → verificare pe PREVIEW SERIALIZAT printr-un singur lease (un muncitor pe
@@ -61,8 +62,8 @@ function usesWorktree(it) {
 //   - resolving-failed-test-plans  → POATE edita cod (worktree, commit, merge — ca bug/feature)
 //   - auto-running-test-plans      → DOAR rulează    (no_worktree, fără commit, fără merge)
 // `no_worktree` (oricum impus de conductor pentru auto-running) e singura sursă de adevăr
-// pentru „nu produce diff de cod" — îl folosim și ca să NU cerem commit pe astfel de iteme,
-// chiar dacă proiectul are git.
+// pentru „nu produce diff de cod" — îl folosim și ca să NU cerem commit sau Bugbot pe astfel
+// de iteme, chiar dacă proiectul are git.
 const TEST_RUNNER_SKILL = 'auto-running-test-plans'
 function isTestRunner(it) {
   return it.no_worktree === true || it.worker_skill === TEST_RUNNER_SKILL
@@ -290,7 +291,8 @@ const blockedOut = blocked.map((r) => ({ ...r, verified: false }))
 // ============================================================================
 // REZULTAT — fiecare item din `impl` apare EXACT o dată: blocate la implementare
 // + verificate SQL + verificate preview + test-runs (no_worktree, verificate prin rulare)
-// + restul (passthrough). Conductorul (firul principal) face merge secvențial DOAR pe verzi
-// cu `verified===true` ȘI cu worktree (sare merge-ul pentru `no_worktree`); restul → PARK.
+// + restul (passthrough). Conductorul (firul principal) rulează Cursor Bugbot și face merge
+// secvențial DOAR pe verzi cu `verified===true` și Bugbot curat, cu worktree (sare merge-ul
+// pentru `no_worktree`); restul → PARK.
 // ============================================================================
 return [...blockedOut, ...sqlVerified, ...previewVerified, ...testRuns, ...passthrough]
