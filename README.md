@@ -17,6 +17,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `resolving-tt-bugs` | Rezolvă bug-urile Open/In Progress din `tt_bugs`. |
 | `resolving-tt-features` | Triază și implementează features din `tt_features`. |
 | `triage` | Pune ordine în tot ce e de făcut, pe **toate** proiectele: rankează backlog-ul (bug+feature+test), semnalează duplicate/stale/done-nearhivat și aplică curățenia sigură la confirmare. Mod `--digest` pentru rezumatul zilnic. |
+| `supabase-cota` | Rulează cota lunară Supabase: parsează factura org (PDF), citește Realtime Messages pe proiect din Dashboard Usage (Chrome logat), împarte restul **ponderat** (nu egal), scrie `tt_supabase_invoices` + shares și scoate mesajele de plată. |
 
 ---
 
@@ -79,8 +80,19 @@ Skill-urile care au nevoie de ea:
 | `plan-deadlines` | semnează atașamentele candidaților | se oprește |
 | `resolving-tt-bugs` | semnează capturile din `image_urls` | continuă fără context vizual |
 | `resolving-tt-features` | semnează capturile din `image_urls` | continuă fără context vizual |
+| `supabase-cota` | urcă PDF-ul facturii în `invoices` | continuă, scrie în DB fără PDF salvat |
 
 `orchestrate` nu atinge Storage direct — deleagă către `resolving-tt-bugs` / `resolving-tt-features`.
+
+### 4. (doar pentru `supabase-cota`) MCP-ul `claude-in-chrome`
+
+Factura Supabase nu desparte Realtime pe proiecte — singura sursă e pagina Dashboard →
+Usage, care cere sesiune logată. Skill-ul o citește prin **`claude-in-chrome`**, adică
+Chrome-ul tău normal, unde ești deja autentificat. Browserele izolate (panoul Browser din
+app, Playwright) pornesc pe profil gol, pică pe sign-in și **nu** se folosesc aici.
+
+Fără `claude-in-chrome`, `/supabase-cota` îți cere greutățile lipite manual sau confirmarea
+explicită pentru `--equal` — nu împarte egal pe tăcute.
 
 ---
 
@@ -123,5 +135,5 @@ următorul start de Claude (sau prin `/plugin marketplace update team-tracker`).
 .claude-plugin/marketplace.json          # catalogul (un singur plugin)
 plugins/team-tracker/
   .claude-plugin/plugin.json             # manifest plugin
-  skills/<nume>/SKILL.md                 # cele 10 skill-uri (+ scripts/ unde e cazul)
+  skills/<nume>/SKILL.md                 # cele 12 skill-uri (+ scripts/ / references/ unde e cazul)
 ```
