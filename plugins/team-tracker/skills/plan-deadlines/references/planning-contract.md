@@ -83,6 +83,53 @@ only after at least 4 sampled weeks and 10 features. Do not use this
 feature-sized fallback for bugs, tests, or To-Dos. Snapshot every selected row.
 Never hardcode a previous rate. `raw_items_per_hour` is informational only.
 
+## Hours already spent on an item still open
+
+`tt_delivery_calibration` samples **completed** sources only. It answers how big
+this kind of work usually is; it knows nothing about how much of one particular
+item is already done. So an item carried over half-finished is queued at its full
+estimate and the day is booked for work that is partly behind it.
+
+`tt_work_log_items.allocated_hours` already holds that fact — the Pontaj row's
+hours split across its links, so a multi-item session is never counted in full
+against each one.
+
+```sql
+SELECT link.source_type,
+       link.source_id,
+       sum(link.allocated_hours)::numeric AS spent_hours
+FROM public.tt_work_log_items link
+JOIN public.tt_work_logs work ON work.id = link.work_log_id
+WHERE work.project_id = <project_id>
+  AND link.confidence = 'high'
+  AND link.allocated_hours > 0
+GROUP BY link.source_type, link.source_id;
+```
+
+Pass the sum as `--spent-hours` to `calibrate-estimate.mjs`, together with
+`--in-flight`, which decides whether it is subtracted at all:
+
+| source | in flight when |
+|---|---|
+| `bug` | `status = 'In Progress'` |
+| `feature` | `status = 'În Focus'` |
+| `todo` | `status = 'În lucru'` |
+| `ui_surface` | `tt_section_pipeline.next_action` in `build`, `needs_work`, `needs_tests`, `ready_for_production` |
+| `test_plan` | at least one item not `pending`, and at least one not `pass` |
+
+Hours logged against an item that is **not** in flight are sunk, not progress —
+an investigation, or an approach tried and dropped. The work left is unchanged,
+so they are reported and not subtracted. Getting this backwards under-books the
+day, which is the more expensive error: over-estimating wastes some capacity,
+under-estimating breaks the commitment the daily budget exists to protect.
+
+The script floors the remainder at a quarter of the estimate, never below 0.5h,
+because browser verification, the PR, a clean Bugbot review and the merge are
+still owed however much of the build is done. When `remaining_floor_applied` is
+true, spent time has caught up with the estimate: treat it as an overrun signal,
+lower the confidence, and say so in the proposal rather than presenting the
+floored number as a forecast.
+
 ## Read every tracker source
 
 Read a lightweight project-scoped catalog without status or archive filters. Paginate rather than truncate.
