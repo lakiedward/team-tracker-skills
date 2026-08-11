@@ -13,6 +13,8 @@ A team member jumps between several apps in the same day and wants a frictionles
 
 The Pontaj page in team-tracker reads `tt_work_logs` and groups by member / project / category to answer "cine, cât și la ce a lucrat". So the row this skill writes has to use the **exact** member name and a category from the page's fixed list, or it lands in the wrong bucket / a stray "Other".
 
+`description` has a second reader. Team Tracker pastes the project's most recent entries straight into every generated task prompt, under `## Ce s-a lucrat recent pe proiect`. Each of those prompts is executed by an agent with no memory of any previous session, and the one thing it cannot reconstruct from the repository is the work that was attempted and dropped — git preserves what landed, not what was given up on. That makes this field the only place session continuity survives, so Step 2 asks for what is half-done, what was abandoned and what is blocked, not just a tidy summary of what shipped.
+
 ## Constants
 
 | Item | Value |
@@ -226,10 +228,22 @@ estimates exist and equally otherwise.
   | none of the above | `Other` |
 
   Default to `Development` when in doubt — it's the most common. If the user named a category in the invocation ("ponteaza 3 ore testing"), use that (mapped to the closest allowed value).
-- **description** — a short, honest Romanian summary of what was worked on this session: 1–3 sentences (≤ ~300 chars). Concrete: name the features/pages/fixes in plain terms. Light technical wording is fine (this is the person's own log, not a tester plan) — but skip file-by-file dumps and raw diffs. If the user gave their own note ("ponteaza 2 ore: am pregatit demo-ul"), use their text as the description.
+- **description** — a short, honest Romanian summary of what was worked on this session. **Two audiences read this field**, and writing only for the first is the common mistake:
+  1. the person, on the Pontaj page;
+  2. **the next agent** — Team Tracker now pastes the last few entries for the project verbatim into every generated task prompt, under `## Ce s-a lucrat recent pe proiect`. Whatever is written here is what the next session starts from.
+
+  Structure it in that order:
+  - **What was done** — 1–3 sentences, concrete, naming the features/pages/fixes in plain terms. Light technical wording is fine (this is the person's own log, not a tester plan) — but skip file-by-file dumps and raw diffs.
+  - **Then, only the ones that actually apply**, the three facts a fresh agent cannot recover on its own:
+    - **what is half-done, and on which branch** — otherwise the next session either restarts it or collides with it;
+    - **what was tried and abandoned, and why** — git records what landed, never what was given up on. This is the one fact that is lost for good if it is not written here, and the single most valuable thing in the field;
+    - **what is blocked, and on whom**.
+  - **Never pad with negatives.** "Nimic abandonat, nimic blocat" is noise that then gets pasted into every future prompt. If a line does not apply, leave it out.
+  - Budget ~600 chars. If it will not fit, drop detail about what was done before dropping a blocker or an abandoned approach — the first is recoverable from git, the second is not.
+  - If the user gave their own note ("ponteaza 2 ore: am pregatit demo-ul"), use their text as the description and do not embellish it.
   - When links are validated, include their compact IDs in the description, for example `Bug #639, #640 și #641`, so the Pontaj remains auditable even outside the link table.
-  - Good: `"Adăugat project switcher pe paginile Focus, Testing și Bug Reports; fix la butonul de delete screenshot la bug-uri (era doar pe hover)."`
-  - Bad: `"work"` / `"diverse"` / a pasted git diff.
+  - Good: `"Adăugat project switcher pe Focus, Testing și Bug Reports (Bug #639). Încercat cu context React global — re-randa toată pagina la fiecare schimbare, abandonat pentru prop drilling. Rămas pe branch fix/bug-639-switcher: filtrul de dată nu se resetează la schimbarea proiectului."`
+  - Bad: `"work"` / `"diverse"` / a pasted git diff / `"Am lucrat la switcher. Nimic blocat, nimic abandonat."`
 - **work_date** — today by default (`CURRENT_DATE`). If the user said a different day, honor it: `"ieri"` → today − 1 day; an explicit `YYYY-MM-DD` → that date. Pass the date as a literal `'YYYY-MM-DD'` (or use `CURRENT_DATE` for today).
 
 ## Step 3 — Determine the hours (auto, from the chat duration)
@@ -393,7 +407,9 @@ No "anything else?" epilogue — the row is the deliverable and the user can see
 | Asking for confirmation / asking for hours when the script succeeded | The user chose fully-auto; any prompt is friction they explicitly rejected. | Only prompt on the first-run Step 0b identity pick or the Step 3 fallback. Otherwise insert silently. |
 | Logging the whole day / since-last-pontaj instead of this session | Scope is the current chat session; pulling in unrelated commits double-counts. | Summarize only this session's work (conversation + this session's git changes). |
 | Inventing work when nothing was done | A fake pontaj corrupts the hours data. | If there's no session work and no git change, ask the user what to log. |
-| A vague description ("work", "diverse") | Useless on the Pontaj page; the person won't remember what it was. | Name the concrete features/fixes/pages in 1–3 sentences. |
+| A vague description ("work", "diverse") | Useless on the Pontaj page — and now actively harmful, because the description is pasted verbatim into the next agent's task prompt, so a vague line becomes vague context for the next session too. | Name the concrete features/fixes/pages in 1–3 sentences, then add whatever is half-done, abandoned or blocked. |
+| Omitting what was tried and abandoned | Git records what landed, never what was given up on. The next agent walks into the same dead end and pays the cost a second time. | If an approach was dropped this session, write it down with the reason — it is the highest-value sentence in the field. |
+| Padding with negatives ("nimic blocat, nimic abandonat") | The text is pasted into every future task prompt for this project, so the filler compounds and dilutes the parts that matter. | Write a line only when it applies; otherwise leave it out. |
 | Linking from a title guess or arbitrary number | Corrupts direct velocity and attributes hours to the wrong work. | Link only an exact typed ID or an exact source row acted on in this session. |
 | Linking an item from another project | Cross-project velocity becomes false; the DB trigger rejects it. | Validate every candidate's `project_id` against the resolved Pontaj project. |
 | Asking which items to link | Turns the frictionless command into a questionnaire. | Link safe candidates automatically; otherwise insert only the work log. |
