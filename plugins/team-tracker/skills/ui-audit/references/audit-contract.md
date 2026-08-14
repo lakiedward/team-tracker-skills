@@ -160,13 +160,29 @@ fails, remove only those paths. Never delete paths from a previous audit.
 
 ## UI launch readiness
 
-For a required page:
+For a required **section** (`tt_section_pipeline.is_unit = true`):
 
 1. manual verdict is `liked` or `acceptable`;
-2. current audit item exists and its fingerprint matches the current inventory;
-3. no current objective Critical/High finding exists on the page or child;
-4. web is not blocked/static-only;
-5. native has `manual_device_verified_at`.
+2. the spec is approved and no required criterion is uncovered;
+3. the verdict is not stale — `verdict_fingerprint` still matches
+   `inventory_fingerprint`;
+4. no current objective Critical/High finding exists on it or its states;
+5. web is not blocked/static-only;
+6. native has `manual_device_verified_at`.
+
+For a required **page**, which owns none of the above:
+
+1. every required section under it is shipped — `next_action = 'shipped'`, which
+   the view derives from `child_shipped = child_required`;
+2. a current audit item exists and its fingerprint matches the current inventory,
+   because browser evidence is still captured per page;
+3. no current objective Critical/High finding exists on the page or a child. A
+   page stays *delivered* through such a finding — that is a regression, not an
+   un-shipping — but it is not *launch-ready* while one is open;
+4. native has `manual_device_verified_at`.
+
+A page with no sections is never launch-ready and never scored as covered: there
+is nothing under it that anyone has agreed to.
 
 Expose three separate metrics:
 

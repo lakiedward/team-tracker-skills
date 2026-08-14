@@ -114,7 +114,7 @@ Pass the sum as `--spent-hours` to `calibrate-estimate.mjs`, together with
 | `bug` | `status = 'In Progress'` |
 | `feature` | `status = 'În Focus'` |
 | `todo` | `status = 'În lucru'` |
-| `ui_surface` | `tt_section_pipeline.next_action` in `build`, `needs_work`, `needs_tests`, `ready_for_production` |
+| `ui_surface` | `tt_section_pipeline.is_unit = true` AND `next_action` in `build`, `needs_work`, `needs_tests`, `ready_for_production` |
 | `test_plan` | at least one item not `pending`, and at least one not `pass` |
 
 Hours logged against an item that is **not** in flight are sunk, not progress —
@@ -221,7 +221,20 @@ WHERE surface.project_id = <project_id>
 ORDER BY criterion.surface_id, criterion.order_index;
 ```
 
-`next_action` is authoritative. Map it straight to the queued action:
+The view returns two kinds of row. `is_unit = true` is a section or state: it
+owns the criteria, the two human gates and the shipping fact, and it is the only
+thing that may ever be queued. `is_unit = false` is a page: its `next_action`,
+`verified_at` and `shipped_at` are a rollup of its required children, reported
+through `child_required` and `child_shipped`. **Never queue a page.** Queueing one
+would hand an executor a task whose gates the database refuses to write, and
+would double-count work that its own sections already carry.
+
+A page with `child_required = 0` is not work either — it is an inventory gap.
+Report it as a risk that asks for `/ui-audit <slug> "<page>"` to split the page
+into sections, and say plainly that nothing on that page can be approved,
+verified or delivered until it has them.
+
+`next_action` is authoritative for a unit. Map it straight to the queued action:
 
 - `needs_spec` — no criteria, or the spec is not approved. Queue a guided spec
   session: open the running section in the browser, walk the user through every
@@ -246,11 +259,22 @@ ORDER BY criterion.surface_id, criterion.order_index;
 - `ready_for_production` — merge, deploy, verify, then mark `shipped_at`.
 - `shipped` — excluded from the candidate pool.
 
-Launch scope is `required_for_launch = true` across every `kind`. A section can be
-required while its page is not, and the reverse. The pipeline covers only what the
-user can see; the project `definition_of_done` remains the authority for
-everything else (emails, migrations, RLS, SEO, performance, monitoring). Both must
-be green before a release.
+Launch scope is declared on the page and cascades down: toggling
+`required_for_launch` on a page rewrites it on every active child, and a section
+discovered inside a required page inherits the flag when it is created. A single
+section can still be taken out afterwards, which is how a polish block stops
+blocking a launch. Count the scope from units only — adding the page's own row
+would count the same work twice.
+
+A page is delivered when every required section under it is delivered, and by no
+other route. Its shipping is deliberately not gated on findings: a Critical
+raised after delivery is a regression to fix on the section, not a reason to
+report a live page as un-shipped. Launch readiness is the stricter question and
+does still exclude it.
+
+The pipeline covers only what the user can see; the project `definition_of_done`
+remains the authority for everything else (emails, migrations, RLS, SEO,
+performance, monitoring). Both must be green before a release.
 
 `tt_ui_surfaces` allows only `page -> section|state`, so a section owns no child
 surfaces. Its states are expressed as `kind = 'state'` criteria, never as extra

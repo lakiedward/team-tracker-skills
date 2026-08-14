@@ -13,10 +13,13 @@ Every run must answer:
 
 Use the deadline to rank urgency and evaluate delivery health. Do not schedule every backlog item through the final date. Productivitate keeps the deadline context and launch-readiness checklist; Focus shows **Obligatoriu azi** plus **Dacă termini mai devreme**.
 
-A UI section is a unit of delivery, not a note on a page. `tt_section_pipeline`
-already decides what each section needs next, so read `next_action` and queue the
-matching work. Two facts belong to the human and to nobody else: approving the
-criteria, and approving how the section looks.
+A UI section is a unit of delivery, not a note on a page. The section is what
+gets marked; the page is derived from it and ships automatically once all of its
+required sections do. `tt_section_pipeline` already decides what each section
+needs next, so read `next_action` on the rows where `is_unit = true` and queue the
+matching work — a page row is a rollup and is never a task. Two facts belong to
+the human and to nobody else: approving the criteria, and approving how the
+section looks.
 
 ## Commands
 
@@ -140,9 +143,10 @@ Rebuild statuses from current evidence. Compare the resulting keys and statuses 
 
 Merge current UI Coverage into launch readiness:
 
-0. Every surface with `required_for_launch = true` is a launch outcome keyed `ui:<stable_key>`. Its status comes from `next_action`: `shipped` is met, `ready_for_production` and `needs_tests` are partial, `needs_work` is blocked, `blocked_on_you` and `needs_spec` are unknown. Record the criteria coverage as evidence and the manual note or blocking findings as blockers.
-1. A required page with manual verdict `needs_work` or `redesign` keeps the related launch outcome partial or blocked, depending on the manual note and objective evidence.
-2. A required page with manual verdict `unreviewed` remains unknown; the AI score cannot replace the user's verdict.
+0. Every **unit** (`is_unit = true`) with `required_for_launch = true` is a launch outcome keyed `ui:<stable_key>`. Its status comes from `next_action`: `shipped` is met, `ready_for_production` and `needs_tests` are partial, `needs_work` is blocked, `blocked_on_you` and `needs_spec` are unknown. Record the criteria coverage as evidence and the manual note or blocking findings as blockers. A page is never its own outcome — it would restate its sections.
+1. A required section with manual verdict `needs_work` or `redesign` keeps the related launch outcome partial or blocked, depending on the manual note and objective evidence.
+2. A required section with manual verdict `unreviewed` remains unknown; the AI score cannot replace the user's verdict.
+2b. A required page with `child_required = 0` is an inventory gap, not an outcome. Record it as a blocked outcome keyed `ui:<stable_key>` whose only blocker is that the page has no sections, and request `/ui-audit <slug> "<page>"`.
 3. A fingerprint mismatch, a missing current audit item, or `summary.stale_surface_keys` makes the audit stale and becomes a risk that requests `/ui-audit <slug> "<page>"`.
 4. A current objective Critical/High finding is a launch risk. If unpromoted, it is not a work candidate. A subjective suggestion never blocks launch without a manual `needs_work`/`redesign` verdict.
 5. Native `static_only` surfaces require `manual_device_verified_at` before they may be launch-ready.
@@ -170,7 +174,7 @@ node "<skill_dir>/scripts/planning-key.mjs" "<project_id>" "<canonical-gap-key>"
 
 4. Keep it proposed until approval.
 
-For every UI section, take the action from `next_action` and queue the section itself as a `ui_surface` candidate:
+For every UI **unit** (`is_unit = true`), take the action from `next_action` and queue the section itself as a `ui_surface` candidate. A page row is a rollup of these same units: never queue one, and never let it consume hours.
 
 1. `needs_spec` — the action is a guided spec session, not a desk exercise. Queue a live browser walkthrough at 1440×900 and 375×812; it is the task's required verification, not an optional follow-up. The executor opens the running section, walks the user through every state it can actually reach, and asks one concrete question per visible thing. Criteria come only from the answers: what the user disliked, what they liked (so a rewrite cannot silently break it), and states they did not see. Estimate it as a conversation, not code work.
 
