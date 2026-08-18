@@ -140,8 +140,11 @@ export function validateAuditPayload(payload) {
       if (!scenarioHasViewport(scenarios, /1440|desktop/i)) {
         errors.push(`${item.surface_stable_key} missing 1440x900 browser scenario`);
       }
-      if (!scenarioHasViewport(scenarios, /390|mobile/i)) {
-        errors.push(`${item.surface_stable_key} missing 390x844 browser scenario`);
+      if (!scenarioHasViewport(scenarios, /768|tablet/i)) {
+        errors.push(`${item.surface_stable_key} missing 768x1024 browser scenario`);
+      }
+      if (!scenarioHasViewport(scenarios, /390|375|mobile|phone/i)) {
+        errors.push(`${item.surface_stable_key} missing phone (375x812) browser scenario`);
       }
     }
   }

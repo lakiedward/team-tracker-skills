@@ -85,7 +85,8 @@ is one.
   "console_errors": [],
   "browser_scenarios": [
     {"viewport": "1440x900", "result": "pass"},
-    {"viewport": "390x844", "result": "pass"}
+    {"viewport": "768x1024", "result": "pass"},
+    {"viewport": "375x812", "result": "pass"}
   ],
   "screenshot_paths": [
     "7/audit/<run_key>/website-page-checkout/1440x900.png"
@@ -95,7 +96,8 @@ is one.
 ```
 
 `blocked` and `static_only` require `ai_score = null`. A web `pass` or
-`needs_attention` requires both default browser viewports.
+`needs_attention` requires all three default browser viewports (desktop
+1440x900, tablet 768x1024, phone 375x812).
 
 ## Finding payload
 

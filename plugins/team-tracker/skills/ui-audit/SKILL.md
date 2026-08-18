@@ -143,10 +143,14 @@ Prefer an already running configured preview. If starting one is necessary, use
 the registered command and repository, do not install dependencies, and stop
 only the process started by this run.
 
-Audit each included web page at:
+Audit each included web page at the site viewport set:
 
 - desktop `1440 x 900`;
-- mobile `390 x 844`.
+- tablet `768 x 1024`;
+- phone `375 x 812`.
+
+The set matches the delivery contract: a site is judged on all three, a
+`native`-only surface stays `static_only` until device approval.
 
 At each viewport:
 
@@ -275,7 +279,7 @@ Do not report a blended UI readiness percentage.
 - [ ] No spec, verdict or shipping fact was written on a page.
 - [ ] Every registered codebase was inventoried.
 - [ ] Git HEAD/status were captured before and after.
-- [ ] Web scores have both 1440x900 and 390x844 browser scenarios.
+- [ ] Web scores have 1440x900, 768x1024 and 375x812 browser scenarios.
 - [ ] Blocked/static-only surfaces have no numeric score.
 - [ ] Manual fields were excluded from the audit payload.
 - [ ] Objective and subjective findings are separated.

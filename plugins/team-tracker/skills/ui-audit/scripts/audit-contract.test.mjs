@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -89,7 +90,11 @@ try {
         usability_accessibility: 100,
         interaction_runtime: 100,
       },
-      browser_scenarios: [{ viewport: '1440x900' }, { viewport: '390x844' }],
+      browser_scenarios: [
+        { viewport: '1440x900' },
+        { viewport: '768x1024' },
+        { viewport: '375x812' },
+      ],
     }],
     findings: [],
   };
@@ -97,6 +102,14 @@ try {
   assert.equal(validateAuditPayload({
     ...payload,
     items: [{ ...payload.items[0], browser_scenarios: [{ viewport: '1440x900' }] }],
+  }).valid, false);
+  // The pre-tablet viewport pair is no longer a complete web audit.
+  assert.equal(validateAuditPayload({
+    ...payload,
+    items: [{
+      ...payload.items[0],
+      browser_scenarios: [{ viewport: '1440x900' }, { viewport: '390x844' }],
+    }],
   }).valid, false);
   assert.equal(validateAuditPayload({
     ...payload,
@@ -127,23 +140,27 @@ try {
     reappeared: ['c'],
   });
 
-  const culcushPath = 'C:/Users/lakie/Desktop/culcus.ro/culcus.ro';
-  if (readFileSync) {
+  // Smoke checks against real local repos: run them only where the checkout
+  // exists, so the suite stays green on machines without these projects.
+  const culcushPath = 'C:/Users/Laki Edward/Desktop/culcus.ro/culcus.ro';
+  if (existsSync(culcushPath)) {
     const culcush = inventoryUiSurfaces(culcushPath, 'website');
     assert.equal(culcush.routes.some((route) => route.route_pattern === '/checkout'), true);
     assert.equal(culcush.routes.some((route) => route.route_pattern === '/admin'), true);
   }
 
-  const betroPath = 'C:/Users/lakie/Desktop/BETRO';
-  const betro = inventoryUiSurfaces(betroPath, 'app');
-  assert.equal(
-    betro.stateful_surfaces.some((state) => state.state_value === 'matches'),
-    true,
-  );
-  assert.equal(
-    betro.stateful_surfaces.some((state) => state.state_value === 'profile'),
-    true,
-  );
+  const betroPath = 'C:/Users/Laki Edward/Desktop/BETRO';
+  if (existsSync(betroPath)) {
+    const betro = inventoryUiSurfaces(betroPath, 'app');
+    assert.equal(
+      betro.stateful_surfaces.some((state) => state.state_value === 'matches'),
+      true,
+    );
+    assert.equal(
+      betro.stateful_surfaces.some((state) => state.state_value === 'profile'),
+      true,
+    );
+  }
 
   console.log('ui-audit contract and inventory tests passed');
 } finally {
