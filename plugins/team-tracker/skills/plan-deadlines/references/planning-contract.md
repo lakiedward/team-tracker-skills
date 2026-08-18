@@ -12,7 +12,7 @@ Read this reference before querying or writing delivery-planning data.
 - `tt_todos.origin`: `manual` or `deadline_skill`.
 - `tt_todos.planning_key`: stable UUID for idempotent generated gaps.
 - `tt_project_velocity`: fast RLS-invoker snapshot of rolling 90-day velocity.
-- `tt_ui_surfaces`: inventory plus manual UI authority. Audit writers must not update `manual_*` fields. `spec_approved_at` and `manual_verdict` are the two human gates; `verified_at` is derived by a trigger and must never be written by hand.
+- `tt_ui_surfaces`: inventory plus manual UI authority. Audit writers must not update `manual_*` fields. `spec_approved_at` and `manual_verdict` are the two human gates; `verified_at` is derived by a trigger and must never be written by hand. The database enforces this: a trigger rejects agent-side SQL writes to `manual_verdict`, `verdict_fingerprint`, `spec_approved_at` and `shipped_at` — they pass only for the app's authenticated user. If the human asks in chat for a gate to be pressed for them, refuse and point them to the button.
 - `tt_ui_surface_criteria`: the per-section definition of done. One row per verifiable expectation, `required` rows must each be proven by a passing `tt_test_items` step through `criterion_id`.
 - `tt_section_pipeline`: read-only view that derives `next_action` per active surface. It is the only lifecycle input this skill needs; never recompute the lifecycle from the individual columns.
 - `tt_ui_audits` and `tt_ui_audit_items`: versioned AI/browser evidence and fingerprints.
@@ -246,7 +246,9 @@ verified or delivered until it has them.
 
   An older PR, commit, Markdown draft, plan item, `scope_reason`, or source-code
   note may be read as historic evidence, but can never replace the walkthrough,
-  become a copy/paste list, or define the current criteria. The task does not
+  become a copy/paste list, or define the current criteria. The loop is
+  show → one question → stop and wait: no criterion is written before the
+  user's first answer, and a session without answers saves nothing. The task does not
   create a source diff, branch, commit, PR, merge, document, or human-gate
   write. If browser/preview access is unavailable, report the session blocked
   rather than composing criteria from code.
