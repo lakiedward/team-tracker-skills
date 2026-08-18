@@ -46,13 +46,13 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 14. Never add filler to hit an hour target. Report any uncovered committed or reserve capacity explicitly.
 15. Treat the previous launch-readiness snapshot only as diff context. Revalidate every outcome from current tracker and codebase evidence.
 16. Read current UI Coverage, but never turn an unpromoted AI finding into work. Proposed AI findings are risks only; dismissed findings are not scope.
-17. A UI surface is a first-class delivery source (`source_type = 'ui_surface'`). Queue the section itself; a promoted UI finding still travels as its standard Bug, Feature or To-Do and is attached to the section it unblocks.
+17. A UI surface is a first-class delivery source (`source_type = 'ui_surface'`). Queue the section itself; a promoted UI finding still travels as its standard Bug, Feature or To-Do and is attached to the section it unblocks. Never persist section work as a generated To-Do — not even "so Focus can map it". A section deliberately has no Focus card; its tracker is `tt_section_pipeline`, and a To-Do wrapper strips the copied prompt of the section playbook, the platform viewports and the human gates.
 18. Take the section lifecycle from `tt_section_pipeline.next_action`. Do not re-derive it from `manual_verdict`, `spec_approved_at` or criteria counts.
 19. Never answer a human gate. Do not write `spec_approved_at`, `manual_verdict`, `verified_at` or `shipped_at`. A section reported as `blocked_on_you` consumes no planned hours.
 20. Never mark a section verified while a required criterion has no passing test step, and never mark one shipped without a verified deployment.
 21. The section pipeline covers only what the user sees. The project `definition_of_done` remains the authority for everything else; both tracks must be green before a release.
 22. A `needs_spec` item is a live, guided browser session with the user — never a document-writing task. An existing draft, PR, old plan item, old `scope_reason`, or source-code comment is evidence only; it can never replace the walkthrough or become a list for the user to rubber-stamp.
-23. A `needs_spec` task always has `verification_mode=browser`, records both 1440×900 and 375×812 in its scenario, and ends with criteria saved to `tt_ui_surface_criteria`. It must never say `zero INSERT`, `fără scriere DB`, `draft gata`, or ask the user to copy/paste criteria from a document.
+23. A `needs_spec` task always has `verification_mode=browser`, records the surface's full platform viewport set in its scenario, and ends with criteria saved to `tt_ui_surface_criteria`. The viewport set comes from `tt_ui_surfaces.platforms`: a `web` surface (site) uses desktop 1440×900, tablet 768×1024 and phone 375×812; a `native`-only surface (app) uses phone 375×812 alone. It must never say `zero INSERT`, `fără scriere DB`, `draft gata`, or ask the user to copy/paste criteria from a document.
 24. A `needs_spec` task produces no source-code diff, branch, commit, PR, merge, Markdown draft, or approval. It walks the current UI, asks the user targeted questions, and writes the resulting criteria only after those answers.
 25. If the running section cannot be opened in a browser or preview, do not replace the walkthrough with code reading. Report the spec session blocked and leave the criteria unwritten.
 26. Any selected task that changes code must pass the Cursor Bugbot merge gate in `../references/cursor-bugbot-merge-gate.md` after verification and before merge. Fix all actionable findings and rerun Bugbot; unavailable, ambiguous, or unresolved Bugbot output blocks merge.
@@ -174,16 +174,16 @@ node "<skill_dir>/scripts/planning-key.mjs" "<project_id>" "<canonical-gap-key>"
 
 4. Keep it proposed until approval.
 
-For every UI **unit** (`is_unit = true`), take the action from `next_action` and queue the section itself as a `ui_surface` candidate. A page row is a rollup of these same units: never queue one, and never let it consume hours.
+For every UI **unit** (`is_unit = true`), take the action from `next_action` and queue the section itself as a `ui_surface` candidate. A page row is a rollup of these same units: never queue one, and never let it consume hours. Section work never travels as a generated To-Do: if the day's UI work is real, its plan item is the `ui_surface` row itself, whatever the project. "So Focus can map it" is not a reason — a section has no Focus card by design.
 
-1. `needs_spec` — the action is a guided spec session, not a desk exercise. Queue a live browser walkthrough at 1440×900 and 375×812; it is the task's required verification, not an optional follow-up. The executor opens the running section, walks the user through every state it can actually reach, and asks one concrete question per visible thing. Criteria come only from the answers: what the user disliked, what they liked (so a rewrite cannot silently break it), and states they did not see. Estimate it as a conversation, not code work.
+1. `needs_spec` — the action is a guided spec session, not a desk exercise. Queue a live browser walkthrough on the surface's platform viewport set (web: 1440×900, 768×1024 and 375×812; native-only: 375×812); it is the task's required verification, not an optional follow-up. The executor opens the running section, walks the user through every state it can actually reach, and asks one concrete question per visible thing. Criteria come only from the answers: what the user disliked, what they liked (so a rewrite cannot silently break it), and states they did not see. Estimate it as a conversation, not code work.
 
    Treat an existing criteria draft, PR, commit, current-plan `scope_reason`, or source-code note as historic evidence only. Do not turn it into a task to copy, paste, review, merge, or approve. Do not create or update any document while running this task. If preview/browser access is unavailable, report the task blocked rather than composing criteria from code.
 
-   The selected item's `scope_reason` must state: live browser walkthrough with the user; both required viewports; the states to attempt; criteria saved to `tt_ui_surface_criteria`; `verification_mode=browser`; and the explicit constraint that no branch, PR, document, or human-gate write is allowed. It must never contain `zero INSERT`, `fără scriere DB`, `draft gata`, or an instruction to paste text from a document. The human approves the resulting list afterwards in Productivitate; the agent never approves it.
-2. `build` — build or continue the section against its approved criteria.
-3. `needs_work` — resolve exactly what `manual_note` and the current objective findings describe. Nothing more.
-4. `needs_tests` — generate one test step per criterion with `criterion_id` set, then run them. Report which criteria are still uncovered.
+   The selected item's `scope_reason` must state: live browser walkthrough with the user; every viewport of the platform's set; the states to attempt; criteria saved to `tt_ui_surface_criteria`; `verification_mode=browser`; and the explicit constraint that no branch, PR, document, or human-gate write is allowed. It must never contain `zero INSERT`, `fără scriere DB`, `draft gata`, or an instruction to paste text from a document. The human approves the resulting list afterwards in Productivitate; the agent never approves it.
+2. `build` — build or continue the section against its approved criteria. The step ends with two loops the estimate must cover: iterate the UI live with the user on every platform viewport — show, take the verdict, fix, show again — until they explicitly say they like it; then exercise the section's full functionality in the browser, following flows that continue on other pages to their end, and fix failures on the same branch.
+3. `needs_work` — resolve exactly what `manual_note` and the current objective findings describe. Nothing more. Re-show the result on the platform viewports and repeat until the user likes it.
+4. `needs_tests` — generate one test step per criterion with `criterion_id` set, plus functional steps (without `criterion_id`) for everything the section can do, cross-page flows included, then run them. A failing step is fixed and re-run, never reported and skipped. Report which criteria are still uncovered.
 5. `ready_for_production` — merge, deploy, verify after deploy, then mark `shipped_at`.
 6. `blocked_on_you` — report only. It consumes no hours and is never queued. If `verdict_stale` is true, say that the approval expired because the code changed.
 7. `shipped` — excluded.
@@ -540,7 +540,7 @@ generic wording is insufficient. Its `scope_reason` must use this contract:
 ```text
 why_now=<why this launch section needs a spec now>;
 completion=Live guided browser walkthrough completed with the user; answers became criteria saved in tt_ui_surface_criteria and await only the human Gate 0 approval;
-scenario=Open <route/navigation hint> at 1440×900 and 375×812; show full, empty, loading/error when reachable, hover and keyboard focus;
+scenario=Open <route/navigation hint> on the platform viewport set (web: 1440×900, 768×1024 and 375×812; native-only: 375×812); show full, empty, loading/error when reachable, hover and keyboard focus;
 code_start=<verified starting files>;
 verification_mode=browser;
 constraint=No source edits, branch, commit, PR, document draft, copy/paste of historical criteria, or write to a human gate;
@@ -575,8 +575,9 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Current UI Coverage was read, stale fingerprints were identified, and its three metrics stayed separate.
 - [ ] No unpromoted AI finding became a candidate or generated task.
 - [ ] Every section action came from `next_action`, not from a re-derived lifecycle.
+- [ ] Every queued UI action is a `ui_surface` plan item; no section work was wrapped in a generated To-Do, for any project.
 - [ ] A `needs_spec` action was queued as a guided browser session with the user, never as criteria composed from source and handed over for a rubber stamp.
-- [ ] Every `needs_spec` item uses `verification_mode=browser`, names 1440×900 and 375×812, and ends in criteria saved to `tt_ui_surface_criteria`.
+- [ ] Every `needs_spec` item uses `verification_mode=browser`, names the platform's full viewport set (web: 1440×900, 768×1024 and 375×812; native-only: 375×812), and ends in criteria saved to `tt_ui_surface_criteria`.
 - [ ] No `needs_spec` item contains `zero INSERT`, `fără scriere DB`, `draft gata`, an old `scope_reason`, or instructions to copy/paste, document, branch, commit, PR, merge, or answer a human gate.
 - [ ] No human gate was answered: `spec_approved_at`, `manual_verdict`, `verified_at` and `shipped_at` were left untouched.
 - [ ] Sections reported as `blocked_on_you` consumed no planned hours and were listed separately.

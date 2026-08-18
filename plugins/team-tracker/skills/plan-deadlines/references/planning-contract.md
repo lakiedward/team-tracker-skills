@@ -238,7 +238,9 @@ verified or delivered until it has them.
 
 - `needs_spec` — no criteria, or the spec is not approved. Queue a guided spec
   session: open the running section in the browser, walk the user through every
-  reachable state at 1440×900 and 375×812, ask targeted questions about the
+  reachable state on the surface's platform viewport set (from
+  `tt_ui_surfaces.platforms` — web: 1440×900, 768×1024 and 375×812;
+  native-only: 375×812), ask targeted questions about the
   visible result, and write the criteria from the answers. Save those criteria
   to `tt_ui_surface_criteria`; the human then approves them in Productivitate.
 
@@ -248,14 +250,19 @@ verified or delivered until it has them.
   create a source diff, branch, commit, PR, merge, document, or human-gate
   write. If browser/preview access is unavailable, report the session blocked
   rather than composing criteria from code.
-- `build` — spec approved, no verdict pending. Build or continue the section.
+- `build` — spec approved, no verdict pending. Build or continue the section,
+  then iterate the UI live with the user on every platform viewport until they
+  explicitly like it, and exercise the section's full functionality in the
+  browser — cross-page flows to their end — fixing failures on the same branch.
 - `blocked_on_you` — the surface is awaiting a verdict, or an approval went stale
   because `inventory_fingerprint` no longer matches `verdict_fingerprint`. Report
   it, do not queue work and do not consume planned hours.
 - `needs_work` — the human rejected it. Resolve exactly what `manual_note` and
   the current objective findings describe.
 - `needs_tests` — design approved but `criteria_uncovered > 0` or
-  `blocking_findings > 0`. Generate one test step per criterion and run it.
+  `blocking_findings > 0`. Generate one test step per criterion, plus functional
+  steps (without `criterion_id`) for everything the section can do, cross-page
+  flows included, and run them; fix and re-run failing steps.
 - `ready_for_production` — merge, deploy, verify, then mark `shipped_at`.
 - `shipped` — excluded from the candidate pool.
 
@@ -494,8 +501,10 @@ For an attachment-bearing source, the prompt must include both the stable Storag
 
 A `ui_surface` prompt carries the ordered criteria as its definition of done, marks
 which are required, and states that the section is closed by its pipeline rather
-than by a status write: the agent implements, re-audits, submits for review, and
-generates one test step per criterion. The human answers Gate 1; `verified_at`
+than by a status write: the agent implements, iterates the UI with the user on the
+platform's viewports until they like it, re-audits, submits for review, and
+generates one test step per criterion plus functional steps for the section's
+flows, cross-page ones included. The human answers Gate 1; `verified_at`
 follows from the passing steps.
 
 The prompt also carries the section's `next_action`, route and navigation hint, so
@@ -513,9 +522,9 @@ The prompt must state `queue_role`. A reserve prompt says to start only after co
 `scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, `verification_mode=browser|non_browser`, and the required tests or build checks. For browser mode, record the exact scenario plus relevant viewports/devices. A copied prompt must still be actionable when the source has no attachments.
 
 For `ui_surface + needs_spec`, it is always `verification_mode=browser`, and its
-completion is: the guided walkthrough occurred with the user, both viewports and
-reachable states were shown, and the resulting criteria were saved to
-`tt_ui_surface_criteria`. Prohibited phrases are `zero INSERT`, `fără scriere
+completion is: the guided walkthrough occurred with the user, every viewport of
+the platform's set and the reachable states were shown, and the resulting
+criteria were saved to `tt_ui_surface_criteria`. Prohibited phrases are `zero INSERT`, `fără scriere
 DB`, `draft gata`, and any instruction to copy/paste from an old document. The
 criteria approval is Gate 0; Gate 1 is the visual verdict after build and audit.
 
@@ -555,6 +564,8 @@ WHERE project_id = <project_id>
 
 -- Repeat only for approved codebase gaps selected today.
 -- Never set status during an upsert: preserve human progress.
+-- A gap To-Do never wraps UI-section work: sections enter the plan
+-- only as ui_surface items, whatever the project.
 INSERT INTO public.tt_todos (
   title,
   description,
