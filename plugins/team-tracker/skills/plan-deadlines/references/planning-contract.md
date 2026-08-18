@@ -715,6 +715,10 @@ VALUES
 COMMIT;
 ```
 
+`repo_state` on `tt_delivery_plans` is a **bare jsonb array** of repo objects
+(`[{"label", "branch", "head_sha", "dirty"}]`), never an object wrapping one
+(`{"repos": [...]}` breaks Productivitate's repo panel and the copied prompts).
+
 A `ui_surface` item uses `source_id = tt_ui_surfaces.id` and
 `stable_key = 'ui_surface:' || surface.stable_key`. Inside the same transaction,
 move the stage forward only where the queued action requires it:

@@ -116,6 +116,16 @@ honest sections over one called "Toată pagina"; if a previous run left such a
 lump, split it and say in the report that you did. Do not invent sections that
 do not correspond to something visible on screen.
 
+**Shared layout chrome is inventoried once, not per page.** A component rendered
+by a shared layout on many pages — a sidebar, an auth brand panel, an account
+navigation — gets ONE unit, on the layout's hub page (or wherever it already has
+criteria/progress). Do not create a unit for it on every page that renders it:
+each duplicate would demand its own spec, human verdict and tests for identical
+pixels. Per-page presence and the correct active state are covered by that
+page's own main-section scenarios. If previous runs left such duplicates, do not
+recreate archived ones and list the ones still active in the report so the human
+can descope them (`required_for_launch` is manual — the audit never changes it).
+
 Each surface needs:
 
 - `stable_key` from `audit-contract.mjs stable-key`;
