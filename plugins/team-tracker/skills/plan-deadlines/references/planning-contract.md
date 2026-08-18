@@ -276,6 +276,12 @@ verified or delivered until it has them.
   `ready_for_production` or `shipped`; otherwise it waits on coverage with zero
   planned hours and the report names how many required units still need
   spec/build/verdict/tests. Already-launched projects ship it incrementally.
+  The gate also holds plain tracker items whose action is a release build,
+  signing, store submission or store application, TestFlight/internal-testing
+  distribution, reviewer-account provisioning, or publishing the production
+  build. Zero active units flagged `required_for_launch` means the gate FAILS
+  (never vacuously passes): the blocker is the missing flagging session, and
+  that session is what gets planned first.
 - `shipped` — excluded from the candidate pool.
 
 Launch scope is declared on the page and cascades down: toggling
