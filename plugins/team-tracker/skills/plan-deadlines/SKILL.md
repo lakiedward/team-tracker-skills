@@ -56,6 +56,7 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 24. A `needs_spec` task produces no source-code diff, branch, commit, PR, merge, Markdown draft, or approval. It walks the current UI, asks the user targeted questions, and writes the resulting criteria only after those answers.
 25. If the running section cannot be opened in a browser or preview, do not replace the walkthrough with code reading. Report the spec session blocked and leave the criteria unwritten.
 26. Any selected task that changes code must pass the Cursor Bugbot merge gate in `../references/cursor-bugbot-merge-gate.md` after verification and before merge. Fix all actionable findings and rerun Bugbot; unavailable, ambiguous, or unresolved Bugbot output blocks merge.
+27. **Launch gate on deploy/publish work.** While the project's own launch outcome (production build published on the final domain / made public) is not yet met, no deploy or publish action may enter the daily queue — neither a section's `ready_for_production` step nor a production-deploy codebase gap — until launch UI coverage is complete: **every `required_for_launch` unit is at `ready_for_production` or `shipped`**. Until then, `ready_for_production` sections appear under «Gata de producție» with zero planned hours and the explicit blocker «UI coverage sub 100% — X secțiuni required mai au nevoie de spec/build/verdict/teste», and the deploy gap stays proposed, blocked on coverage. A project already live in production (its launch outcome met) ships finished sections incrementally as usual; the gate protects only the first public launch.
 
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
@@ -313,7 +314,7 @@ Rank executable candidates by:
 Within UI sections, prefer the cheapest step to production, because that is what
 shortens the launch queue fastest:
 
-1. `ready_for_production` — one deploy away;
+1. `ready_for_production` — one deploy away **unless the launch gate (rule 27) holds it**: on a not-yet-launched project with required units still before `ready_for_production`, this step waits on coverage, consumes no hours, and the cheapest queueable step becomes the next one below;
 2. `needs_work` — you already know exactly what was asked;
 3. `needs_tests` — mechanical, generated from the criteria;
 4. `build`;
@@ -356,7 +357,7 @@ Use this order for every project:
 2. **Pregătire lansare** — outcomes by status, current evidence and blockers, plus the diff from the previous snapshot. Keep the section track and the non-UI track separate; never blend them into one percentage.
 3. **Secțiuni de lansare — X/Y în producție** — the launch surfaces grouped by `next_action`, with the criteria coverage for each.
 4. **Așteaptă approve-ul tău — N secțiuni** — every `blocked_on_you` section, marking which ones expired because the code changed. State that these consume no planned hours and that the day cannot close them without the user.
-5. **Gata de producție — N secțiuni** — every `ready_for_production` section, so a deploy is never forgotten.
+5. **Gata de producție — N secțiuni** — every `ready_for_production` section, so a deploy is never forgotten. On a not-yet-launched project state the launch gate explicitly: these ship only when every required unit reaches `ready_for_production` or `shipped`; show the remaining coverage count (rule 27).
 6. **Obligatoriu azi — N taskuri / Xh din Yh** — the committed queue and any uncovered committed gap.
 7. **Dacă termini mai devreme — N taskuri / până la Xh** — ordered reserve, reserve coverage/gap, and the gross-hour stop rule.
 8. For each selected action:
@@ -576,6 +577,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] No unpromoted AI finding became a candidate or generated task.
 - [ ] Every section action came from `next_action`, not from a re-derived lifecycle.
 - [ ] Every queued UI action is a `ui_surface` plan item; no section work was wrapped in a generated To-Do, for any project.
+- [ ] The launch gate held: on a project whose launch outcome is not met, no deploy/publish task was queued while any required unit sat before `ready_for_production`; gated items were reported with the coverage blocker instead.
 - [ ] A `needs_spec` action was queued as a guided browser session with the user, never as criteria composed from source and handed over for a rubber stamp.
 - [ ] Every `needs_spec` item uses `verification_mode=browser`, names the platform's full viewport set (web: 1440×900, 768×1024 and 375×812; native-only: 375×812), and ends in criteria saved to `tt_ui_surface_criteria`.
 - [ ] No `needs_spec` item contains `zero INSERT`, `fără scriere DB`, `draft gata`, an old `scope_reason`, or instructions to copy/paste, document, branch, commit, PR, merge, or answer a human gate.

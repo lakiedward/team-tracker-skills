@@ -270,6 +270,11 @@ verified or delivered until it has them.
   steps (without `criterion_id`) for everything the section can do, cross-page
   flows included, and run them; fix and re-run failing steps.
 - `ready_for_production` — merge, deploy, verify, then mark `shipped_at`.
+  Launch-gated: on a project whose launch outcome is not yet met, this step is
+  queueable only when every `required_for_launch` unit is at
+  `ready_for_production` or `shipped`; otherwise it waits on coverage with zero
+  planned hours and the report names how many required units still need
+  spec/build/verdict/tests. Already-launched projects ship it incrementally.
 - `shipped` — excluded from the candidate pool.
 
 Launch scope is declared on the page and cascades down: toggling
