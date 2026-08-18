@@ -247,8 +247,12 @@ verified or delivered until it has them.
   An older PR, commit, Markdown draft, plan item, `scope_reason`, or source-code
   note may be read as historic evidence, but can never replace the walkthrough,
   become a copy/paste list, or define the current criteria. The loop is
-  show → one question → stop and wait: no criterion is written before the
-  user's first answer, and a session without answers saves nothing. The task does not
+  per visible element: screenshots first, then a verdict question per element
+  ("like it? want it different?"), with the executor's own observations turned
+  into proposals with options; each short round ends with a stop to wait for
+  answers. No criterion is written before the user's first answer, every saved
+  criterion maps to an explicit answer, and a session without answers saves
+  nothing. The task does not
   create a source diff, branch, commit, PR, merge, document, or human-gate
   write. If browser/preview access is unavailable, report the session blocked
   rather than composing criteria from code.
