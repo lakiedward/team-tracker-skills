@@ -248,9 +248,10 @@ verified or delivered until it has them.
   note may be read as historic evidence, but can never replace the walkthrough,
   become a copy/paste list, or define the current criteria. The loop is
   per visible element: screenshots first, then a verdict question per element
-  ("like it? want it different?"), with the executor's own observations turned
-  into proposals with options; each short round ends with a stop to wait for
-  answers. No criterion is written before the user's first answer, every saved
+  ("like it? want it different?"), asked through the client's structured
+  question tool with selectable options (keep as is / proposed change / a real
+  alternative), with the executor's own observations turned into proposals with
+  options; each short round ends with a stop to wait for answers. No criterion is written before the user's first answer, every saved
   criterion maps to an explicit answer, and a session without answers saves
   nothing. The task does not
   create a source diff, branch, commit, PR, merge, document, or human-gate
