@@ -4,7 +4,7 @@ Read this reference before querying or writing delivery-planning data.
 
 ## Data ownership
 
-- `tt_delivery_profiles`: human-owned outcome, definition of done, deadline, owner, and future weekly capacity.
+- `tt_delivery_profiles`: human-owned outcome, definition of done, deadline, owner, future weekly capacity, and `launch_stage` (`pre_launch` / `in_production`) with the `launched_at` the database stamps. `launch_stage` is a human gate like the section ones: a trigger rejects agent-side SQL writes to it, so this skill only reads it. Whether the project is already live is never re-derived from release outcomes or a reachable URL — that column is the answer.
 - `tt_delivery_plans`: approved immutable daily snapshots, except `status` when superseded.
 - `tt_delivery_plan_items`: only the approved committed and reserve queues for one workday. `queue_role` is independent from phase and deadline necessity; manual override columns remain human-owned.
 - `tt_work_log_items`: high-confidence Pontaj links used to improve velocity.
@@ -34,6 +34,8 @@ SELECT
   member.name AS owner_name,
   profile.weekly_capacity_hours,
   profile.planning_enabled,
+  profile.launch_stage,
+  profile.launched_at,
   profile.updated_at
 FROM public.tt_projects project
 LEFT JOIN public.tt_delivery_profiles profile ON profile.project_id = project.id
@@ -271,11 +273,11 @@ verified or delivered until it has them.
   steps (without `criterion_id`) for everything the section can do, cross-page
   flows included, and run them; fix and re-run failing steps.
 - `ready_for_production` — merge, deploy, verify, then mark `shipped_at`.
-  Launch-gated: on a project whose launch outcome is not yet met, this step is
-  queueable only when every `required_for_launch` unit is at
+  Launch-gated: on a project whose profile says `launch_stage = 'pre_launch'`,
+  this step is queueable only when every `required_for_launch` unit is at
   `ready_for_production` or `shipped`; otherwise it waits on coverage with zero
   planned hours and the report names how many required units still need
-  spec/build/verdict/tests. Already-launched projects ship it incrementally.
+  spec/build/verdict/tests. A project at `in_production` ships it incrementally.
   The gate also holds plain tracker items whose action is a release build,
   signing, store submission or store application, TestFlight/internal-testing
   distribution, reviewer-account provisioning, or publishing the production
