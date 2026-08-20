@@ -1,0 +1,8 @@
+interface:
+  display_name: "Amana taskul"
+  short_description: "Amana doar daca motivul rezista la verificare"
+  brand_color: "#F59E0B"
+  default_prompt: "Use $amana on a task pasted from Productivitate: identify the plan item, ask why it is being postponed, test that reason against tracker and Pontaj evidence, then either defer it with a return date and a replacement, or repair the task and keep it in today's queue."
+
+policy:
+  allow_implicit_invocation: true

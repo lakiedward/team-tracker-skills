@@ -59,6 +59,8 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 27. **Launch gate on deploy/publish work.** While the project's delivery profile says `launch_stage = 'pre_launch'`, no deploy or publish action may enter the daily queue — neither a section's `ready_for_production` step nor a production-deploy codebase gap — until launch UI coverage is complete: **every `required_for_launch` unit is at `ready_for_production` or `shipped`**. Until then, `ready_for_production` sections appear under «Gata de producție» with zero planned hours and the explicit blocker «UI coverage sub 100% — X secțiuni required mai au nevoie de spec/build/verdict/teste», and the deploy gap stays proposed, blocked on coverage. A project whose profile says `launch_stage = 'in_production'` ships finished sections incrementally as usual; the gate protects only the first public launch. The stage is the human's word, never an inference: do not derive it from release outcomes, deploy history or a reachable URL, and do not write the column — the database rejects agent writes to `launch_stage` exactly as it does for the section gates. If the evidence says the project is already live while the profile still reads `pre_launch`, report the contradiction and ask the user to press «În producție» in Productivitate → Configurație proiect before any deploy work is planned.
     The same gate reads plain tracker items: a bug, feature or To-Do whose action is a release build, signing, a store submission or store application (App Store / Play, purchase-link programs included), a TestFlight/internal-testing distribution, reviewer-account provisioning for review, or publishing the production build, may not enter the committed queue while the gate fails — it stays visible in the proposal, blocked on coverage, with the same blocker text. And «coverage completă» presupposes the triage exists: when the project has **zero** active units flagged `required_for_launch`, the gate FAILS by definition — the blocker is «required_for_launch netriat: 0 din N unități active marcate» — and the first planned step is the flagging session over the inventory (mark what the launch actually needs, descope the rest; the page-level toggle cascades), not the publish work. A gate that is vacuously true because nobody flagged anything must never pass.
 
+28. **Honor an active deferral.** A source whose description ends with a deferral marker written by `/amana` — `[amânat <data> → <retur> · <categorie>] …` — is not an executable candidate until its return date arrives. While the return date is still in the future, exclude it from both queues, do not let it consume hours, and report it under «Amânate» with its reason, its return date and how many times it has been deferred. On or after the return date it becomes an ordinary candidate again and the marker is history, not a veto. Never write, edit or delete a deferral marker: `/amana` owns it, and an item that keeps returning with a fresh marker is a task to repair, not to reschedule.
+
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
 ## Phase 0 — Resolve scope
@@ -300,7 +302,7 @@ Historical Pontaj hours do not change these available hours.
 
 ## Phase 6 — Rank and pack both daily queues
 
-Exclude completed, archived, duplicate, unrelated, and dependency-blocked candidates. A blocking dependency becomes a candidate. Exclude every `shipped` and `blocked_on_you` section: the first is done, the second is waiting on the human.
+Exclude completed, archived, duplicate, unrelated, and dependency-blocked candidates. A blocking dependency becomes a candidate. Exclude every `shipped` and `blocked_on_you` section: the first is done, the second is waiting on the human. Exclude every source carrying an active `/amana` deferral marker whose return date has not arrived (rule 28), and keep it visible as deferred rather than silently dropped.
 
 Rank executable candidates by:
 
@@ -376,7 +378,7 @@ Use this order for every project:
    - verification mode; for `browser`, the exact scenario and viewports/devices that must pass before the source may become `Fixed`/`Gata`.
    - for a section: its `next_action`, the criteria it advances, and which of them stay uncovered afterwards.
    - for `needs_spec`: the exact browser walkthrough, the questions the executor will ask, the states to attempt, and the rule that no historical draft/PR/document is a substitute for the user's answers.
-9. **Ce a fost verificat** — complete tracker counts and exclusions by source, sections included.
+9. **Ce a fost verificat** — complete tracker counts and exclusions by source, sections included. List separately every item held back by an active deferral marker, with its reason, return date and deferral count, so a postponed task stays visible instead of vanishing from the day.
 10. **Ce lipsește din tracker** — codebase gaps, including unselected gaps.
 11. **UI Coverage** — separate manual coverage, current AI coverage and required pages launch-ready; list stale/blocked/native surfaces, current objective blockers, promoted sources and sections without criteria. Never print a blended percentage.
 12. **Ritm din Pontaj** — chosen per-source P50/P75, applied correction factor, sample, provisional/direct state, and feature fallback when used. Sections have no calibration yet; say so instead of borrowing another type's rate.
@@ -599,6 +601,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Browser-required work moves to Focus `În testare` after implementation and remains there until the recorded browser scenario passes. A failed, unavailable, or undocumented browser test can never become `Fixed`/`Gata`.
 - [ ] The copy-ready prompt closes the tracker loop only after every required verification passes: a verified bug becomes `Fixed`; a feature or To-Do becomes `Gata`; test results are recorded per step. A failed tracker update must be reported and must not be presented as a completed task.
 - [ ] No full backlog timeline was generated or persisted.
+- [ ] Active `/amana` deferrals were honored: no source was queued before its return date, each was reported with reason and date, and no marker was written or altered.
 - [ ] Only selected daily gap To-Dos are created after approval.
 - [ ] The exact daily diff is visible.
 - [ ] No write occurred before approval.

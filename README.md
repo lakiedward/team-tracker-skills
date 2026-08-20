@@ -10,6 +10,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `orchestrate` | Mătură board-ul Focus al unui proiect și coordonează lucrul pe itemele active. |
 | `pontaj` | Pontează orele tale de lucru din sesiunea curentă în `tt_work_logs` (pagina „Pontaj"). |
 | `plan-deadlines` | Recitește repo-urile și tot backlog-ul, apoi propune pentru azi câte taskuri încap în orele disponibile și ritmul din Pontaj; scrie numai după confirmare. |
+| `amana` | Amână un task din planul zilei — dar întâi te întreabă **de ce**, verifică motivul în tracker/Pontaj/estimări și amână doar dacă rezistă; altfel îl feliază, îl rescrie sau îl reordonează și îl ține azi. Amânarea primește dată de retur, motiv scris și un înlocuitor în locul lui. |
 | `writing-tester-test-plans` | Scrie un plan de test pentru un tester uman (tt_test_plans / tt_test_items). |
 | `writing-ai-test-plans` | Scrie un plan de test rulat automat de AI. |
 | `auto-running-test-plans` | Rulează automat planurile neatinse pe preview-ul local. |
