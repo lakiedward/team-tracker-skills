@@ -7,8 +7,20 @@ video/screenshots/loguri pe PR. Ei implementează; **verificarea și merge-ul r�
 
 ## Precondiții (o dată per mașină)
 
-- `CURSOR_API_KEY` în mediu — generată de om în Cursor Dashboard → API Keys. Lipsește →
-  fallback local, anunță omul o singură dată pe sesiune.
+- `CURSOR_API_KEY` — generată de om în Cursor Dashboard → API Keys.
+
+  **CAPCANĂ (Windows):** `setx` scrie în registru, dar procesele moștenesc blocul de mediu
+  al PĂRINTELUI, nu registrul. Dacă Claude Code a pornit înainte de `setx`, nici el nici
+  vreun proces-copil al lui nu vede variabila — oricât de nou ar fi shell-ul. Simptom:
+  „nu am API key" într-o sesiune, deși cheia e salvată.
+
+  **Înainte de a declara flota indisponibilă, citește registrul:**
+  ```powershell
+  [Environment]::GetEnvironmentVariable('CURSOR_API_KEY','User')
+  ```
+  Dacă întoarce o valoare, folosește-o (pas-o ca `$env:CURSOR_API_KEY` în invocările
+  scriptate) și menționează o dată că o repornire de Claude Code ar curăța situația.
+  Doar dacă și registrul e gol e cazul de fallback local.
 - On-demand billing activat + spending limit setat de om (API-ul refuză lansarea fără
   ~$2 headroom sub limită). Limita mică e plasă de siguranță, nu cost: agenții consumă
   întâi pool-ul inclus al abonamentului (Ultra ≈ $400/lună echivalent API), abia apoi
@@ -121,7 +133,40 @@ raportează — nu se re-lansează orbește același prompt.
   (`New-Item -ItemType Junction`) în loc de `npm install`. La curățare, scoate junction-ul
   cu `cmd /c rmdir` (FĂRĂ `/s`) înainte de `Remove-Item -Recurse`, altfel riști să ștergi
   `node_modules`-ul real prin legătură. Verifică numărul de intrări înainte și după.
-- **CLI-ul `cursor-agent` nu înlocuiește API-ul aici.** Poate trimite în cloud cu prefixul
-  `&`, dar fără parametri de model — deci ai pierde `fast:false` și ai plăti dublu.
-  `agent worker start` (înregistrare de mașină ca worker, pentru `env: machine`) e singurul
-  motiv real de a-l instala, când vrem rulări pe hardware propriu.
+## CLI-ul `cursor-agent` — ce e și ce nu e
+
+Instalat 2026-08-25 (`%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd`, v2026.08.11). Testat,
+nu presupus. Două afirmații anterioare din acest document erau GREȘITE și au fost corectate:
+CLI-ul *poate* trimite în cloud (prefixul `&`) și *poate* fixa parametrii modelului.
+
+**Numele de modele în CLI sunt PLATE, nu params.** Nu folosi forma din API și nici sintaxa
+cu paranteze din `--help`; pentru modelele Cursor, efortul și `fast` sunt în nume:
+
+```
+cursor-grok-4.6-xhigh        <- configul decis de Edy (xhigh, FĂRĂ fast)
+cursor-grok-4.6-xhigh-fast   <- varianta dublă la preț; a NU se folosi
+```
+`cursor-agent models` listează tot (208 pe contul lui Edy). Rulează-l dacă un nume e respins.
+
+**Autentificarea scriptată e canal separat de login.** `cursor-agent status` poate raporta
+„Logged in" în timp ce `models` eșuează cu „Authentication required". Orice invocare
+neinteractivă are nevoie de `CURSOR_API_KEY` pasat explicit în mediu (vezi capcana de la
+Precondiții).
+
+**Ce merită folosit din el:**
+- `-w, --worktree [name]` + `--worktree-base <branch>` — worktree izolat în
+  `~/.cursor/worktrees/<repo>/<name>`, cu scripturi de setup din `.cursor/worktrees.json`.
+  **Metoda standard pentru worktree-ul de verificare a unui PR de la flotă** — înlocuiește
+  `git worktree add` + junction manual pe `node_modules` + curățarea lui riscantă.
+- `-p --print` cu `--output-format json|stream-json`, plus `create-chat` (întoarce un ID) —
+  pentru execuție locală scriptabilă, când chiar e nevoie.
+
+**Ce NU înlocuiește:** lansarea structurată în cloud. Prefixul `&` e predare în sesiune, nu
+launch cu contract. Pentru agenți care lucrează cu mașina omului stinsă și atașează video pe
+PR, **API-ul rămâne calea**. CLI și API sunt complementare, nu concurente.
+
+**`cursor-agent worker`** („private cloud worker that connects to Cursor to run agents in
+your environment") activează `env: machine` — agenți lansați din cloud care rulează pe
+hardware-ul omului, cu dev server-ul și datele lui reale. Promițător, dar NEPROBAT, și
+reintroduce dependența de PC pornit. De păstrat pentru ziua în care un agent din cloud pică
+*fiindcă* nu are datele reale — nu înainte.

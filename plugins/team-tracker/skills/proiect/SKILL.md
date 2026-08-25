@@ -82,8 +82,12 @@ Regula de rutare pentru fiecare task care intră în lucru:
 - **Local, chatul însuși** — sesiuni ghidate și orice task interactiv; schemă/migrări;
   taskuri atât de mici încât dispatch-ul costă mai mult decât munca; orice atinge secrete
   locale sau mediul mașinii.
-- Fără `CURSOR_API_KEY` în mediu → totul local; anunță omul **o singură dată** pe sesiune
-  că flota e indisponibilă, apoi nu mai bate la ușa asta.
+- Fără `CURSOR_API_KEY` în mediu, **verifică întâi registrul** înainte de a declara flota
+  indisponibilă: `[Environment]::GetEnvironmentVariable('CURSOR_API_KEY','User')`. Pe Windows
+  `setx` scrie în registru, dar procesele moștenesc mediul părintelui — dacă Claude Code a
+  pornit înainte de `setx`, variabila lipsește din mediu deși cheia există. Dacă registrul o
+  are, folosește-o și spune o dată că o repornire ar curăța situația. Doar dacă lipsește și
+  de acolo → totul local, anunțat **o singură dată** pe sesiune.
 
 ## Restul skill-urilor
 
