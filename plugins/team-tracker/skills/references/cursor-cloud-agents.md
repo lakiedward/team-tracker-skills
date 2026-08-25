@@ -95,3 +95,33 @@ launch (POST /v1/agents)
 `ERROR`/`EXPIRED`/`CANCELLED`: citește ce există în `result` și pe branch; ce e
 recuperabil se recuperează printr-un agent nou cu context re-injectat; ce nu, se
 raportează — nu se re-lansează orbește același prompt.
+
+## Lecții din prima rulare reală (BetRO #678, 2026-08-25)
+
+- **`latestRunId` de pe obiectul agent este sursa de adevăr, NU `runId` returnat la
+  creare.** Un al doilea run poate apărea singur. Monitorul a interogat 3½ ore run-ul
+  inițial (rămas `RUNNING`) în timp ce agentul terminase demult și deschisese PR-ul.
+  Verifică ÎNTOTDEAUNA `GET /v1/agents/{id}` → `latestRunId` înainte de a raporta progres,
+  și confirmă cu realitatea de pe GitHub (`gh pr list`), nu doar cu API-ul.
+- **Un run se poate bloca în `CREATING` la nesfârșit** (aici: 5 ore). `DELETE /v1/agents/{id}`
+  curăță agentul cu tot cu runul mort.
+- **`/stream` e conexiune SSE lungă**, nu un dump interogabil — atârnă dacă o apelezi
+  sincron. Pentru vizibilitate live folosește cursor.com/agents, nu polling pe stream.
+- **On-demand billing NU a fost necesar.** Lansarea a mers direct din abonamentul Ultra.
+  Afirmația contrară venea de pe forum, nu din docs. Nu cere omului să activeze facturare
+  suplimentară „preventiv" — lansează și citește eroarea dacă apare; o cerere respinsă e gratis.
+- **Agentul respectă contractul, dar NU verifică.** A livrat PR draft, a bifat onest doar
+  ce a făcut, a lăsat nebifate testele și browserul, și a scris singur „do not merge".
+  Planifică de la început ca ÎNTREAGA verificare (teste, tsc, lint, browser, Bugbot) să
+  cadă pe orchestrator. Nu e un defect al agentului; e diviziunea corectă.
+- **Verdictul Bugbot se citește din `conclusion`** (`success` = curat), prin
+  `gh api repos/{owner}/{repo}/commits/{sha}/check-runs` — nu din eticheta „pass" a lui
+  `gh pr checks`, și nu din numărul de comentarii.
+- **Worktree de verificare:** leagă `node_modules` cu junction de checkout-ul principal
+  (`New-Item -ItemType Junction`) în loc de `npm install`. La curățare, scoate junction-ul
+  cu `cmd /c rmdir` (FĂRĂ `/s`) înainte de `Remove-Item -Recurse`, altfel riști să ștergi
+  `node_modules`-ul real prin legătură. Verifică numărul de intrări înainte și după.
+- **CLI-ul `cursor-agent` nu înlocuiește API-ul aici.** Poate trimite în cloud cu prefixul
+  `&`, dar fără parametri de model — deci ai pierde `fast:false` și ai plăti dublu.
+  `agent worker start` (înregistrare de mașină ca worker, pentru `env: machine`) e singurul
+  motiv real de a-l instala, când vrem rulări pe hardware propriu.
