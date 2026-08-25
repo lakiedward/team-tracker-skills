@@ -142,14 +142,14 @@ try {
 
   // Smoke checks against real local repos: run them only where the checkout
   // exists, so the suite stays green on machines without these projects.
-  const culcushPath = 'C:/Users/Laki Edward/Desktop/culcus.ro/culcus.ro';
+  const culcushPath = 'C:/Users/lakie/Desktop/culcus.ro/culcus.ro';
   if (existsSync(culcushPath)) {
     const culcush = inventoryUiSurfaces(culcushPath, 'website');
     assert.equal(culcush.routes.some((route) => route.route_pattern === '/checkout'), true);
     assert.equal(culcush.routes.some((route) => route.route_pattern === '/admin'), true);
   }
 
-  const betroPath = 'C:/Users/Laki Edward/Desktop/BETRO';
+  const betroPath = 'C:/Users/lakie/Desktop/BETRO';
   if (existsSync(betroPath)) {
     const betro = inventoryUiSurfaces(betroPath, 'app');
     assert.equal(
