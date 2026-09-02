@@ -47,7 +47,7 @@ coada zilei, ce s-a lucrat recent. Raportul e punctul de plecare al conversație
 
 | Tip task | Omul | Chatul (orchestratorul) |
 |---|---|---|
-| **Sesiune ghidată (UI)** | conduce răspunsurile + 2 apăsări: „Aprob criteriile", „Producție" | conduce sesiunea în browser, salvează criteriile în `tt_ui_surface_criteria`, apoi build → verificare → merge |
+| **Sesiune ghidată (UI)** | conduce răspunsurile + 2 apăsări: „Aprob criteriile", „Producție" | conduce sesiunea în browser, întreabă la final și ce lipsește față de o secțiune de felul ei (cu recomandare: adaugă acum / mai târziu / nu), salvează criteriile în `tt_ui_surface_criteria` și lipsurile mari sau amânate ca `tt_features` legate de secțiune, apoi build → verificare → merge |
 | **Bug** | nimic | tot, cap-coadă |
 | **Feature non-UI** | nimic | tot, cap-coadă |
 | **Feature cu UI** | o privire la final: „merge cum vreau?" | tot, inclusiv verificarea completă, **înainte** de privirea omului |
