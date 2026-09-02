@@ -99,6 +99,16 @@ threshold — it is a reason to look at what is between today and it. Say that.
 `tt_milestones` — `project_id` (NOT NULL, CASCADE), `title`, `due_date` (date),
 `importance` (`mini` | `major`), `done_at` (timestamptz, NULL = neatinsă), `note`.
 
+`note` poartă două lucruri, în ordinea asta: **ce intră în bornă**, ca referințe
+de tracker pe care le poate citi o mașină — `#315`, `#319` pentru bug/feature/To-Do
+(prefixate cu tipul când numărul singur ar fi ambiguu: `bug #12`, `todo #4`) și
+`secțiune <stable_key>` pentru o secțiune UI — apoi motivul unei mutări, dacă a
+fost mutată. `/plan-deadlines` citește exact aceste referințe (faza 1, 6b) ca să
+ranking-uiască taskurile bornei după data ei, nu după deadline-ul proiectului; o
+bornă fără referințe e pentru el doar o dată pe linie. Când omul îți spune ce
+intră într-o bornă, scrie referințele în `note` și treci itemele din `Propus` în
+`Planificat`, cu confirmarea lui.
+
 Starea nu e o coloană: `done_at` e faptul, iar „ratată" se derivă din `due_date <
 azi`. Nu adăuga un `status` — ar trebui împrospătat zilnic de cineva și ar minți
 între împrospătări.

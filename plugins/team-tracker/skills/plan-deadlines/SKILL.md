@@ -1,6 +1,6 @@
 ---
 name: plan-deadlines
-description: Scan one configured Team Tracker project or the active portfolio to decide what should be worked on today. Use when the user invokes "/plan-deadlines", asks what to do today, asks whether a deadline is safe, or wants the daily queue refreshed. On every run, rebuild launch readiness from all bugs, features, test plans, To-Dos, and registered codebases, calibrate estimates from Pontaj, then propose a committed queue plus visible reserve work up to the project's gross daily hours. Show a read-only proposal and diff first; write only after explicit confirmation.
+description: Scan one configured Team Tracker project or the active portfolio to decide what should be worked on today. Use when the user invokes "/plan-deadlines", asks what to do today, asks whether a deadline is safe, or wants the daily queue refreshed. On every run, rebuild launch readiness from all bugs, features, test plans, To-Dos, and registered codebases, read the project's open milestones (tt_milestones, set with /borne) so the queue leads to the nearest threshold and not only to the deadline, calibrate estimates from Pontaj, then propose a committed queue plus visible reserve work up to the project's gross daily hours. Show a read-only proposal and diff first; write only after explicit confirmation.
 ---
 
 # Plan Deadlines
@@ -93,6 +93,7 @@ For every included project:
 4. Expand all active item descriptions and only relevant completed or archived evidence.
 5. Read attachment paths for active bugs and features, plus test-item attachment paths. For every selected candidate with attachments, generate temporary signed URLs and inspect every image before estimating or proposing it. The attachment buckets are admin-only: sign with the `service_role` key from `SUPABASE_SERVICE_ROLE_KEY`, never with `anon`.
 6. Read the current and recent delivery plans, their items, locked overrides, previous `release_readiness`, `tt_project_velocity`, `tt_delivery_calibration`, work logs, and high-confidence `tt_work_log_items`.
+6b. Read `tt_milestones` for the project — every row with `done_at IS NULL`, ordered by `due_date` — plus the rows reached in the last 14 days. A milestone is a threshold the human set between today and the deadline (`/borne`); the daily queue has to lead to the nearest one, not only to the far deadline. For each open milestone record `title`, `due_date`, `importance`, `note`, and the tracker items it names: `/borne` writes them into `note` as `#<id>` references (bug, feature, To-Do or `secțiune <stable_key>`), so resolve every reference to its source. A milestone whose `due_date < today` and `done_at IS NULL` is **missed**, not stale: report it, never hide it, and never mark it done — `done_at` is the human's.
 7. Read UI Coverage:
    - `tt_section_pipeline` for every active surface, which already carries `next_action`, `verdict_stale`, criteria coverage and blocking-finding counts;
    - `tt_ui_surface_criteria` for every surface, in `order_index` order;
@@ -311,7 +312,7 @@ Rank executable candidates by:
 3. mandatory definition-of-done outcome;
 4. failing verification, build, signing, store, payment, auth, security, migration, or data-loss work;
 5. already-started work that can be closed today;
-6. earliest deadline impact;
+6. earliest deadline impact — where the deadline is the **nearest open milestone that names the candidate** (Phase 1, 6b), and the project deadline only for candidates no milestone names; a candidate named by a milestone due within the next 7 working days outranks every unnamed candidate of the same or lower tracker priority, and a candidate named by a missed milestone ranks as if due today;
 7. tracker priority;
 8. higher confidence;
 9. stable source key.
@@ -358,7 +359,7 @@ The script creates:
 
 Use this order for every project:
 
-1. **Deadline health** — deadline, working days, aggregate remaining low/high hours, gross capacity, feasibility, and overload, plus launch UI coverage on `pre_launch` projects: «UI: X/Y unități required la ready_for_production/shipped» — or «required_for_launch netriat: 0/N unități marcate» when the flagging session has not happened (rule 27). Feasibility on such a project can never read plain `on_track` while the coverage gate fails; qualify it «on_track (blocat de UI coverage pentru lansare)».
+1. **Deadline health** — deadline, working days, aggregate remaining low/high hours, gross capacity, feasibility, and overload. Right under it, **Borne** — every open milestone in date order: «<title> · <due_date> · <mini|major> · N zile · leagă #… (X/N gata)», the sum of remaining low/high hours of the items it names against the working days left to it, and, when that sum does not fit, the same «cere N× ritmul de acum» figure `/borne` uses. A missed milestone is printed first and labelled «RATATĂ — spune-mi dacă o muți sau o marchezi atinsă», and a milestone within 7 working days that names nothing in today's committed queue gets an explicit line saying so, so the day cannot quietly ignore the nearest threshold. No open milestone: print «Borne: niciuna — /borne le pune» once, not per item. Then launch UI coverage on `pre_launch` projects: «UI: X/Y unități required la ready_for_production/shipped» — or «required_for_launch netriat: 0/N unități marcate» when the flagging session has not happened (rule 27). Feasibility on such a project can never read plain `on_track` while the coverage gate fails; qualify it «on_track (blocat de UI coverage pentru lansare)».
 2. **Pregătire lansare** — outcomes by status, current evidence and blockers, plus the diff from the previous snapshot. Keep the section track and the non-UI track separate; never blend them into one percentage.
 3. **Secțiuni de lansare — X/Y în producție** — the launch surfaces grouped by `next_action`, with the criteria coverage for each.
 4. **Așteaptă approve-ul tău — N secțiuni** — every `blocked_on_you` section, marking which ones expired because the code changed. State that these consume no planned hours and that the day cannot close them without the user.
@@ -368,7 +369,7 @@ Use this order for every project:
 8. For each selected action:
    - verb-led action;
    - tracker source/id, `secțiune <stable_key>`, or `gap propus`;
-   - why now and what it unblocks;
+   - why now and what it unblocks — naming the milestone when one names the item («borna „Sprint cu partenerul", 9 sept»), and writing it into the item's `scope_reason` as `milestone=<title> · <due_date>` so the Productivitate prompt carries it;
    - observable completion criterion for today;
    - today's hours plus full remaining low/high hours;
    - confidence;
@@ -574,6 +575,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] The task count was produced by hours and estimates, never fixed at three.
 - [ ] Base committed capacity is gross daily hours minus one hour, except days of at most one hour.
 - [ ] Deadline pressure raised committed work only within gross capacity.
+- [ ] `tt_milestones` was read; every open milestone appears under Deadline health with the items it names, a missed one is labelled as missed and left for the human, and no candidate named by a milestone due within 7 working days was outranked by unnamed work of equal or lower priority without a stated reason.
 - [ ] Committed work was packed by high estimate; reserve coverage was calculated from gross hours minus committed low estimates.
 - [ ] Reserve work is visible, ordered, optional, and carries the gross-hour Pontaj stop rule.
 - [ ] Any uncovered committed or reserve hours are explicit; no filler was invented.
