@@ -1,7 +1,7 @@
 {
   "name": "team-tracker",
   "description": "Skill-uri team-tracker: sesiune de proiect (înrădăcinare + dispatch către Cursor cloud agents), orchestrare Focus, pontaj, planificare zilnică după deadline, audit UI versionat cu dovezi desktop/mobil, planuri de test human/AI, rezolvare pași failed/blocați, bug-uri, features, triage global, borne de proiect puse în conversație, amânarea verificată a taskurilor din planul zilei și cota lunară Supabase din factura org. Toate citesc/scriu controlat în Supabase project ref ntjzghsbrzkvpkniotaj.",
-  "version": "1.32.0",
+  "version": "1.33.0",
   "author": {
     "name": "Edy",
     "email": "lakiedward03@gmail.com"
