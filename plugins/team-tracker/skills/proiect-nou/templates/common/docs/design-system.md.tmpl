@@ -1,0 +1,123 @@
+# Design system — {{PROJECT_NAME}}
+
+The single source of truth is `src/styles/tokens.css`. Everything in this document describes
+that file and the canonical components built on it; when the two disagree, the CSS wins and
+this document is the one to fix. Components never carry a literal colour or size —
+`npm run check:rules` fails the build on the first one it finds.
+
+Chosen on {{CREATED_AT}} by `/proiect-nou`; platform **{{PLATFORM}}**, stack `{{STACK}}`.
+
+## Colour tokens
+
+| Token | Value | Role |
+|---|---|---|
+| `--color-bg` | `{{COLOR_BG}}` | Page background |
+| `--color-surface` | `{{COLOR_SURFACE}}` | Cards, inputs, dialogs, header |
+| `--color-text` | `{{COLOR_TEXT}}` | Body text on `bg` and `surface` |
+| `--color-text-muted` | `{{COLOR_TEXT_MUTED}}` | Secondary text, hints, placeholders |
+| `--color-primary` | `{{COLOR_PRIMARY}}` | The one action colour: primary buttons, links, focus ring |
+| `--color-primary-contrast` | `{{COLOR_PRIMARY_CONTRAST}}` | Text on `primary` and on `danger` |
+| `--color-accent` | `{{COLOR_ACCENT}}` | Highlights, success, decoration — never for actions |
+| `--color-danger` | `{{COLOR_DANGER}}` | Destructive actions, validation errors |
+| `--color-border` | `{{COLOR_BORDER}}` | Borders and dividers |
+
+There is no grey ladder on purpose: one background, one surface, two text colours. A new
+colour is a design decision that goes through `tokens.css` and a line in `CLAUDE.md` →
+*Decisions*, not through a class name.
+
+### Contrast (WCAG AA)
+
+| Pair | Ratio at creation | Minimum |
+|---|---|---|
+| `text` on `bg` | {{CONTRAST_TEXT_ON_BG}} | 4.5:1 |
+| `primary-contrast` on `primary` | {{CONTRAST_PRIMARY}} | 4.5:1 (buttons carry text) |
+| `text-muted` on `surface` | measured by `/ui-audit` | 4.5:1 |
+| `primary` on `bg` (focus ring, links) | measured by `/ui-audit` | 3:1 |
+
+Rules: body text 4.5:1; large text (≥ 24px, or ≥ 19px bold) and UI outlines 3:1; never rely
+on colour alone for state — pair it with text, an icon or a border.
+
+## Spacing
+
+4px base, linear: `--space-1` 4 · `--space-2` 8 · `--space-3` 12 · `--space-4` 16 ·
+`--space-5` 20 · `--space-6` 24 · `--space-7` 28 · `--space-8` 32 (px, written in rem).
+Section padding is `--space-8` vertical; gaps inside a component are `--space-2`/`--space-3`;
+between components `--space-4`/`--space-6`. Anything beyond 32px is a multiple of `--space-8`.
+
+## Type scale
+
+| Token | Size | Use |
+|---|---|---|
+| `--text-xs` | 12px | Badges, counters, timestamps |
+| `--text-sm` | 14px | Metadata, labels, hints, small buttons |
+| `--text-base` | 16px | Body, inputs, buttons |
+| `--text-lg` | 18px | Emphasised body, card titles |
+| `--text-xl` | 20px | Dialog titles |
+| `--text-2xl` | 24px | Section titles |
+| `--text-3xl` | 30px | Page title / hero |
+
+Fonts: `--font-sans` (`{{FONT_SANS}}`) for everything; `--font-display` (`{{FONT_DISPLAY}}`)
+for headings only. No size outside the seven above — no fractional sizes, no one-off pixels.
+
+## Radius and shadow
+
+`--radius-sm` 4px (badges, chips) · `--radius-md` 8px (buttons, inputs, toasts) ·
+`--radius-lg` 16px (cards, dialogs) · `--radius-full` (avatars, pills).
+`--shadow-sm` on cards at rest · `--shadow-md` on dialogs, dropdowns and toasts. Nothing else
+casts a shadow.
+Focus rings: `--outline-width` and `--outline-offset` (2px each). A keyboard focus ring is
+never written as a literal; `npm run conventions` counts a literal `2px` as drift.
+
+## Breakpoints and verification viewports
+
+| Platform | Viewports verified before a section is done | Notes |
+|---|---|---|
+| site | 1440 · 768 · 375 | Mobile first: build at 375, then widen |
+| app | 375 | Capacitor shell; 375 is the design width, safe areas via `env()` |
+
+This project: **{{PLATFORM}}**. The Tailwind `md:` prefix (768px) is the only breakpoint a
+site component may use; a second breakpoint is a decision to record. Astro projects use the
+same 768px media query in `global.css`.
+
+## Canonical component catalog
+
+| Component | File | Variants / props | Rule |
+|---|---|---|---|
+| Button | `components/ui/Button.tsx` | `variant`: primary · secondary · ghost · danger; `size`: sm · md; `loading`, `disabled` | The only button. Filter chips are `secondary` `sm`. One `primary` per view. |
+| Input | `components/ui/Input.tsx` | `label` (required), `hint`, `error`, all native input props | Label is always rendered; errors go through `error`, not a colour class. |
+| Select | `components/ui/Select.tsx` | `label`, `options[]`, `placeholder`, `error` | Native `<select>`; no custom dropdown until a decision says otherwise. |
+| Card | `components/ui/Card.tsx` | `className` | Surface + border + `radius-lg` + `shadow-sm`. |
+| Section | `components/ui/Section.tsx` | `stableKey` (required), `title`, `description` | Renders `<section data-section>`; every UI Coverage section uses it. |
+| Dialog | `components/ui/Dialog.tsx` | `open`, `onClose`, `title` | Native `<dialog>`, `showModal()`, focus returns to the opener. |
+| Toast | `components/ui/Toast.tsx` + `useToast.ts` | `show(message, tone)`; tone: info · success · danger | One `ToastProvider` at the root; `aria-live="polite"`. |
+| EmptyState | `components/ui/EmptyState.tsx` | `title`, `description`, `icon`, `action` | Every list renders it when empty; never an empty box. |
+| Spinner | `components/ui/Spinner.tsx` | `className` | Used by Button `loading`; SVG, never an emoji or GIF. |
+
+Astro projects keep the same catalog as CSS classes in `src/styles/global.css` (`.button`,
+`.button-secondary`, `.card`, `.input`, `.empty-state`, `.section`) with `Section.astro`
+carrying `data-section`. React islands, if any, import the React catalog.
+
+## Tailwind mapping (Vite + React)
+
+`src/styles/global.css` maps the tokens into Tailwind's theme, so classes resolve to tokens:
+
+| Token | Classes |
+|---|---|
+| `--color-bg` | `bg-bg`, `text-bg`, `ring-offset-bg` |
+| `--color-surface` | `bg-surface` |
+| `--color-text` | `text-text` |
+| `--color-text-muted` | `text-muted`, `placeholder:text-muted` |
+| `--color-primary` | `bg-primary`, `text-primary`, `border-primary`, `ring-primary` |
+| `--color-primary-contrast` | `text-primary-contrast` |
+| `--color-accent` | `bg-accent`, `text-accent`, `border-accent` |
+| `--color-danger` | `bg-danger`, `text-danger`, `border-danger` |
+| `--color-border` | `border-border` |
+| `--space-1` | the `--spacing` multiplier: `p-4` = `--space-4`, `gap-2` = `--space-2`, `h-10` = 40px |
+| `--text-*` | `text-xs` … `text-3xl` |
+| `--radius-*` | `rounded-sm`, `rounded-md`, `rounded-lg` (`rounded-full` is Tailwind's own) |
+| `--shadow-*` | `shadow-sm`, `shadow-md` |
+| `--font-*` | `font-sans`, `font-display` |
+
+Tailwind's default palette, font sizes, radii and shadows are disabled, so `bg-blue-500` or
+`text-4xl` simply do not exist here; a class that does not resolve is the signal to go
+through `tokens.css`.

@@ -55,7 +55,9 @@ Use Supabase project ref `ntjzghsbrzkvpkniotaj`.
 4. If the slug is absent, list active registry slugs and stop.
 5. If the project or registry entry is absent, report it and write nothing.
 6. Load:
-   - active and missing `tt_ui_surfaces`;
+   - active, planned and missing `tt_ui_surfaces` — `planned` rows come from
+     `/proiect-nou`: they exist in the site map, not yet in code, carry their
+     `purpose`, and count as required launch units;
    - current and recent `tt_ui_audits`;
    - current audit items and findings;
    - the delivery profile and definition of done;
@@ -139,6 +141,15 @@ Each surface needs:
 Rules:
 
 - preserve existing stable keys for the same user-visible surface;
+- a `planned` surface (manual origin, written by `/proiect-nou` with the same
+  `stableSurfaceKey` you compute) that the inventory finds in code becomes
+  `active` through the ordinary upsert of `tt_apply_ui_audit` — same key, now
+  with `code_refs` and a fingerprint; never create a second row for it. Match
+  by key first; when the code's label drifted from the site map's, keep the
+  planned row's key and report the drift instead of inventing a new key;
+- a `planned` surface the inventory does not find stays `planned` — it is not
+  `missing`, nothing was ever there — and the report lists it under «Încă
+  neconstruite»;
 - an LLM surface absent from a **full** inventory becomes `missing`;
 - a manual surface absent from inventory remains unchanged;
 - an incremental audit never marks unrelated surfaces missing;

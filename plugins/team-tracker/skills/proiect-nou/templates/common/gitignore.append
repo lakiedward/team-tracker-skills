@@ -1,0 +1,10 @@
+
+# /proiect-nou
+.env
+.env.*
+!.env.example
+coverage/
+report/
+.worktrees/
+.DS_Store
+Thumbs.db

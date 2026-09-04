@@ -1,0 +1,19 @@
+# Site map — {{PROJECT_NAME}}
+
+> **Snapshot**, not the source of truth. The live site map lives in Team Tracker → project
+> `{{SLUG}}` (`project_id` {{PROJECT_ID}}) → **UI Coverage**, where every page and section below
+> is a `tt_ui_surfaces` row with its `purpose`, its `inventory_state` and its criteria.
+> This file was written by `/proiect-nou` on {{CREATED_AT}} and is not regenerated: when
+> UI Coverage and this file disagree, UI Coverage is right. Edit it only to add a note for
+> the reader; never to record a decision that was not first made in the tracker.
+
+Platform: **{{PLATFORM}}** · codebase label: `{{CODEBASE}}` · stack: `{{STACK}}`
+
+Stable keys follow `/ui-audit`: page `{{CODEBASE}}:page:<route>`, section
+`{{CODEBASE}}:section:<label>:<page key>`. Each section is rendered by a component carrying
+`data-section="<stable key>"` (see `CLAUDE.md` → *Section ↔ code*).
+
+A section marked **required for launch** counts toward launch coverage even while it is
+still `planned`; a section not marked is scope the human accepted to ship without.
+
+{{SITEMAP_PAGES}}

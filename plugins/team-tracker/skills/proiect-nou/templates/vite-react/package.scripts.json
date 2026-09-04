@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "dev": "vite --port {{PREVIEW_PORT}} --strictPort",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "react-router": "^8.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0"
+  }
+}
