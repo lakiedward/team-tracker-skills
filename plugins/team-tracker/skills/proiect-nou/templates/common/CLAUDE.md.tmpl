@@ -1,0 +1,205 @@
+# CLAUDE.md — {{PROJECT_NAME}}
+
+> `AGENTS.md` in this folder is a byte-identical mirror of this file, produced by copying.
+> Always edit `CLAUDE.md`, then regenerate the mirror — `cp CLAUDE.md AGENTS.md` from the
+> repo root — and never edit `AGENTS.md` directly. Nothing syncs the two on its own:
+> `tests/docs-mirror.test.ts` fails the suite the moment they drift, and `npm run check:rules`
+> reports the same drift, so the copy is enforced rather than promised.
+
+## 1. Project Overview
+
+| | |
+|---|---|
+| What | {{PROJECT_NAME}} — {{PROJECT_BRIEF}} |
+| Platform | {{PLATFORM}} (codebase label `{{CODEBASE}}`) |
+| Live | {{LIVE_URL}} |
+| Repo | {{REPO_URL}} |
+| Hosting | not decided yet — hosting is outside `/proiect-nou` v1 |
+| Supabase | `{{SUPABASE_REF}}` — env in `.env` (gitignored), template in `.env.example` |
+| Stack | {{STACK}} |
+| Languages | {{LANGUAGES}} |
+| Created | {{CREATED_AT}} by `/proiect-nou` |
+
+## 2. Team Tracker
+
+- Project: slug `{{SLUG}}`, `project_id` **{{PROJECT_ID}}** in `tt_projects` (Supabase
+  `ntjzghsbrzkvpkniotaj`). Open a working session with `/proiect {{SLUG}}`.
+- **UI Coverage is the site map.** Every page and section of this product is a
+  `tt_ui_surfaces` row with a `purpose`. `docs/sitemap.md` is a dated snapshot of the
+  intake; when they disagree, the tracker is right. A section that exists in the tracker
+  but not in code is `planned`; the first construction session on its page builds the page
+  skeleton (route, layout, navigation entry, labelled empty places for the other `planned`
+  sections) and then the section itself.
+- **Human gates are never written by agents.** `manual_verdict`, `verdict_fingerprint`,
+  `spec_approved_at`, `shipped_at` on `tt_ui_surfaces` and `launch_stage` on the delivery
+  profile are set only by the human through the Team Tracker UI. A trigger rejects agent
+  writes to them; do not look for a way around it — leave the section one click away and
+  say which click.
+- **Verification in the browser is a gate, not a courtesy.** Nothing UI is done until it was
+  opened in the preview (`.claude/launch.json` → `{{PREVIEW_NAME}}`, port {{PREVIEW_PORT}})
+  at the platform viewports — site: 1440 / 768 / 375; app: 375 — with screenshots as
+  evidence. "It compiles" is not a verdict.
+- **Bugbot before merge.** Every PR gets a clean GitHub Bugbot review before it lands on
+  `main`; a finding is fixed or explicitly answered, never ignored.
+- **Branch names**: `fix/bug-<id>-<slug>`, `feat/feature-<id>-<slug>`,
+  `ui/section-<id>-<slug>` — the kind and id are the tracker's, so the branch says which row
+  it closes. One branch, one tracker item.
+- `npm test` runs `check:rules` first, so Bugbot and CI see the rule suite too.
+
+## 3. Commands
+
+- `npm run dev` — dev server on port {{PREVIEW_PORT}} (the preview reads this from
+  `.claude/launch.json`)
+- `npm run build` — production build to `dist/`
+- `npm run preview` — serve the production build
+- `npm test` — `check:rules` + Vitest (`tests/**/*.test.ts`)
+- `npm run check:rules` — the rule suite from section 6 (`scripts/check-rules.mjs`)
+- `npm run conventions` — regenerates `docs/ui-conventions.md` from the code
+  (`scripts/ui-conventions.mjs`); Team Tracker's *Consistență UI* panel reads that file
+- `npm run typecheck` — TypeScript, no emit
+- Env: `.env` from `.env.example`; never commit secrets, never read them in code outside
+  `src/lib/supabase.ts`
+
+## 4. Folder Structure
+
+{{FOLDER_TREE}}
+
+**Where what lives** — a new file goes into the folder above that names its kind; a file
+without a folder is a signal that the kind is new, and that is a decision, not a drop into
+the root. Pages in `pages/`, reusable UI in `components/` (the catalog in `components/ui/`
+is the only place a button, input, card, dialog or toast is styled), pure logic and data
+access in `lib/`, hooks in `hooks/`, styles only in `styles/`. Group by feature when a
+folder grows: `components/contact/` rather than `components/ContactMapTile.tsx` next to
+thirty others. **Max ~20 files per folder** — `check:rules` fails above that.
+
+## 5. Design System
+
+Full reference: `docs/design-system.md`. The short version every change must respect:
+
+- **`src/styles/tokens.css` is the single source.** Colours, spacing, type scale, radii,
+  shadows and fonts are CSS variables there; `global.css` maps them into Tailwind
+  (Vite + React) or exposes them to plain CSS (Astro). **No literal colour or size in a
+  component** — no `#hex`, no `rgb()`, no `[13px]`, no `bg-blue-500`; `check:rules` fails on
+  the first one. A value that is not in `tokens.css` is a design decision first.
+- **Canonical catalog** (`components/ui/`): `Button` (primary · secondary · ghost · danger;
+  sm · md; `loading`), `Input`, `Select`, `Card`, `Section`, `Dialog`, `Toast`
+  (`useToast`), `EmptyState`, `Spinner`. **Never** invent a second button, input or dialog;
+  extend the catalog component with a variant if one is genuinely missing, and record why.
+- **Colour roles**: `bg` page · `surface` cards/inputs/dialogs · `text` / `text-muted` ·
+  `primary` (+ `primary-contrast`) for the one action colour · `accent` for highlights only ·
+  `danger` for destructive and errors · `border`. Tailwind classes: `bg-bg`, `bg-surface`,
+  `text-text`, `text-muted`, `bg-primary text-primary-contrast`, `border-border`.
+- **Type scale**: `text-xs` (12) badges · `text-sm` (14) metadata, labels · `text-base` (16)
+  body, inputs, buttons · `text-lg` (18) card titles · `text-xl` (20) dialog titles ·
+  `text-2xl` (24) section titles · `text-3xl` (30) page title. Nothing outside these seven.
+- **Icons**: inline SVG (Heroicons outline style, `stroke="currentColor"`, `strokeWidth={2}`),
+  sized with `size-4` / `size-5`. Never emoji.
+- **Popups** (`Dialog`, dropdowns, toasts) are `z-50` and never rendered inside an
+  `overflow-hidden` / `overflow-auto` parent.
+- **Common mistakes** — each one is a `check:rules` failure or a `/ui-audit` finding:
+  1. A literal colour or pixel size in a component instead of a token.
+  2. A new button style instead of a `Button` variant.
+  3. A font size outside the scale (`text-[13px]`, `text-4xl`).
+  4. Emoji as icons.
+  5. A popup inside an `overflow` container, or without `z-50`.
+  6. `accent` used for an action, or two `primary` buttons in one view.
+  7. A list with no `EmptyState`.
+
+## 6. Code Rules (STRICT — all verified by `npm run check:rules`)
+
+### Project organization comes first
+Organization is a top priority — treat it as part of every change, not an afterthought.
+
+- **Put files where they belong** (section 4). Do not dump files in the project root or in a
+  random folder because it was convenient.
+- **Group by feature when a folder grows.** Max ~20 files per folder; past that, split into
+  feature subfolders. A flat folder with 40 files is a code smell the rule suite reports.
+- **One responsibility per file.** A component file holds one main component; extract
+  sub-components, helpers and types into their own files rather than stacking them.
+- **Keep names consistent**: components and pages `PascalCase.tsx`, hooks `useX.ts`, lib
+  `camelCase.ts`, routes kebab-case in Romanian (`/despre-noi`), DB types prefixed `Db`.
+  A misnamed or misplaced file is an organization bug.
+
+### No duplicate code
+Before writing a helper or a component, **search `components/` and `lib/`** for one that
+does the job; **extend it, do not fork it.** `jscpd` runs inside `check:rules` with a low
+threshold — two copies of the same ten lines fail the suite.
+
+### Delete what is no longer used
+Dead code rots the project. Actively remove things we no longer use — do not leave them
+"just in case".
+
+- **Delete unused files**: old components, pages, hooks, helpers, experiments, and
+  `.bak` / `-copy` / `-old` / `-v2` duplicates, once superseded.
+- **Delete unused code**: imports, variables, props, functions, exports, types and CSS
+  classes — removed, not commented out.
+- **Remove dead routes and assets**, and stale config nothing reads.
+- **When you replace something, remove the old version in the same change.**
+- **Before deleting, confirm it is truly unused** — search for imports, route registrations
+  and string usages.
+
+### No comments in code
+Do NOT write comments in `.ts` / `.tsx` / `.astro` / `.css`. No inline comments, no block
+comments, no JSDoc, no TODO comments, no commented-out code. The code must be
+self-explanatory through naming and structure; the *why* goes where section 7 says.
+`check:rules` uses the TypeScript scanner, so there are no exceptions and no escape hatch.
+
+### Maximum 600 lines per file
+600 is the hard ceiling, not the target — aim far lower. Past it, split into focused
+modules.
+
+### When reviewing code, always verify
+1. Zero comments in changed or new files.
+2. No file over 600 lines; no folder over ~20 files.
+3. Every new file is in the right folder with the right name.
+4. No dead code, unused imports/exports, commented-out blocks or orphaned files.
+5. When something was replaced, the old version is gone.
+6. No literal colour or size outside `tokens.css`; only catalog components for UI primitives.
+7. Every UI Coverage section is rendered through `Section` with its stable key (section 8).
+8. `AGENTS.md` equals `CLAUDE.md`.
+
+## 7. Where the "why" lives
+
+Comments are banned, so the reasoning cannot sit next to the code. It lives in exactly three
+places, and a change without a *why* in one of them is incomplete:
+
+1. **Commit messages** — conventional (`feat:` / `fix:` / `ui:` / `docs:` / `chore:`), short
+   imperative subject, and a body that says what was tried and why this shape won. The
+   body is the primary record for decisions local to one change.
+2. **`docs/superpowers/specs/`** — one dated design spec per feature or non-trivial change,
+   written before the code; implementation plans in `docs/superpowers/plans/`.
+3. **Section 10, Decisions** — one line per decision that outlives a single change (a
+   token added, a component variant, a dependency, a rule exception refused).
+
+## 8. Section ↔ code
+
+Every section in UI Coverage is one component rendered through `Section` with
+`data-section="<stable key>"`, so `/ui-audit` finds it in the DOM without guessing and
+recognises it as the same surface the tracker already knows:
+
+- Stable key shape: `{{CODEBASE}}:section:<normalized label>:{{CODEBASE}}:page:<route>` —
+  e.g. `{{CODEBASE}}:section:hero:{{CODEBASE}}:page:/`, `{{CODEBASE}}:section:harta:{{CODEBASE}}:page:/contact`.
+  `normalize` lowercases, strips diacritics and turns runs of other characters into `-`.
+- The key is copied from the tracker row (or from `docs/sitemap.md`), never typed from
+  memory; a key that does not match creates a duplicate surface at the next audit.
+- Shared chrome (header, footer, navigation) is one canonical unit on the layout hub page,
+  not repeated per page.
+- A `planned` section that is not built yet stays a labelled empty place in the page
+  skeleton so the page's structure is visible before every section exists.
+
+## 9. Communication
+
+- Romanian in chat and in every UI string; English in code, identifiers, commit messages,
+  specs and this file.
+- Conventional commits; PR title = the tracker item it closes.
+- Questions to the human are grouped, with a recommended option and its reason in the same
+  sentence; design and scope go to the human, everything else the agent resolves itself.
+
+## 10. Decisions
+
+Append-only. One line per decision, newest last: `- YYYY-MM-DD — <decision> — <why>`.
+
+## 11. Known Issues / WIP
+
+(empty at creation — add an entry when something is known to be broken or half-done, and
+remove it in the change that finishes it)

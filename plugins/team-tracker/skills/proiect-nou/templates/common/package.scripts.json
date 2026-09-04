@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "check:rules": "node scripts/check-rules.mjs",
+    "conventions": "node scripts/ui-conventions.mjs",
+    "test": "npm run check:rules && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "vitest": "^5.0.0",
+    "jscpd": "^5.0.0",
+    "typescript": "^6.0.0"
+  }
+}

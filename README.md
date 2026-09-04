@@ -7,6 +7,10 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 
 | Skill | Ce face |
 |-------|---------|
+| `proiect-nou` | Sesiunea de creare a unui proiect: din site map-ul tău (pagini + ce face fiecare) scoate repo-ul din template (tokens ca sursă unică, catalog canonic de componente, `CLAUDE.md` cu reguli verificate de `npm run check:rules`, `AGENTS.md` oglindă), generează `docs/ui-conventions.md` pe care îl citește panoul Consistență UI, și creează proiectul în Team Tracker cu toate paginile și secțiunile ca suprafețe `planned`, cu scopul lor memorat — zero criterii, zero porți. |
+| `proiect` | Deschide sesiunea de lucru pe un proiect: înrădăcinare în codebase, raport din tracker, contractul sesiunii (inclusiv sesiunea de construcție pentru secțiunile `planned`) și rutarea spre Cursor cloud agents. |
+| `borne` | Pune pragurile intermediare dintre azi și deadline în `tt_milestones`, cu propunere read-only și verificări de coerență; `/plan-deadlines` le citește la ranking. |
+| `ui-audit` | Inventariază și auditează suprafețele UI ale unui proiect pe desktop/tabletă/telefon și salvează un snapshot UI Coverage versionat, fără să modifice cod. |
 | `orchestrate` | Mătură board-ul Focus al unui proiect și coordonează lucrul pe itemele active. |
 | `pontaj` | Pontează orele tale de lucru din sesiunea curentă în `tt_work_logs` (pagina „Pontaj"). |
 | `plan-deadlines` | Recitește repo-urile și tot backlog-ul, apoi propune pentru azi câte taskuri încap în orele disponibile și ritmul din Pontaj; scrie numai după confirmare. |
@@ -136,5 +140,5 @@ următorul start de Claude (sau prin `/plugin marketplace update team-tracker`).
 .claude-plugin/marketplace.json          # catalogul (un singur plugin)
 plugins/team-tracker/
   .claude-plugin/plugin.json             # manifest plugin
-  skills/<nume>/SKILL.md                 # cele 12 skill-uri (+ scripts/ / references/ unde e cazul)
+  skills/<nume>/SKILL.md                 # cele 16 skill-uri (+ scripts/ / references/ / templates/ unde e cazul)
 ```

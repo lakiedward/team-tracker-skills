@@ -1,0 +1,19 @@
+---
+type Props = {
+  stableKey: string;
+  title?: string;
+  description?: string;
+  class?: string;
+};
+
+const { stableKey, title, description, class: className } = Astro.props;
+const hasHeading = Boolean(title || description);
+---
+
+<section data-section={stableKey} class:list={['section', className]}>
+  {title && <h2 class="section-title">{title}</h2>}
+  {description && <p class="section-description">{description}</p>}
+  <div class:list={[hasHeading && 'section-body']}>
+    <slot />
+  </div>
+</section>

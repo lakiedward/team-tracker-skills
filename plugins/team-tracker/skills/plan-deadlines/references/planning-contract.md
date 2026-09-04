@@ -532,6 +532,19 @@ it can describe the right step of the loop. A `needs_spec` prompt is the excepti
 to the usual shape: it drops the branch and merge contract, because the session
 produces criteria rather than a diff, and it forbids touching source files.
 
+A `needs_spec` prompt on a section whose `inventory_state` is `planned` (created
+by `/proiect-nou`, in the site map only) is the exception to that exception: it
+is a construction session. Productivitate reads `inventory_state` and `purpose`
+from the pipeline view and renders the construction playbook — read purpose,
+tokens, conventions and `CLAUDE.md`; propose the structure in 2–4 questions;
+build the draft on `ui/section-<id>-<slug>` (page skeleton included when it is
+the first section on its page); then the same walkthrough, criteria only from
+answers; finally write `code_refs`, the fingerprint and `inventory_state =
+'active'`, which are not human gates. That prompt keeps the full branch, PR and
+Bugbot contract. The plan item's `scope_reason` says `mode=construction`, but the
+switch is the surface state, so plans written before this contract still get
+the right playbook.
+
 For an existing current plan created before this contract changed, its persisted
 `scope_reason` is historical context only. Productivitate must replace it in a
 copied `needs_spec` prompt with the current guided-session completion contract;

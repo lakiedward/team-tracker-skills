@@ -1,0 +1,16 @@
+---
+import Base from '../layouts/Base.astro';
+import Section from '../components/Section.astro';
+---
+
+<Base title="{{PROJECT_NAME}}">
+  <main>
+    <Section
+      stableKey="{{CODEBASE}}:section:hero:{{CODEBASE}}:page:/"
+      title="{{PROJECT_NAME}}"
+      description="Schelet creat de /proiect-nou. Prima sesiune de construcție înlocuiește secțiunea asta cu cele din UI Coverage."
+    >
+      <a class="button button-primary" href="#">Începe</a>
+    </Section>
+  </main>
+</Base>
