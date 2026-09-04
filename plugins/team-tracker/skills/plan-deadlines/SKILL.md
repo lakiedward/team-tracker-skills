@@ -61,6 +61,8 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 
 28. **Honor an active deferral.** A source whose description ends with a deferral marker written by `/amana` — `[amânat <data> → <retur> · <categorie>] …` — is not an executable candidate until its return date arrives. While the return date is still in the future, exclude it from both queues, do not let it consume hours, and report it under «Amânate» with its reason, its return date and how many times it has been deferred. On or after the return date it becomes an ordinary candidate again and the marker is history, not a veto. Never write, edit or delete a deferral marker: `/amana` owns it, and an item that keeps returning with a fresh marker is a task to repair, not to reschedule.
 
+29. **Clarify intent before the plan is written, in the human's own words.** A committed bug, feature or To-Do whose description is thin — no attachment and under ~40 words of the human's own text once markers are stripped — or whose completion criterion the planner had to guess rather than read, or whose title/description names a visual change (layout, spacing, colours, fonts, «mai aerisit», «ca pe pagina X», redesign) without a reference, is not ready for a prompt: the executor would fill the gaps with its own taste and the mismatch would surface after merge, on main. Phase 6b asks the human about those items — at most 2 questions per item, at most 5 items per run, each question with a marked recommendation and the precedent from the product (rule 22 applies here too), and always with the option «E clar așa cum e scris» — and records the answers on the plan item as `intent=`, `reference=`, `not_in_scope=`, `example=`, plus `change_kind=design|logic|data|mixed` on every selected item. Only the human's answers may fill `intent=`; the planner's own reading never does, except as a restatement the human explicitly confirmed. An item already clarified — its source description carries an `--- Intenție clarificată <YYYY-MM-DD> ---` block, or the current plan's item with the same stable key already carries `intent=` — is not asked again unless the human reopens it. Productivitate reads these fields: the copied prompt tells the executor to obey them over its own interpretation, and a `design`/`mixed` classification makes the human's verdict on a screenshot a merge condition.
+
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
 ## Phase 0 — Resolve scope
@@ -165,6 +167,7 @@ For each active tracker item:
 4. Record unfinished dependencies.
 5. Identify an observable completion criterion for the next work session.
 6. Classify verification as `browser` or `non_browser`. Browser verification is mandatory for user-visible UI, responsive behavior, navigation, forms, auth, payments, browser state, and end-to-end web flows; when uncertain, classify it as `browser`. Record the exact scenario and relevant viewports/devices.
+6b. Classify `change_kind`: `design` when what the user sees changes (layout, spacing, colour, type, component shape, copy), `logic` when behaviour changes (validation, calculation, flow, permissions), `data` when the schema, a migration or content changes, `mixed` when a visible change and a behaviour change travel together. Record whether the completion criterion from step 5 was read from evidence or guessed; a guessed criterion, a thin description or a visual change without a reference marks the item as a clarification candidate (rule 29).
 7. Inspect every attached screenshot when the item remains executable. Never select an attachment-bearing item from title/description alone.
 
 For every codebase gap:
@@ -355,6 +358,19 @@ The script creates:
 - Never treat the sum of all high estimates as mandatory hours; reserve rows are possibilities up to the real stop rule.
 - Set every selected item's `planned_due_date` to the planning date.
 
+## Phase 6b — Clarify intent with the human (rule 29)
+
+Run only on the packed `committed` queue, and only on items whose `source_type` is bug, feature or To-Do. Skip sections — their spec session is the clarification — and test plans, whose steps are the intent.
+
+1. Mark as clarification candidates the items that are thin, guessed or visual-without-reference, per rule 29. Skip an item already clarified: its source description carries an `--- Intenție clarificată ---` block, or the current plan's item with the same stable key carries `intent=`.
+2. Take at most 5 candidates, in queue order. Report the rest under «Neclarificate — executorul confirmă înainte de cod», so the proposal shows which prompts still start with a restatement instead of the human's words.
+3. For each candidate ask through the client's structured-question tool, at most 2 questions, each with 2–4 concrete variants and exactly one marked «Propunerea mea: … pentru că …» (rule 22):
+   - design — «Cum vrei să arate după?», the variants drawn from the product's own precedent (say where the element already looks like each variant, with a count); then «Care loc din produs e referința?» when no chosen variant carried one;
+   - logic — «Dă-mi un exemplu concret: intrare → rezultat așteptat», the variants being the plausible behaviours; then «Ce nu are voie să se schimbe?»;
+   - every question also offers «E clar așa cum e scris». Choosing it confirms the planner's restatement, which is then recorded as the intent with the suffix «(reformulare confirmată de om)».
+   Stop after each item's questions and wait for the answers. Fall back to numbered variants in chat only when no structured tool exists.
+4. Record per item, for the proposal and for its `scope_reason`: `change_kind=`, `intent=<the human's words>`, and — when given — `reference=<place in the product, screenshot path or URL>`, `not_in_scope=<what stays untouched>`, `example=<intrare → rezultat>`. Write nothing to the database in this phase; the writes happen in Phase 8, after approval.
+
 ## Phase 7 — Present the proposal
 
 Use this order for every project:
@@ -370,6 +386,7 @@ Use this order for every project:
    - verb-led action;
    - tracker source/id, `secțiune <stable_key>`, or `gap propus`;
    - why now and what it unblocks — naming the milestone when one names the item («borna „Sprint cu partenerul", 9 sept»), and writing it into the item's `scope_reason` as `milestone=<title> · <due_date>` so the Productivitate prompt carries it;
+   - `change_kind`, and — when the item went through Phase 6b — «Ce vrea omul: …», the reference and what stays untouched, in the human's words; an item left unclarified says so («executorul confirmă înainte de cod»);
    - observable completion criterion for today;
    - today's hours plus full remaining low/high hours;
    - confidence;
@@ -413,11 +430,20 @@ Apply one project in one SQL transaction:
 5. supersede the previous current plan;
 6. insert the next current plan as a daily execution snapshot;
 7. insert only today's committed and reserve queues, not the complete candidate pool;
+7b. for every bug or feature clarified in Phase 6b, append to the source `description` — before a trailing `/amana` deferral marker when one exists (rule 28 reads the marker at the end), otherwise at the very end — the block below, keeping only the lines that have content. Never on a To-Do (rule 10): there the `intent=` on the plan item is the only record and the only re-ask guard. Never edit or remove an existing block; a re-clarification appends a new one, so the history of what the human asked for stays readable on the source page.
+
+   ```text
+   --- Intenție clarificată <YYYY-MM-DD> ---
+   Ce vrea omul: <intent>
+   Referință: <reference>
+   Nu se schimbă: <not_in_scope>
+   Exemplu: <example>
+   ```
 8. move every selected section that is not awaiting review to `delivery_stage = 'in_progress'`;
 9. preserve overrides by stable key;
 10. commit only after every insert succeeds.
 
-Do not change bug, feature, To-Do, or test statuses merely because an item was selected. Focus reads the approved daily plan directly. For a section, `delivery_stage` is the only column this skill may write.
+Do not change bug, feature, To-Do, or test statuses merely because an item was selected. Focus reads the approved daily plan directly. For a section, `delivery_stage` is the only column this skill may write. The intent block of step 7b is the only write to a source description, and it carries nothing but the human's Phase 6b answers.
 
 Store these keys inside `velocity_snapshot` alongside the selected velocity row:
 
@@ -538,6 +564,7 @@ Every inserted plan item must:
 - use today's actionable estimate, which may be a slice of a larger item;
 - snapshot the complete tracker description in `description_snapshot`;
 - include in `scope_reason`: why now, the observable daily completion criterion, verified code starting points, `verification_mode=browser|non_browser`, and the required verification. For browser mode, include the scenario and viewports/devices;
+- include `change_kind=design|logic|data|mixed` on every item, and the Phase 6b fields — `intent=`, `reference=`, `not_in_scope=`, `example=` — on every clarified item, verbatim from the human's answers. Productivitate renders them under «Ce vrea omul», «Referință din produs», «Nu se schimbă», «Exemplu concret» and puts them in the copied prompt above the executor's own reading;
 - for UI-backed work, include surface stable key, page/section label, manual note, current audit id/fingerprint, objective evidence, private screenshot Storage paths and exact browser scenarios. Never let a subjective suggestion override the manual verdict;
 - keep dependencies limited to keys relevant to today's execution.
 
@@ -604,6 +631,9 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] The copy-ready prompt closes the tracker loop only after every required verification passes: a verified bug becomes `Fixed`; a feature or To-Do becomes `Gata`; test results are recorded per step. A failed tracker update must be reported and must not be presented as a completed task.
 - [ ] No full backlog timeline was generated or persisted.
 - [ ] Active `/amana` deferrals were honored: no source was queued before its return date, each was reported with reason and date, and no marker was written or altered.
+- [ ] Every committed bug, feature and To-Do carries `change_kind=`; every thin, guessed or visual-without-reference one went through Phase 6b (at most 5 items, at most 2 questions each, a marked recommendation and the «E clar așa cum e scris» option on every question), and `intent=` holds only the human's words or a restatement the human confirmed.
+- [ ] Items already carrying an `--- Intenție clarificată ---` block, or `intent=` on the current plan's item with the same stable key, were not asked again.
+- [ ] The intent block was appended to bug/feature descriptions only after approval, before any trailing `/amana` marker, and never on a To-Do.
 - [ ] Only selected daily gap To-Dos are created after approval.
 - [ ] The exact daily diff is visible.
 - [ ] No write occurred before approval.

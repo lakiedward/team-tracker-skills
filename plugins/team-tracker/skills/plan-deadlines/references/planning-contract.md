@@ -541,6 +541,21 @@ The prompt must state `queue_role`. A reserve prompt says to start only after co
 
 `scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, `verification_mode=browser|non_browser`, and the required tests or build checks. For browser mode, record the exact scenario plus relevant viewports/devices. A copied prompt must still be actionable when the source has no attachments.
 
+It also carries the intent contract of rule 29. `change_kind=design|logic|data|mixed`
+is set on every item. When the item went through Phase 6b, `intent=` holds the
+human's own words (or a restatement they confirmed, suffixed «(reformulare
+confirmată de om)»), and `reference=`, `not_in_scope=`, `example=` hold the rest
+of their answers when given. Productivitate renders these under «Ce vrea omul»,
+«Referință din produs», «Nu se schimbă» and «Exemplu concret», shows
+`change_kind` as a badge, and its copied prompt tells the executor to restate
+the task before touching code and to obey the intent fields over its own
+reading of the description. A `design` or `mixed` item, or one in browser mode
+that the planner left unclassified, makes the human's verdict on a screenshot a
+merge condition in that prompt: the executor shows the result on the platform's
+viewports, iterates until the human says they like it, and merges only then. The
+prompt also links the project's UI conventions file when one is published, so
+design proposals align with the house rule rather than with taste.
+
 For `ui_surface + needs_spec`, it is always `verification_mode=browser`, and its
 completion is: the guided walkthrough occurred with the user, every viewport of
 the platform's set and the reachable states were shown, and the resulting
