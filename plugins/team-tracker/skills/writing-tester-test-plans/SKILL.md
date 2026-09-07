@@ -5,6 +5,8 @@ description: Use when the user asks to create, generate, draft, or write a test 
 
 # Writing Tester Test Plans
 
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+
 Turn the work done in the current chat session into a clean, simple, step-by-step test plan that a QA tester with no programming background can execute on the real BetRO app. Save it as rows in the BetRO Supabase database so the team-tracker app can render it for the tester and so the sister skill `/resolving-failed-test-plans` can sweep up the failures afterwards.
 
 > **Sibling skill — pick the right one.** This skill writes plans for a **human** tester (`test_type = 'human'`, shown under team-tracker's "Real user testing" toggle). Its sibling `writing-ai-test-plans` writes plans for the **AI runner** (`test_type = 'ai'`, "AI testing" toggle, executed by `/auto-running-test-plans`). If the user wants a plan that the AI auto-runs rather than a human, use `writing-ai-test-plans` instead. Everything below — step style, language, rules — is identical between the two; only `test_type` and who runs the plan differ.

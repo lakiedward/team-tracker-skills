@@ -5,6 +5,8 @@ description: Use when the user wants to start a brand-new project end to end —
 
 # Proiect nou
 
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+
 Sesiunea de creare a unui proiect. Pornește de la site map-ul omului — fiecare pagină cu ce
 trebuie să facă — și lasă în urmă trei lucruri care de obicei apar târziu sau deloc: un repo
 cu sistemul de design ca sursă unică și reguli verificate de o comandă, convențiile UI

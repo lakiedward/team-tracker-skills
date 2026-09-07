@@ -5,6 +5,8 @@ description: Use when the user wants to run an automated sweep of the entire Foc
 
 # Dispecerul (Orchestrator de Focus board)
 
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+
 Citește board-ul Focus al oricărui proiect din `projects.json`, construiește lista de muncă, și (în modul
 complet) lansează o flotă de muncitori paraleli în worktree-uri izolate. În **`--dry-run`**, se oprește după
 ce printează lista — zero scrieri, zero worktree-uri, zero lansări de muncitori.

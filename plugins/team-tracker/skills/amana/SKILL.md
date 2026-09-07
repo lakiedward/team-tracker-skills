@@ -5,6 +5,8 @@ description: Use when the user wants to postpone, skip, swap out or drop a task 
 
 # amana — amână un task, dar numai dacă motivul rezistă
 
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+
 One task leaves today's queue only when the reason it leaves survives being checked.
 
 The user arrives having already decided: *„nu fac asta azi”*. This skill does not
