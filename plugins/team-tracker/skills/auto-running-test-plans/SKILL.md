@@ -5,7 +5,7 @@ description: Use when the user asks Claude to act as the QA tester and run untou
 
 # Auto-Running Test Plans (preview-based)
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 Claude becomes the QA tester. Pick a test plan that nobody has started yet (every item is still `pending`), drive the app step by step through the **Vite/dev-server preview MCP** (not on a real device), mark each item `pass` / `fail` / `blocked` in Supabase with evidence, and move to the next untouched plan. Stop when no untouched plan is left.
 

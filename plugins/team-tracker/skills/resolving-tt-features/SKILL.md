@@ -5,7 +5,7 @@ description: Use when the user asks to evaluate, triage, or implement proposed f
 
 # Resolving tt_features
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 End-to-end sweep over team-tracker feature proposals (stored in the BetRO Supabase database, table `tt_features`, not markdown). Find the ones with `status='Propus'` (plus previously approved `'Planificat'`) for the current project, **evaluate each one and tell the user which are worth implementing and why**, then implement the approved ones on a dedicated branch, verify via the most reliable channel, pass Cursor Bugbot with no unresolved actionable findings, merge, and only then flip the row to `Gata`. Features that don't deserve implementation yet stay `Propus` with the evaluation rationale appended so the user sees it in the team-tracker UI.
 

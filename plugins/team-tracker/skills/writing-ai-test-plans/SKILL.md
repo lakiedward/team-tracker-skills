@@ -5,7 +5,7 @@ description: Use when the user asks to create, generate, draft, or write a test 
 
 # Writing AI Test Plans
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 Turn the work done in the current chat session into a clean, step-by-step test plan that the **AI runner** (`/auto-running-test-plans`) can execute on the project's Vite preview. Save it as rows in Supabase tagged `test_type = 'ai'` so the team-tracker "AI testing" toggle shows it and the AI runner picks it up.
 

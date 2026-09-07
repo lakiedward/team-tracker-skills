@@ -1,11 +1,11 @@
 ---
 name: proiect
-description: Use when the user opens a working session for one Team Tracker project with /proiect followed by its slug, "lucrăm pe", "deschide proiectul", "începem sesiunea pe", or "work on project". Roots the chat in the local codebase, reads CLAUDE.md/AGENTS.md, loads live tracker state, and establishes the working contract. Implementation stays local; ChatGPT/Codex can also use @Browser, the IDE's integrated browser, to test the local app. Bugs and non-UI features run autonomously, UI features receive human acceptance, and guided UI sessions retain the tracker human gates. Later skills and free-form tasks inherit this context.
+description: Use when the user opens a working session for one Team Tracker project with /proiect followed by its slug, "lucrăm pe", "deschide proiectul", "începem sesiunea pe", or "work on project". Roots the chat in the local codebase, reads CLAUDE.md/AGENTS.md, loads live tracker state, and establishes the working contract. Implementation stays local; ChatGPT/Codex can use @Browser or @Chrome to test the local app. Bugs and non-UI features run autonomously, UI features receive human acceptance, and guided UI sessions retain the tracker human gates. Later skills and free-form tasks inherit this context.
 ---
 
 # proiect — deschide sesiunea de lucru a unui proiect
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 Un chat = un proiect. Chaturile se deschid de oriunde (tipic din team-tracker); skill-ul ăsta
 face înrădăcinarea: primește slug-ul, aduce codebase-ul proiectului în sesiune, îi citește
@@ -81,8 +81,8 @@ Toate taskurile se execută în checkout-ul sau worktree-ul local al proiectului
 sesiunea curentă: bug-uri, features, construcție, sesiuni ghidate și modificări de schemă
 deja autorizate. Contractul complet este în [execuție locală și verificare în browser](../references/local-execution.md).
 
-În ChatGPT/Codex, pornește aplicația local; pentru testare poți folosi și `@Browser`,
-browserul integrat în IDE, sau alt instrument de browser disponibil în sesiune.
+În ChatGPT/Codex, pornește aplicația local; pentru testare poți folosi `@Browser`,
+browserul integrat în IDE, `@Chrome` sau alt instrument de browser disponibil în sesiune.
 Păstrează URL-ul, viewportunile, pașii, capturile și rezultatul verificării consolei.
 Această regulă se transmite în orice prompt de implementare sau testare al sesiunii.
 

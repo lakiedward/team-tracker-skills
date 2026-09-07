@@ -5,7 +5,7 @@ description: Use when the user asks to fix, resolve, process, or sweep failed OR
 
 # Resolving Failed Test Plans
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 End-to-end sweep over team-tracker testing plans (which describe app behavior and are stored in the team-tracker Supabase database, not markdown files). Find the ones with **failed or blocked** steps, fix them on the current project's codebase with specialized subagents, verify via the most reliable channel for that step, and archive what is fully green. **Blocked steps are not left alone:** the skill reads *why* the tester got stuck, drives the step to completion through the supported channels (the block usually means the tester couldn't run it, not that the code is broken), and — if finishing it exposes a real defect — resolves that defect like any failure. Only blockers the skill genuinely cannot clear (native shell, missing credentials, product decisions, a real second device) stay blocked so the user can handle them manually.
 

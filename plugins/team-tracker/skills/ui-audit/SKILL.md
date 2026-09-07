@@ -5,7 +5,7 @@ description: Inventory and audit the UI surfaces of one configured Team Tracker 
 
 # UI Audit
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 Create evidence, not aesthetic authority. The user owns the manual verdict; the
 audit owns only current inventory, objective browser evidence, AI scores and
