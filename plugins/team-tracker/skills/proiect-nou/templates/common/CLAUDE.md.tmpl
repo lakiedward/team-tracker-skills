@@ -37,8 +37,8 @@
   say which click.
 - **Execute locally.** Work in this project's local checkout or worktree in the current
   session. Do not dispatch implementation or testing to cloud agents.
-- **In ChatGPT/Codex, @Browser is also available for testing.** The IDE's integrated
-  browser is an option alongside other browser tools available in the current session.
+- **In ChatGPT/Codex, @Browser and @Chrome are options for testing.** Choose the IDE's
+  integrated browser, Chrome or another browser tool available in the current session.
   Start the app locally and open its server URL in the chosen browser. Claude Preview
   tool names in skills are not required dependencies. Record the URL,
   viewports, steps, observed result, relevant screenshots and console errors. If the IDE
@@ -50,6 +50,10 @@
   evidence. "It compiles" is not a verdict.
 - **Bugbot before merge.** Every PR gets a clean GitHub Bugbot review before it lands on
   `main`; a finding is fixed or explicitly answered, never ignored.
+- **Complete delivery autonomously.** For authorized file changes, commit, push, open or
+  update the PR, and merge after the required checks, reviews and existing human gates
+  pass. Do not request separate confirmation for each delivery step. Include only files
+  belonging to the task in the commit.
 - **Branch names**: `fix/bug-<id>-<slug>`, `feat/feature-<id>-<slug>`,
   `ui/section-<id>-<slug>` — the kind and id are the tracker's, so the branch says which row
   it closes. One branch, one tracker item.

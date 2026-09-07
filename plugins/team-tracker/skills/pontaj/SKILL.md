@@ -5,7 +5,7 @@ description: Use when the user wants to log their own work hours in Team Tracker
 
 # Pontaj
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 Turn the work done in the **current chat session** into one time-log entry for **the person running it** and write it to the team-tracker Supabase database, so it shows up on the "Pontaj" page. One run = one `tt_work_logs` row: who (resolved from `TT_MEMBER`), which project (resolved from the working directory), what category, what was done, how many hours, on what date. The same write may add zero or more `tt_work_log_items` links when this session names exact tracker items with high confidence.
 

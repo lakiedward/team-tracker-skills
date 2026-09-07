@@ -5,7 +5,7 @@ description: Use when the user asks to create, generate, draft, or write a test 
 
 # Writing Tester Test Plans
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 Turn the work done in the current chat session into a clean, simple, step-by-step test plan that a QA tester with no programming background can execute on the real BetRO app. Save it as rows in the BetRO Supabase database so the team-tracker app can render it for the tester and so the sister skill `/resolving-failed-test-plans` can sweep up the failures afterwards.
 

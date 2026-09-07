@@ -5,7 +5,7 @@ description: Use when the user asks to fix, resolve, process, or sweep open bugs
 
 # Resolving tt_bugs
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 End-to-end sweep over team-tracker bugs (stored in the BetRO Supabase database, table `tt_bugs`, not markdown). Find the ones with `status='Open'` or `'In Progress'` for the current project, fix them on a dedicated branch with specialized subagents, verify via the most reliable channel for the bug type, pass Cursor Bugbot with no unresolved actionable findings, merge, and only then flip the row to `Fixed`. Bugs that can't be verified or Bugbot-reviewed by this skill (native shell, credentials, product decisions, unavailable Bugbot) stay `Open` with a note so the user can finish them.
 

@@ -5,7 +5,7 @@ description: Use when the user wants to make order in EVERYTHING that's to be do
 
 # triage — order everything that's to be done
 
-Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 One pass over **all** team-tracker work (bugs + features + test plans, every project), ranked into a clear
 "do next" order, with the clutter (duplicates, stale, done-not-archived, missing priority) surfaced. Then, only
