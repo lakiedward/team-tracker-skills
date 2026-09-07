@@ -1,16 +1,18 @@
 ---
 name: proiect
-description: Use when the user opens a working session for one team-tracker project — invokes "/proiect <slug>" or says "lucrăm pe <proiect>", "deschide proiectul betro", "începem pe culcush", "sesiune pe motiontimisoara". Roots the chat in that project's codebase (adds the repo directory to the session, reads its CLAUDE.md/AGENTS.md), loads live tracker state from Supabase (bugs, features, section pipeline, today's delivery plan, recent Pontaj) and installs the session's working contract — bugs and non-UI features run fully autonomous, UI features end with one human acceptance look, guided UI sessions leave the human exactly two buttons (approve criteria, mark for production), and well-specified tasks are dispatched to Cursor cloud agents (grok-4.6 xhigh, fast off) while interactive or schema work stays local. All later skills (/plan-deadlines, /amana, /pontaj) and free-form task requests inherit this context. Triggers include "/proiect", "lucram pe", "lucrăm la proiectul", "deschide proiectul", "începem sesiunea pe", "open a project session", "work on project".
+description: Use when the user opens a working session for one Team Tracker project with /proiect followed by its slug, "lucrăm pe", "deschide proiectul", "începem sesiunea pe", or "work on project". Roots the chat in the local codebase, reads CLAUDE.md/AGENTS.md, loads live tracker state, and establishes the working contract. Implementation stays local; ChatGPT/Codex can also use @Browser, the IDE's integrated browser, to test the local app. Bugs and non-UI features run autonomously, UI features receive human acceptance, and guided UI sessions retain the tracker human gates. Later skills and free-form tasks inherit this context.
 ---
 
 # proiect — deschide sesiunea de lucru a unui proiect
+
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
 
 Un chat = un proiect. Chaturile se deschid de oriunde (tipic din team-tracker); skill-ul ăsta
 face înrădăcinarea: primește slug-ul, aduce codebase-ul proiectului în sesiune, îi citește
 instrucțiunile, își trage starea vie din tracker și instalează **contractul sesiunii** — cine
 ce face de aici încolo. După el, chatul e **orchestratorul proiectului**: conduce sesiunile
-ghidate cu omul, trimite implementările către Cursor cloud agents, absoarbe întrebările și
-blocajele lor, verifică tot, și îi lasă omului exact două butoane.
+ghidate cu omul, implementează local, rezolvă blocajele, verifică tot și îi lasă omului
+exact două butoane.
 
 ## Argument
 
@@ -73,22 +75,16 @@ testul", „cum deblochez mediul" sunt treaba orchestratorului.
   obligatorie și e a orchestratorului — privirea finală a omului la features UI e *peste*
   ea, nu în locul ei.
 
-## Dispatch: cloud sau local
+## Execuție locală
 
-Regula de rutare pentru fiecare task care intră în lucru:
+Toate taskurile se execută în checkout-ul sau worktree-ul local al proiectului, în
+sesiunea curentă: bug-uri, features, construcție, sesiuni ghidate și modificări de schemă
+deja autorizate. Contractul complet este în [execuție locală și verificare în browser](../references/local-execution.md).
 
-- **Cursor cloud agent** (protocolul complet: `../references/cursor-cloud-agents.md`) —
-  task bine specificat și izolat: bug cu repro clar, secțiune cu criteriile aprobate,
-  feature cu spec limpede. Config fix, decis de om: **grok-4.6, effort xhigh, fast OFF**.
-- **Local, chatul însuși** — sesiuni ghidate și orice task interactiv; schemă/migrări;
-  taskuri atât de mici încât dispatch-ul costă mai mult decât munca; orice atinge secrete
-  locale sau mediul mașinii.
-- Fără `CURSOR_API_KEY` în mediu, **verifică întâi registrul** înainte de a declara flota
-  indisponibilă: `[Environment]::GetEnvironmentVariable('CURSOR_API_KEY','User')`. Pe Windows
-  `setx` scrie în registru, dar procesele moștenesc mediul părintelui — dacă Claude Code a
-  pornit înainte de `setx`, variabila lipsește din mediu deși cheia există. Dacă registrul o
-  are, folosește-o și spune o dată că o repornire ar curăța situația. Doar dacă lipsește și
-  de acolo → totul local, anunțat **o singură dată** pe sesiune.
+În ChatGPT/Codex, pornește aplicația local; pentru testare poți folosi și `@Browser`,
+browserul integrat în IDE, sau alt instrument de browser disponibil în sesiune.
+Păstrează URL-ul, viewportunile, pașii, capturile și rezultatul verificării consolei.
+Această regulă se transmite în orice prompt de implementare sau testare al sesiunii.
 
 ## Restul skill-urilor
 

@@ -1,14 +1,18 @@
-# team-tracker — skill-uri Claude Code pentru echipă
+# team-tracker — skill-uri pentru echipă
 
-Plugin Claude Code care împachetează skill-urile de **team-tracker** ca să le aibă toată
-echipa, **global (per-Claude), în orice proiect** — nu doar într-un repo.
+Plugin care împachetează skill-urile de **team-tracker** pentru Claude Code și
+ChatGPT/Codex, disponibile global în client, în orice proiect.
+
+Lucrul se execută local. În **ChatGPT/Codex**, pentru testarea aplicației locale poți folosi
+și **@Browser**, browserul integrat în IDE, sau alt browser disponibil în sesiune. Toate skill-urile folosesc
+[contractul comun de execuție și verificare](plugins/team-tracker/skills/references/local-execution.md).
 
 Skill-uri incluse (apar ca slash-commands după instalare):
 
 | Skill | Ce face |
 |-------|---------|
 | `proiect-nou` | Sesiunea de creare a unui proiect: din site map-ul tău (pagini + ce face fiecare) scoate repo-ul din template (tokens ca sursă unică, catalog canonic de componente, `CLAUDE.md` cu reguli verificate de `npm run check:rules`, `AGENTS.md` oglindă), generează `docs/ui-conventions.md` pe care îl citește panoul Consistență UI, și creează proiectul în Team Tracker cu toate paginile și secțiunile ca suprafețe `planned`, cu scopul lor memorat — zero criterii, zero porți. |
-| `proiect` | Deschide sesiunea de lucru pe un proiect: înrădăcinare în codebase, raport din tracker, contractul sesiunii (inclusiv sesiunea de construcție pentru secțiunile `planned`) și rutarea spre Cursor cloud agents. |
+| `proiect` | Deschide sesiunea de lucru pe un proiect: înrădăcinare în codebase, raport din tracker, contractul sesiunii (inclusiv sesiunea de construcție pentru secțiunile `planned`), execuție locală și testare în browser, inclusiv prin @Browser în ChatGPT/Codex. |
 | `borne` | Pune pragurile intermediare dintre azi și deadline în `tt_milestones`, cu propunere read-only și verificări de coerență; `/plan-deadlines` le citește la ranking. |
 | `ui-audit` | Inventariază și auditează suprafețele UI ale unui proiect pe desktop/tabletă/telefon și salvează un snapshot UI Coverage versionat, fără să modifice cod. |
 | `orchestrate` | Mătură board-ul Focus al unui proiect și coordonează lucrul pe itemele active. |

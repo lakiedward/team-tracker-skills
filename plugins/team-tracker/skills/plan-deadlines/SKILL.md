@@ -5,6 +5,8 @@ description: Scan one configured Team Tracker project or the active portfolio to
 
 # Plan Deadlines
 
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+
 Build the next executable workday, not a roadmap to the deadline.
 
 Every run must answer:

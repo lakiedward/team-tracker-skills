@@ -35,6 +35,15 @@
   profile are set only by the human through the Team Tracker UI. A trigger rejects agent
   writes to them; do not look for a way around it — leave the section one click away and
   say which click.
+- **Execute locally.** Work in this project's local checkout or worktree in the current
+  session. Do not dispatch implementation or testing to cloud agents.
+- **In ChatGPT/Codex, @Browser is also available for testing.** The IDE's integrated
+  browser is an option alongside other browser tools available in the current session.
+  Start the app locally and open its server URL in the chosen browser. Claude Preview
+  tool names in skills are not required dependencies. Record the URL,
+  viewports, steps, observed result, relevant screenshots and console errors. If the IDE
+  browser is unavailable, use another accessible browser. If none can run the checks,
+  report the unverified scenarios and keep verification open.
 - **Verification in the browser is a gate, not a courtesy.** Nothing UI is done until it was
   opened in the preview (`.claude/launch.json` → `{{PREVIEW_NAME}}`, port {{PREVIEW_PORT}})
   at the platform viewports — site: 1440 / 768 / 375; app: 375 — with screenshots as

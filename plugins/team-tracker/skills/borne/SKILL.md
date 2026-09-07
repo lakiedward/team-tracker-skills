@@ -5,6 +5,8 @@ description: Use when the user wants to set, move, complete or review the interm
 
 # borne — pragurile dintre azi și deadline, puse împreună
 
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+
 A project has one date the tracker knows: `tt_delivery_profiles.deadline`.
 Everything between today and that date — the store submission, the client demo,
 the marketing launch, the page that has to close before the rest can start —

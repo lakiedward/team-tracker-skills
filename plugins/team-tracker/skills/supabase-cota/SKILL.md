@@ -13,6 +13,8 @@ disable-model-invocation: true
 
 # supabase-cota — monthly Supabase Cotă
 
+Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi și `@Browser`, alături de celelalte instrumente de browser disponibile.
+
 One run per billing cycle: PDF → who owes what (Realtime attributed per project
 via the user's logged-in Chrome) → BetRO tables → copy-paste payment messages.
 
