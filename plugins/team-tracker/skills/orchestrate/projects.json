@@ -20,5 +20,13 @@
     "git": true,
     "preview_name": "astro-dev",
     "preview_port": 4321
+  },
+  "alkistudio": {
+    "project_id": 11,
+    "repo_path": "C:/Users/Laki Edward/Desktop/WebsitePresentation",
+    "git": true,
+    "preview_name": "vite-dev",
+    "preview_port": 3004,
+    "note": "tt_projects.name = alkistudio, dar slug = website (nu alkistudio): caută după id 11. Site de prezentare (package website-prezentare, remote github.com/AvrAlexandra/WebsitePresentation). Portofoliul e în src/data/projects.js (4 proiecte: betora, culcush, padel, amos), textele în src/i18n/en.json + ro.json, capturile în public/<proiect>/. De aici pornește /marketing (tab Marketing din Team Tracker)."
   }
 }

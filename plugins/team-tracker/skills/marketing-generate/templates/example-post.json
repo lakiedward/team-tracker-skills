@@ -1,0 +1,75 @@
+{
+  "post_id": 12,
+  "version": 2,
+  "caption": "Betora turns raw football data into readable match briefs. Built by alkistudio, live at betora.ro. Numbers shown are sample output from the product, not client results.",
+  "hashtags": ["#alkistudio", "#betora", "#productdesign", "#buildinpublic"],
+  "slides": [
+    {
+      "order_index": 0,
+      "layout": "cover",
+      "kicker": "CASE STUDY · BETORA",
+      "headline": "Football data, read like a *brief*.",
+      "meta": "betora.ro · live 2026",
+      "asset": null
+    },
+    {
+      "order_index": 1,
+      "layout": "statement",
+      "kicker": "THE PROBLEM",
+      "headline": "Fans drown in tables. They want *one* clear read per match.",
+      "body": "Odds, form, injuries and referee stats live in five tabs. Nobody has time for five tabs before kickoff."
+    },
+    {
+      "order_index": 2,
+      "layout": "screenshot_phone",
+      "kicker": "THE PRODUCT",
+      "headline": "Every match on *one* screen.",
+      "body": "Form, head-to-head and the model's read, stacked in the order you actually check them.",
+      "meta": "iOS · Android · web",
+      "asset": "betora/betora-1.webp"
+    },
+    {
+      "order_index": 3,
+      "layout": "screenshot_desktop",
+      "kicker": "DESKTOP",
+      "headline": "The same brief, *wider*.",
+      "body": "League view with every fixture's read at a glance.",
+      "asset": "betora/desktop-1.webp"
+    },
+    {
+      "order_index": 4,
+      "layout": "split",
+      "kicker": "DETAIL",
+      "headline": "Explain the *why*, not just the pick.",
+      "body": "Each read links back to the inputs that drove it, so the user can disagree with the model on purpose.",
+      "meta": "betora.ro",
+      "asset": "betora/betora-4.webp"
+    },
+    {
+      "order_index": 5,
+      "layout": "diagram",
+      "kicker": "HOW IT WORKS",
+      "headline": "From raw feeds to a *readable* call.",
+      "body": "Inputs are refreshed hourly; the output is a plain-language brief with a confidence tag.",
+      "inputs": "Form|Table|Injuries|Referee|Odds drift",
+      "outputs": "Over 2.5|BTTS|Confidence"
+    },
+    {
+      "order_index": 6,
+      "layout": "stat",
+      "kicker": "SAMPLE OUTPUT",
+      "stat": "85%",
+      "headline": "confidence tag on a *demo* fixture",
+      "body": "Illustrative number from the product mockup, shown to explain the UI.",
+      "disclaimer": "sample output, not client results"
+    },
+    {
+      "order_index": 7,
+      "layout": "cta",
+      "kicker": "ALKISTUDIO",
+      "headline": "Got a *project* idea?",
+      "body": "We design and ship products like this one. Say hi.",
+      "cta": "alkistudio.ro · @alkistudio"
+    }
+  ]
+}
