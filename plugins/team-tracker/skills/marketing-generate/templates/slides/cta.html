@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- Șablon slide "cta" — 1080×1350 (4:5). Placeholder-ele (dublă acoladă) sunt completate de scripts/render-slides.mjs. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080">
+  <title>cta — alkistudio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400&family=Sora:wght@400;600&display=swap">
+  <style>
+    :root {
+      --bg: #0A0A0C;
+      --ink: #EDEAE3;
+      --dim: rgba(237, 234, 227, .55);
+      --line: rgba(237, 234, 227, .14);
+      --accent: {{accent}};
+      --margin: 96px;
+      --font-display: "Bricolage Grotesque", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      --font-body: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+      --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 1080px; height: 1350px; overflow: hidden; }
+    body {
+      position: relative;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    /* Zona sigură: 96px pe toate laturile; jos lăsăm loc și pentru footer. */
+    .slide {
+      position: absolute; inset: 0;
+      padding: var(--margin) var(--margin) 200px;
+      display: flex; flex-direction: column;
+    }
+    .kicker {
+      font-family: var(--font-mono); font-size: 22px; letter-spacing: .16em;
+      text-transform: uppercase; color: var(--dim);
+    }
+    .kicker::before {
+      content: ""; display: inline-block; width: 10px; height: 10px;
+      background: var(--accent); margin-right: 16px; vertical-align: 2px;
+    }
+    .kicker:empty { display: none; }
+    .headline {
+      font-family: var(--font-display); font-weight: 700; letter-spacing: -.025em;
+      line-height: 1.02; color: var(--ink); text-wrap: balance;
+    }
+    em.serif {
+      font-family: var(--font-serif); font-style: italic; font-weight: 400;
+      color: var(--accent); letter-spacing: 0;
+    }
+    .body {
+      font-family: var(--font-body); font-weight: 400; font-size: 30px;
+      line-height: 1.45; color: var(--dim); max-width: 820px;
+    }
+    .body:empty, .meta:empty { display: none; }
+    .meta { font-family: var(--font-mono); font-size: 22px; color: var(--dim); }
+    .foot {
+      position: absolute; left: var(--margin); right: var(--margin); bottom: var(--margin);
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-family: var(--font-mono); font-size: 24px; line-height: 1;
+    }
+    .wordmark .p { color: var(--ink); }
+    .wordmark .bar { color: var(--accent); }
+    .wordmark .s { color: var(--dim); }
+    .counter { color: var(--dim); }
+
+    .centre { margin: auto 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .wordmark-big { font-family: var(--font-mono); font-size: 64px; line-height: 1; margin-bottom: 56px; }
+    .headline { font-size: 92px; line-height: 1; }
+    .body { margin-top: 32px; font-size: 32px; max-width: 760px; }
+    .cta { margin-top: 44px; font-family: var(--font-mono); font-size: 34px; color: var(--accent); }
+    .cta:empty { display: none; }
+    .meta { margin-top: 36px; }
+  </style>
+</head>
+<body>
+  <main class="slide">
+
+    <div class="kicker">{{kicker}}</div>
+    <div class="centre">
+      <div class="wordmark-big wordmark"><span class="p">&gt; alki</span><span class="bar">|</span><span class="s">studio</span></div>
+      <h1 class="headline">{{headline}}</h1>
+      <p class="body">{{body}}</p>
+      <div class="cta">{{cta}}</div>
+      <div class="meta">{{meta}}</div>
+    </div>
+  </main>
+  <footer class="foot">
+    <span class="wordmark"><span class="p">&gt; alki</span><span class="bar">|</span><span class="s">studio</span></span>
+    <span class="counter">{{n}} / {{total}}</span>
+  </footer>
+</body>
+</html>
