@@ -38,7 +38,9 @@ tt_marketing_posts     (id, project_id, campaign_id, order_index, title, portfol
 `brief` e o listă ordonată: `[{ "n", "layout", "kicker", "headline", "body", "asset",
 "inputs", "outputs", "stat", "disclaimer", "cta", "meta" }]`. Layout-urile sunt cele din
 `../marketing-generate/templates/README.md`: `cover`, `statement`, `screenshot_phone`,
-`screenshot_desktop`, `split`, `diagram`, `stat`, `cta`. `asset` e calea reală din
+`screenshot_desktop`, `split`, `diagram`, `stat`, `cta`, `compose`. Acestea sunt puncte de pornire;
+AI-ul decide ritmul și compoziția în funcție de proiect și cererile omului, fără o ordine rigidă obligatorie.
+`asset` e calea reală din
 `public/` a site-ului (ex. `betora/betora-1.webp` pentru telefon, `betora/desktop-1.webp` pentru
 desktop; `culcush/culcush-N.webp` + `culcush/tour-N.webp`; `phones/padel-N.webp`), verificată pe disc.
 
@@ -90,6 +92,8 @@ Ce omul a decis deja în sesiune sau în spec nu se re-întreabă. Răspunsurile
 
 - capitole de tur: numărul de intrări `projects.<id>.tour.*` (sau echivalentul) din `en.json`;
 - capturi: din `asset-inventory.mjs` (phone / desktop / video, `carousel_ready`);
+- pentru selecția efectivă, folosește `project-context.mjs` și referințele din componente, cu rezoluții,
+  limbă, crop și rame. Inventarul pe foldere este orientativ; nu determină apartenența la proiect;
 - blocuri extra: AI core (`detail.aiCore.<id>`), video, desktop.
 
 Regula de dimensionare:
@@ -104,6 +108,14 @@ Tipărește tabelul înainte să scrii ceva. Dacă omul a cerut „câte o posta
 proiect e exclus, spune-i și oferă înlocuirea (o a doua categorie pe proiectele rămase).
 
 ## Pas 4 — Structura brief-ului
+
+Înainte de brief, stabilește direcția vizuală: implicit fundalul, culorile textelor și fonturile paginii
+proiectului din portofoliu. AI-ul inspectează sursele și decide o compoziție simplă, clară și captivantă.
+Omul poate cere alternative în conversație; atunci arată coperți randate înainte de a fixa direcția.
+Nu impune această discuție dacă a cerut direct generarea. Persistă preferințele pe campanie/postare în
+`visual_preferences`, separat de `feedback`. Include în brief `source_asset`, `design` și explicația
+alegerilor; rendererul păstrează mockupurile originale și limitează mărirea la rezoluția lor reală.
+Exemplele de mai jos sunt structuri de poveste, nu template-uri vizuale fixe obligatorii.
 
 **Studiu de caz (8 slide-uri):**
 

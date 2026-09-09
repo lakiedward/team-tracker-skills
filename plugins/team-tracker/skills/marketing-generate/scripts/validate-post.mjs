@@ -5,10 +5,10 @@
 // Utilizare: node validate-post.mjs --post post.json --assets <dir>
 //   afișează erorile și iese cu 1, sau afișează "ok" și iese cu 0.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LAYOUTS } from './render-slides.mjs';
+import { IMAGE_LAYOUTS, LAYOUTS, resolveAsset, validateDesign, validateSourceAsset, validateVisualDirection } from './render-slides.mjs';
 
 export const DEFAULT_LIMITS = Object.freeze({ maxSlides: 10, minSlides: 3, maxHashtags: 5, maxCaption: 2200 });
 // Cifre care arată a rezultat: „85%”, „+27”, „3x”. Pe site-ul studioului sunt numere din mockup-uri.
@@ -37,6 +37,7 @@ export function validatePost(post, options = {}) {
   const errors = [];
 
   if (!post || typeof post !== 'object') return { ok: false, errors: ['post lipsă sau invalid'] };
+  try { validateVisualDirection(post.visual_direction, { assetsDir }); } catch (error) { errors.push(error.message); }
 
   const slides = Array.isArray(post.slides) ? post.slides : [];
   if (!Array.isArray(post.slides)) errors.push('"slides" trebuie să fie un array');
@@ -74,12 +75,13 @@ export function validatePost(post, options = {}) {
     if (!LAYOUTS.includes(slide.layout)) {
       errors.push(`${label}: layout necunoscut "${slide.layout}"; cunoscute: ${LAYOUTS.join(', ')}`);
     }
+    try { validateDesign(slide.design, { assetsDir }); validateSourceAsset(slide.source_asset); } catch (error) { errors.push(`${label}: ${error.message}`); }
+    if (IMAGE_LAYOUTS.includes(slide.layout) && !slide.asset) errors.push(`${label}: layout-ul cere un asset`);
 
     if (slide.asset) {
       if (!assetsDir) errors.push(`${label}: are asset "${slide.asset}", dar nu s-a dat assetsDir`);
       else {
-        const absolute = resolve(assetsDir, String(slide.asset));
-        if (!existsSync(absolute) || !statSync(absolute).isFile()) errors.push(`${label}: asset inexistent: ${slide.asset}`);
+        try { resolveAsset(assetsDir, slide.asset); } catch (error) { errors.push(`${label}: ${error.message}`); }
       }
     }
 

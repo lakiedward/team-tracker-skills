@@ -1,12 +1,13 @@
 // Teste pure pentru render-slides.mjs: fără rețea, fără Chromium.
 // Rulare: node scripts/render-slides.test.mjs
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   LAYOUTS,
+  assetGeometry,
   assetUrl,
   buildSlideHtml,
   chipsHtml,
@@ -19,6 +20,10 @@ import {
   pickChrome,
   pngSize,
   slideFileName,
+  resolveAsset,
+  validateDesign,
+  validateTheme,
+  validateSourceAsset,
 } from './render-slides.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -209,6 +214,53 @@ test('buildSlideHtml aruncă pentru layout necunoscut sau headline lipsă', () =
 test('buildSlideHtml folosește accentul implicit când valoarea nu e hex', () => {
   const html = buildSlideHtml({ order_index: 0, layout: 'cover', headline: 'x', accent: 'red' }, { templatesDir: TEMPLATES_DIR, total: 1 });
   assert.ok(html.includes('--accent: #C8FF3E'));
+});
+
+test('project theme overrides every legacy template and slide overrides stay local', () => {
+  const visualDirection = { schema_version: 1, theme: { background: '#f6f3ee', text: '#17201a', muted: 'rgba(23,32,26,.7)', accent: '#21834d', fonts: { display: 'Georgia' } }, composition: { align: 'center' } };
+  for (const layout of LAYOUTS) {
+    const html = buildSlideHtml({ ...sampleSlide(0, layout), design: { theme: { accent: '#ff8800' }, headline_size: 80 } }, { assetsDir, visualDirection });
+    assert.ok(html.includes('--bg: #f6f3ee;--ink: #17201a'));
+    assert.ok(html.includes('--accent: #ff8800'));
+    assert.ok(html.includes('.slide .headline {font-size:80px;}'));
+  }
+  assert.equal(visualDirection.theme.accent, '#21834d');
+});
+
+test('native source assets avoid duplicate frames and retain crop metadata', () => {
+  const html = buildSlideHtml({ ...sampleSlide(0, 'screenshot_phone'), source_asset: { width: 400, height: 800, crop: { x0: .1, y0: .2, x1: .9, y1: .8 } } }, { assetsDir });
+  assert.ok(html.includes('dynamic-asset frame-none'));
+  assert.ok(!html.includes('<div class="phone">'));
+  assert.ok(html.includes('data-crop='));
+});
+
+test('crop geometry preserves source pixels and never upscales', () => {
+  assert.deepEqual(assetGeometry(400, 800, { x0: .1, y0: .25, x1: .9, y1: .75 }, 888, 880), { x: 40, y: 200, cropWidth: 320, cropHeight: 400, width: 320, height: 400, scale: 1 });
+  const scaled = assetGeometry(1600, 2400, undefined, 400, 600);
+  assert.equal(scaled.scale, .25);
+  assert.equal(scaled.width, 400);
+  assert.equal(assetGeometry(100, 50, undefined, 800, 800, 'cover').scale, 1);
+});
+
+test('CSS injection, invalid crop and unsafe asset references are rejected', () => {
+  assert.throws(() => validateDesign({ headline_size: '72px; color:red' }), /headline_size/);
+  assert.throws(() => validateDesign({ image_scale: 2 }), /image_scale/);
+  assert.throws(() => validateDesign({ css: 'body {}' }), /necunoscut/);
+  assert.throws(() => validateTheme({ background: 'red; background:url(x)' }), /culoare/);
+  assert.throws(() => validateTheme({ fonts: { display: 'Arial";</style>' } }), /font/);
+  assert.throws(() => validateSourceAsset({ width: 400, height: 800, crop: { x0: 1, x1: .5, y0: 0, y1: 1 } }), /crop/);
+  assert.throws(() => resolveAsset(assetsDir, '../outside.png'), /relativă/);
+  assert.throws(() => resolveAsset(assetsDir, 'C:/private.png'), /relativă/);
+  const outside = mkdtempSync(join(tmpdir(), 'marketing-outside-'));
+  writeFileSync(join(outside, 'secret.png'), 'private');
+  try {
+    symlinkSync(outside, join(assetsDir, 'linked'), 'junction');
+    assert.throws(() => resolveAsset(assetsDir, 'linked/secret.png'), /afara/);
+  } finally { rmSync(outside, { recursive: true, force: true }); }
+});
+
+test('background asset uses the same containment rules', () => {
+  assert.throws(() => buildSlideHtml(sampleSlide(0, 'cover'), { assetsDir, visualDirection: { schema_version: 1, theme: { background_asset: '../outside.png' } } }), /relativă/);
 });
 
 rmSync(assetsDir, { recursive: true, force: true });

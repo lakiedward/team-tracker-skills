@@ -56,8 +56,12 @@ Spec-ul complet, cu modelul de date și deciziile luate cu omul:
    - `src/data/projects.js` → array-ul `PROJECTS` (id, name, kind, client, url, year, `delivered`);
    - `src/i18n/en.json` → `intro.*` (poziționarea), `projects.<id>.*` (descrieri, capitolele
      de tur), `detail.aiCore.*` (intrări/ieșiri AI), `detail.cta.*` (textul de CTA);
-   - `public/<proiect>/` → inventarul de capturi, cu
-     `node ../marketing-generate/scripts/asset-inventory.mjs --assets <repo>/public`.
+   - `src/data/moodPalettes.js`, `src/chrome/Background.jsx` și shaderul lui → fundalul real per proiect;
+   - referințele `mockupsByLang`, `desktopMockupsByLang`, `desktopTour`, `mockups`, crop și rame din componente
+     → mockupurile originale. Nu deduce apartenența proiectului din folder (Padel folosește `phones/`).
+   - contextul vizual complet: `node ../marketing-generate/scripts/project-context.mjs --repo <repo>
+     --project <portfolio-slug> --out <scratch/context> --language en`. Citește `context.json`; sursele și
+     fundalul static sunt păstrate lângă el. Repo-ul sursă nu se modifică.
    Ține contextul în conversație. Nu-l scrie în repo-ul proiectului și nu-l scrie în
    directorul skill-ului (cache-ul plugin-ului se regenerează).
 3. Notează ce lipsește din site și ar strica o postare: formular de contact care nu trimite,
@@ -116,7 +120,8 @@ Așteaptă în chat: <postările needs_changes cu nota omului, câte una pe rân
 | Omul vrea | Skill-ul face |
 |---|---|
 | un plan / o campanie nouă / „5 postări, una pe proiect" | verifică numărul real de proiecte și materialul lor, corectează cifra dacă e greșită (site-ul are 4 proiecte, nu 5; Amos nu ține un carusel) și **apoi** cheamă `/marketing-plan` |
-| „generează" / „fă postările" | cheamă `/marketing-generate` pe postările `planned` ale campaniei (sau pe cele numite) |
+| „generează" / „fă postările" | cheamă `/marketing-generate`; AI-ul decide designul folosind implicit tema paginii fiecărui proiect |
+| „hai să alegem designul" / „mai aerisit" / „schimbă doar fundalul" | discută și randează variante numai dacă omul dorește; persistă cererea în `visual_preferences` și trimite aria exactă la `/marketing-generate` |
 | „vezi ce am cerut" / e ceva în `needs_changes` | bucla de mai jos |
 | „aprobă" / „publică" / „șterge postarea aprobată" | **nu**: explică în două rânduri că butoanele sunt în Team Tracker → Marketing și că baza respinge scrierea din sesiune |
 
@@ -133,10 +138,10 @@ Pentru fiecare postare cu `status = 'needs_changes'`:
    se re-randează neschimbat la versiunea nouă (versiunea e a postării, nu a slide-ului).
    Dacă nota e generală („prea tehnic", „mai scurt"), se rescrie tot postul.
 2. Spune omului în chat, într-o propoziție, cum ai citit nota. Nu întreba; el a scris deja.
-3. Pornește regenerarea: `update tt_marketing_posts set status = 'generating', version = version + 1,
-   updated_at = now() where id = <id> and status = 'needs_changes'` (tranziție permisă de
-   trigger). **Nu atinge `feedback`**: rămâne pe rând până la următoarea decizie a omului.
-4. Cheamă `/marketing-generate` pe postarea aceea, cu lista de slide-uri țintite.
+3. Citește ultima versiune completă din `tt_marketing_post_versions`, cu direcția vizuală și manifestul
+   surselor. **Nu atinge `feedback` și nu incrementa versiunea aici.** Snapshotul este baza regenerării.
+4. Cheamă `/marketing-generate` cu lista de slide-uri și câmpuri țintite. Rețeta neschimbată rămâne identică;
+   alocarea atomică a versiunii se face prin helperul `generation-io.mjs`, după randare și review vizual AI.
 5. La final raportează: „<titlu> e din nou la verificare (v<n>): am schimbat slide-urile
    <lista> după nota ta." Postarea reapare în card ca `generated`, sub nota lui.
 
@@ -174,9 +179,10 @@ Apoi propune `/pontaj` dacă omul nu l-a cerut.
 - Să scrii `approved_at` „doar ca să testezi". Nu merge și nici nu trebuie să meargă.
 - Să ștergi `feedback` la regenerare. Nota rămâne până decide omul.
 - Să copiezi contextul de brand într-un fișier din directorul skill-ului: dispare la update.
-- Să lași o postare pe `generating` după un eșec de randare. La eșec: `status = 'planned'`
-  dacă nu exista nicio versiune, altfel rămâne pe versiunea veche cu `status = 'generated'`,
-  și spui omului ce a picat.
+- Să lași o postare pe `generating` după un eșec. Helperul folosește `tt_fail_marketing_post_version`:
+  revine la ultima versiune completă sau la `planned`, păstrând încercarea eșuată în istoric.
+- Să confunzi preferințele creative din chat (`visual_preferences`) cu nota deciziei umane (`feedback`).
+- Să aplici global tema negru/lime: implicit fiecare postare moștenește fundalul și tipografia paginii proiectului.
 
 ## When to self-abort
 

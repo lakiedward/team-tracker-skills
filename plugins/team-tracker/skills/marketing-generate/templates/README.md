@@ -1,5 +1,35 @@
 # Șabloane de slide-uri (1080×1350, 4:5)
 
+## Design din tema proiectului
+
+Pentru postările noi, `post.visual_direction.theme` provine din contextul extras al paginii proiectului: `background`, `text`, `muted`, `accent`, `fonts` (`display`, `body`, `serif`, `mono`) și `background_asset`. Imaginea fundalului este captura deterministă a efectului original, la rezoluția finală. Calea ei și fiecare `slide.asset` sunt relative la snapshotul `--assets`; traversările și legăturile simbolice în afara lui sunt respinse.
+
+Ordinea aplicării: tema proiectului → `visual_direction.composition` → `slide.design`. `slide.design.theme` suprascrie numai câmpurile declarate; restul identității rămâne. AI-ul alege compoziția, iar preferințele explicite din conversație au prioritate. Nu introduceți CSS liber în JSON.
+
+`compose` este layoutul flexibil pentru text și un mockup original. `layout_variant` poate fi `stack`, `split` sau `full`; cele opt layouturi existente primesc aceleași culori, fonturi și fundal. În modul dinamic, imaginile folosesc implicit `frame: "none"`, astfel încât mockupurile deja încadrate nu primesc încă o ramă.
+
+| Câmp `design` | Valori acceptate |
+|---|---|
+| `align` | `left`, `center` |
+| `headline_size`, `body_size` | 36–120 px; 22–42 px |
+| `image_fit`, `image_position` | `contain`/`cover`; `top`/`center`/`bottom` |
+| `image_scale` | 0.25–1 din spațiul disponibil; plafonat la pixelii nativi |
+| `frame` | `none`, `phone`, `browser` |
+| `layout_variant` | `stack`, `split`, `full` (pentru `compose`) |
+| `background_opacity` | 0–1 |
+| `margin`, `gap` | 48–140 px; 16–96 px |
+| `theme` | Suprascriere parțială validată a temei |
+
+`slide.source_asset` păstrează metadatele extrase (`width`, `height`, hash, sursă) și opțional `crop: {x0,y0,x1,y1}` normalizat la 0–1. Rendererul decupează direct pixelii imaginii originale și folosește dimensiunile decodate pentru a evita mărirea artificială. `crop: null` înseamnă folosirea întregii imagini.
+
+Rendererul așteaptă explicit încărcarea documentului, fonturilor și decodarea imaginilor prin Chromium CDP. Refuză imagini defecte, erori ale fundalului și texte ieșite din zona sigură. Un render complet reușit scrie `reviewed-post.json` și `reviewed-render.json`, care leagă rețeta și fiecare PNG prin SHA-256 înainte de publicarea versiunii în Team Tracker. `--only` produce previzualizări și invalidează acel marker; rulați randarea completă înainte de finalizare.
+
+Testele pure rulează cu `node scripts/render-slides.test.mjs`. Testele reale de culori, crop, rezoluție și erori rulează cu `node --test scripts/render-slides.browser.test.mjs` dacă Chromium este disponibil.
+
+## Compatibilitate cu postările vechi
+
+Descrierea următoare documentează valorile studioului folosite numai dacă postarea nu conține o direcție vizuală nouă. `example-post.json` rămâne un exemplu de compatibilitate, nu o sursă pentru identitatea vizuală a unui proiect nou.
+
 Fiecare fișier din `slides/` este un HTML self-contained: încarcă fonturile din Google Fonts (Bricolage Grotesque 700 pentru titluri, Sora 400/600 pentru text, Instrument Serif italic pentru cuvântul accentuat, JetBrains Mono pentru etichete), fixează corpul la `1080×1350px` cu `overflow: hidden`, ține totul în zona sigură de 96px și randează în josul paginii wordmark-ul `> alki|studio` (stânga) și contorul `{{n}} / {{total}}` (dreapta).
 
 `scripts/render-slides.mjs` completează placeholder-ele `{{nume}}`: toate valorile sunt escapate HTML, iar în `headline` textul dintre `*asteriscuri*` devine `<em class="serif">…</em>` (Instrument Serif italic, culoarea de accent). Placeholder-ele fără valoare devin șir gol; elementele goale (`.kicker`, `.body`, `.meta`, `.pill`, `.cta`) se ascund singure din CSS. Accentul (`{{accent}}`) este un hex; implicit `#C8FF3E` (lime).
