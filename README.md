@@ -30,6 +30,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `resolving-tt-features` | Triază și implementează features din `tt_features`. |
 | `triage` | Pune ordine în tot ce e de făcut, pe **toate** proiectele: rankează backlog-ul (bug+feature+test), semnalează duplicate/stale/done-nearhivat și aplică curățenia sigură la confirmare. Mod `--digest` pentru rezumatul zilnic. |
 | `supabase-cota` | Rulează cota lunară Supabase: parsează factura org (PDF), citește Realtime Messages pe proiect din Dashboard Usage (Chrome logat), împarte restul **ponderat** (nu egal), scrie `tt_supabase_invoices` + shares și scoate mesajele de plată. |
+| `marketing` / `marketing-plan` / `marketing-generate` | Campanii Instagram cu direcție artistică AI, fundalul și tema paginii fiecărui proiect, mockupuri originale și design ajustabil în conversație. Versiuni complete și review uman în Team Tracker. |
 
 ---
 
