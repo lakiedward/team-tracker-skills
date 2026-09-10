@@ -137,7 +137,7 @@ For each plan, for each `fail` **or `blocked`** item:
 
 ### 3·triage — Is this a `fail` or a `blocked`? (do this first)
 
-- **`fail`** → the behavior was exercised and was wrong. Run 3a–3f, including the Bugbot gate whenever code changes.
+- **`fail`** → the behavior was exercised and was wrong. Run 3a–3f, including the review gate whenever code changes.
 - **`blocked`** → the tester could **not finish the step**, so its true outcome is unknown. First read the item `notes` — that is where they recorded *why* they stopped — and classify the blocker:
 
   | Blocker (from the notes / your read of the step) | Skill can clear it? | What to do |
@@ -149,7 +149,7 @@ For each plan, for each `fail` **or `blocked`** item:
   | Native shell: push/FCM, Face ID, biometrics, Apple Sign-In native sheet, share sheet, file picker, OS deep link | **No** | Keep `blocked`; refine the reason. The native shell isn't in the browser DOM. |
   | Needs real credentials, a paid third-party, a product decision, or infra access the skill lacks | **No** | Keep `blocked`; refine the reason. |
 
-  If the blocker is **clearable**, run 3a–3d to *finish the test*, then let its real outcome decide the update (3f, after the Bugbot gate when code changed):
+  If the blocker is **clearable**, run 3a–3d to *finish the test*, then let its real outcome decide the update (3f, after the review gate when code changed):
   - Behaves correctly when driven to completion → mark `pass` **with evidence**. Never flip a `blocked` to `pass` without actually running it.
   - Completion exposes a real defect → it is effectively a `fail`: design and apply a fix (3b–3c), re-verify (3d), then `pass`.
   - You genuinely cannot drive it with the supported channels → keep `blocked` (3f) with a one-line refined reason stating what a human or device must do next.
@@ -198,33 +198,25 @@ Pick the verification channel based on the step content. **Only two channels are
 
 **Native-only steps are NOT verifiable by this skill.** If a failed step describes behavior that lives in the native shell (push notifications, Apple Sign-In iOS sheet, Face ID, biometrics, Capacitor plugins, share sheet, file picker, OS-level deep links), mark it `blocked` with reason `"Needs real device; preview cannot reproduce native behavior."` instead of trying. The user follow-up for these is a manual run on a phone or a different skill.
 
-**For a `blocked` item, this verification is the step's first real execution** — the tester never got a clean result, so its outcome is the source of truth. A clean pass clears the block (→ `pass` at 3f, after the Bugbot gate when code changed). A failure means there is a real defect: loop back to 3b–3c, fix it, then re-verify here. If the supported channels cannot drive the step at all (native shell, real credentials, product decision), it stays `blocked` (3f) with the refined reason from the 3·triage taxonomy — do not guess a `pass`.
+**For a `blocked` item, this verification is the step's first real execution** — the tester never got a clean result, so its outcome is the source of truth. A clean pass clears the block (→ `pass` at 3f, after the review gate when code changed). A failure means there is a real defect: loop back to 3b–3c, fix it, then re-verify here. If the supported channels cannot drive the step at all (native shell, real credentials, product decision), it stays `blocked` (3f) with the refined reason from the 3·triage taxonomy — do not guess a `pass`.
 
 For each verification, capture concrete evidence: a console log snippet, a `body.innerText` slice, an `INSERT ... RETURNING` row, or a screenshot path. The evidence is what you paste into the item's `notes` column at 3f.
 
 If verification fails after up to 3 retry cycles, classify the item as `blocked` with a reason and move on. Do not enter an infinite retry loop.
 
-### 3e. Cursor Bugbot gate and merge — only when code changed
+### 3e. Review and merge — only when code changed
 
-If this item passed without changing source code, skip this step: there is no
-diff to review or merge.
-
-If 3c changed code, read `../references/cursor-bugbot-merge-gate.md` before
-marking a test step `pass` or archiving its plan:
-
-1. Commit the diff on the dedicated branch/worktree.
-2. Launch exactly one Cursor Bugbot review with `Diff: branch changes` and wait.
-3. Fix every actionable finding, rerun the affected verification, and run a
-   fresh Bugbot review on the updated diff.
-4. An ambiguous finding, unavailable Bugbot, timeout, or unusable verdict blocks
-   merge; keep the test item `blocked` and preserve the branch for the human.
-5. Merge only after Bugbot has no actionable findings. In Orchestrator target
-   mode, do not run or report a Bugbot verdict yourself; the conductor performs
-   the central Bugbot gate and merge.
+If the item passed without changing any files or branch state, skip review and merge.
+Documentation-only changes still need proportionate review and normal delivery.
+Otherwise read `../references/code-review-before-merge.md`, commit the task diff,
+review it using the available method, fix confirmed findings and rerun the affected
+verification. An unavailable bot does not block this step. Merge when checks,
+review and existing human gates pass. In Orchestrator target mode, return the
+verified result and let the conductor perform the final review and merge.
 
 ### 3f. Update the item in the database
 
-On verification success — and, when code changed, only after a Bugbot-clean
+On verification success — and, when code changed, only after a reviewed
 branch merged into main — UPDATE the item:
 
 ```sql
@@ -306,7 +298,7 @@ After the sweep summary, print ONE short recommendation: which test plan(s), if 
 
 | What this sweep produced | Recommend | Why |
 |---|---|---|
-| Failed/blocked steps you **fixed + re-verified** via **Vite preview** or **SQL impersonation**, and (when code changed) passed Bugbot and merged, that the resolved plan can't auto-cover later (it was a `human` plan, or the fix touched behavior beyond the plan's steps) | **`/writing-ai-test-plans`** | An AI mirror lets `/auto-running-test-plans` guard the regression unattended next time, instead of waiting on a human re-run. |
+| Failed/blocked steps you **fixed + re-verified** via **Vite preview** or **SQL impersonation**, and (when code changed) passed review and merged, that the resolved plan can't auto-cover later (it was a `human` plan, or the fix touched behavior beyond the plan's steps) | **`/writing-ai-test-plans`** | An AI mirror lets `/auto-running-test-plans` guard the regression unattended next time, instead of waiting on a human re-run. |
 | **Residual `blocked` steps you could not clear** — native shell (push, biometrics, Apple Sign-In sheet), a **real second device**, real credentials, or a **subjective visual / UX** check | **`/writing-tester-test-plans`** (or a manual device run) | Exactly the steps outside the browser DOM and SQL — only a person on a real device finishes them. The "ultra nevoie" case. |
 | Both occurred this sweep | **Ambele** — an AI plan for the web/DB fixes, a human plan only for the residual native/subjective blockers | Don't make a human re-test what the AI can run; don't pretend the AI reaches the native shell. |
 | Everything was an all-green pickup (just archived), or the fixes are already covered by the resolved `ai` plan | **Niciun test nou** — say so | The existing `ai` plan already re-runs those steps; a duplicate adds QA noise. |
@@ -359,7 +351,7 @@ Launch independent investigations as multiple `Agent` tool calls in **one messag
 | Looping forever on a stubborn step | Wastes time, won't converge. | 3 retry cycles max, then mark blocked and move on. |
 | Parallelizing across plans | Plans often touch overlapping code; the device is single-tenant. | Sequential across plans, parallel within a plan. |
 | Re-running searches the subagent already did | Burns the context window for no signal. | Trust the subagent's report; only re-verify a specific assertion (RLS state, file path) when you have a concrete reason to doubt. |
-| Editing a plan's items before verification succeeds | Creates plans that lie about state. | Update item rows only in Step 3f, after evidence and the Bugbot gate when code changed. |
+| Editing a plan's items before verification succeeds | Creates plans that lie about state. | Update item rows only in Step 3f, after evidence and the review gate when code changed. |
 | Updating the team-tracker app's source code | The plans live in DB, owned by team-tracker; the project resolved in Step 0 is where fixes belong. | Fix code under `<source_root>`; never modify team-tracker source unless the user asks. |
 | Running the skill on plans for a different project than the cwd | Subagents investigate the wrong codebase, fixes land in the wrong repo. | Step 0 resolves `<project_id>` from cwd and Step 2's SQL filter keeps work scoped. If the user wants a different project, ask them to `cd` into that project first. |
 

@@ -1,13 +1,13 @@
 ---
 name: resolving-tt-bugs
-description: Use when the user asks to fix, resolve, process, or sweep open bugs from team-tracker — or invokes "/resolving-tt-bugs". Bugs live in Supabase table `tt_bugs`, scoped per-project via `project_id`. Resolves the current project from the cwd, discovers every `Open` and `In Progress` bug for that project, dispatches subagents to investigate each one, designs a fix, implements it under the project's source root, verifies via Vite preview (or SQL impersonation for RLS / database bugs), requires a clean Cursor Bugbot review before merge, then sets `status='Fixed'`. Native-only bugs (push, biometrics, Apple Sign-In native sheet, Capacitor plugins) are left `Open` with a clear note for human follow-up. Triggers on "rezolvă bug-urile", "fix bugs", "process bugs", "sweep tt_bugs", "rezolvă toate bug-urile", "fix all open bugs", "rezolvă probleme din proiect", "fa cate un fix pentru fiecare bug", "fix open tt_bugs", "sweep bugs from team-tracker".
+description: Use when the user asks to fix, resolve, process, or sweep open bugs from team-tracker — or invokes "/resolving-tt-bugs". Bugs live in Supabase table `tt_bugs`, scoped per-project via `project_id`. Resolves the current project from the cwd, discovers every `Open` and `In Progress` bug for that project, dispatches subagents to investigate each one, designs a fix, implements it under the project's source root, verifies via Vite preview (or SQL impersonation for RLS / database bugs), requires a completed code review before merge, then sets `status='Fixed'`. Native-only bugs (push, biometrics, Apple Sign-In native sheet, Capacitor plugins) are left `Open` with a clear note for human follow-up. Triggers on "rezolvă bug-urile", "fix bugs", "process bugs", "sweep tt_bugs", "rezolvă toate bug-urile", "fix all open bugs", "rezolvă probleme din proiect", "fa cate un fix pentru fiecare bug", "fix open tt_bugs", "sweep bugs from team-tracker".
 ---
 
 # Resolving tt_bugs
 
 Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
-End-to-end sweep over team-tracker bugs (stored in the BetRO Supabase database, table `tt_bugs`, not markdown). Find the ones with `status='Open'` or `'In Progress'` for the current project, fix them on a dedicated branch with specialized subagents, verify via the most reliable channel for the bug type, pass Cursor Bugbot with no unresolved actionable findings, merge, and only then flip the row to `Fixed`. Bugs that can't be verified or Bugbot-reviewed by this skill (native shell, credentials, product decisions, unavailable Bugbot) stay `Open` with a note so the user can finish them.
+End-to-end sweep over team-tracker bugs (stored in the BetRO Supabase database, table `tt_bugs`, not markdown). Find the ones with `status='Open'` or `'In Progress'` for the current project, fix them on a dedicated branch with specialized subagents, verify via the most reliable channel for the bug type, pass code review with no unresolved actionable findings, merge, and only then flip the row to `Fixed`. Bugs that cannot be verified by this skill (native shell, credentials or product decisions) stay `Open` with a note so the user can finish them.
 
 ## Why this skill exists
 
@@ -20,7 +20,7 @@ Manually walking through bug rows in the main thread blows the context window, l
 1. Query the DB once, list all open bugs for the current project.
 2. Delegate investigation, fix design, and root-cause tracing to subagents — main thread keeps a clean orchestration view.
 3. Verify via the channel that matches the bug: **Vite preview for UI-visible work, SQL impersonation for RLS / database work**. Native-only behavior is not in scope — leave such bugs `Open` with a clear reason.
-4. Run Cursor Bugbot on the final branch diff, fix and re-review every actionable finding, merge only after a clean verdict, then update `status='Fixed'`.
+4. Review the final branch diff with the available method, fix confirmed findings and merge after the review and required checks, then update `status='Fixed'`.
 
 ## Constants
 
@@ -193,28 +193,19 @@ For each verification, capture concrete evidence: a console log snippet, a `body
 
 If verification fails after up to 3 retry cycles, take the blocked path. Do not enter an infinite retry loop.
 
-### 3e. Cursor Bugbot gate and merge — fail closed
+### 3e. Review and merge
 
-Read `../references/cursor-bugbot-merge-gate.md` before any merge.
-
-After the preview/SQL verification passes, but before changing the bug status:
-
-1. Commit the final diff to the dedicated branch.
-2. Launch exactly one Cursor Bugbot review with `Diff: branch changes`.
-3. Wait for Bugbot to finish. Never merge while it is running.
-4. If it reports an actionable finding, fix it on the same branch, rerun the
-   affected verification and checks, then launch a fresh Bugbot review. Repeat
-   until no actionable findings remain.
-5. If Bugbot is unavailable, cannot compute the diff, times out, or reports an
-   ambiguous finding, do not merge. Take the blocked path below and preserve the
-   branch for the human.
-6. Only after Bugbot is clean, merge the branch into main. In target mode, do not
-   run or report a Bugbot verdict yourself; return the verified result and let
-   the Orchestrator perform the Bugbot gate and merge centrally.
+Read `../references/code-review-before-merge.md` after preview/SQL verification.
+Commit the final diff on the dedicated branch and review it with the tools available
+in the current session. Fix confirmed findings, rerun affected verification and
+review the updated diff. No external bot is required; its absence is not a blocker.
+Merge after the review, required checks and existing human gates pass.
+In Orchestrator target mode, return the verified result and let the conductor own
+the final review and merge centrally.
 
 ### 3f. Mark the bug Fixed (or leave it Open with reason)
 
-Only after preview/SQL verification, a Bugbot-clean verdict, and a successful
+Only after preview/SQL verification, a completed review with no confirmed unresolved defects, and a successful
 merge into main, UPDATE the bug:
 
 ```sql
@@ -228,7 +219,7 @@ WHERE id = <bug_id>
 RETURNING id, status, effort, updated_at;
 ```
 
-On verification failure, Bugbot failure, unresolved/ambiguous Bugbot finding, or
+On verification failure, a confirmed unresolved defect, or another genuine
 blocked path (rolls back the In Progress flip if you want a clean trail, OR just
 appends a note and leaves it Open):
 
@@ -318,8 +309,8 @@ Launch independent investigations as multiple `Agent` tool calls in **one messag
 | Trusting a code-explorer "no RLS" claim without verifying `pg_policy` and `relrowsecurity` | Migration grep misses policies created in unrelated migrations. | After any RLS-related fix, query `pg_policy` directly to confirm the live state. |
 | Trying to verify a native-only bug in preview | The native shell (push, biometrics, OAuth sheets) is not in the browser DOM; you'll get a misleading false fail. | Detect native-only keywords (push, FCM, biometric, Face ID, Apple Sign-In native, share sheet, Capacitor plugin) early and take the blocked path with the right reason. |
 | Using `preview_eval` to perform clicks | Bypasses React event handlers; gives false positives. | Use `preview_click` with a stable selector; reserve `preview_eval` for navigation and read-only inspection. |
-| Marking a bug `Fixed` based on a typecheck only | TS compile success doesn't prove the user-visible behavior is fixed. | Always run preview/SQL verification, Bugbot, and merge; evidence in hand before `status='Fixed'`. |
-| Merging while Cursor Bugbot is running, failed, or has open findings | A fresh diff review is the last chance to catch regressions before main moves. | Follow `references/cursor-bugbot-merge-gate.md`; fix and re-run Bugbot until clean, otherwise park the branch. |
+| Marking a bug `Fixed` based on a typecheck only | TS compile success doesn't prove the user-visible behavior is fixed. | Always run preview/SQL verification, review, and merge; evidence in hand before `status='Fixed'`. |
+| Skipping review or merging with confirmed unresolved defects | A fresh diff review is the last chance to catch regressions before main moves. | Follow `references/code-review-before-merge.md`; use an available review method, fix confirmed defects and rerun affected checks. |
 | Looping forever on a stubborn bug | Wastes time, won't converge. | 3 retry cycles max, then blocked path. |
 | Parallelizing across bugs | Bugs often touch overlapping code; the preview is single-tenant. | Sequential across bugs, parallel within a bug (3a). |
 | Re-running searches the subagent already did | Burns the context window for no signal. | Trust the subagent's report; only re-verify a specific assertion when you have concrete reason to doubt. |

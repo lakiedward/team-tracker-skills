@@ -50,7 +50,7 @@ const REMAINING_FLOOR_RATIO = 0.25;
 // breaks the commitment the daily budget exists to protect.
 //
 // Even a nearly finished item keeps a tail this flow makes mandatory: browser
-// verification, a PR, a clean Bugbot review, the merge. The floor keeps that tail
+// verification, a PR, a completed review, the merge. The floor keeps that tail
 // on the books instead of letting an item round down towards nothing.
 function applySpentHours(low, high, spentHours, inFlight) {
   if (!inFlight || spentHours <= 0) {

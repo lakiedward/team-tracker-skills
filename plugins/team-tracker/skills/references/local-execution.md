@@ -23,7 +23,7 @@ fără `/proiect` înainte.
   relevante și starea erorilor din consolă. Păstrează convențiile și porțile de verificare
   ale skillului, inclusiv verificarea SQL pentru taskurile fără UI.
 - Include regula de execuție locală și opțiunile `@Browser` / `@Chrome` în prompturile de implementare sau
-  testare produse de skill. Review-ul GitHub Bugbot și pașii de merge ai proiectului
+  testare produse de skill. Review-ul de cod și pașii de merge ai proiectului
   rămân aplicabili; execuția locală nu îi înlocuiește.
 - Pentru modificările autorizate, finalizează autonom commit, push, PR și merge după
   verificările și review-urile cerute de proiect, fără a aștepta o confirmare suplimentară

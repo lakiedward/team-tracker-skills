@@ -297,7 +297,7 @@ Instrucțiuni speciale:
 Notă: în Milestone B nu se creează worktree-uri, dar asta nu înseamnă editare pe
 main. Înainte de prima modificare, muncitorul creează sau reia branchul
 `orch/only-<kind>-<id>` din main actualizat, apoi committuiește acolo. Pune
-branchul în JSON; conductorul face Bugbot + merge secvențial înainte de
+branchul în JSON; conductorul face review + merge secvențial înainte de
 write-back.
 
 ### Pas B4 — Citește rezultatul (JSON contract)
@@ -331,27 +331,23 @@ Subagentul de testare primește: `TARGET_PROJECT_ID`, `TARGET_SOURCE_ROOT`, `TAR
 și descrierea itemului, și instrucția că fix-ul este deja aplicat în `TARGET_SOURCE_ROOT`.
 Așteaptă finalizarea subagentului/subagentelor de testare înainte de a continua la write-back.
 
-### Pas B5.5 — Cursor Bugbot + merge (înainte de write-back)
+### Pas B5.5 — Review + merge (înainte de write-back)
 
-Pentru un rezultat `fixed`/`done` cu diff de cod:
+Pentru un rezultat `fixed`/`done` cu diff de cod, citește
+`../references/code-review-before-merge.md`. Verifică diff-ul final cu metoda
+disponibilă în sesiune. Repară constatările confirmate pe același branch,
+repetă verificările afectate și revizuiește reparația. Absența unui bot nu este
+blocaj și nu necesită o aprobare separată. După review, verificări și porțile umane
+existente, merge-ui branchul și continuă la B6.
 
-1. Citește `../references/cursor-bugbot-merge-gate.md`.
-2. Rulează exact un Cursor Bugbot pe branchul `orch/only-<kind>-<id>` și așteaptă
-   verdictul.
-3. Dacă Bugbot are findings acționabile, nu merge-ui. Reia muncitorul pe același
-   branch cu findings-urile, rulează verificările afectate și lansează un Bugbot
-   nou pe diff-ul actualizat.
-4. Dacă Bugbot e indisponibil, nu poate calcula diff-ul, expiră sau are un
-   finding ambiguu, PARK. Nu executa write-back DONE.
-5. Doar după Bugbot curat, merge-ui branchul în main și continuă la B6.
-
-Pentru un rezultat fără diff de cod, de exemplu un test-runner, sari poarta
-Bugbot și notează motivul în raport.
+Pentru rezultate fără modificări de fișiere sau branch, sari review-ul și merge-ul;
+consemnează dovada operației executate. Branchurile care schimbă numai documentație
+primesc review proporțional și se livrează normal.
 
 ### Pas B6 — Write-back sau Park
 
 **Dacă `outcome = "fixed"` (bug) sau `outcome = "done"` (feature), iar branchul
-a fost verificat, trecut prin Bugbot și merge-uit cu succes:**
+a fost verificat, trecut prin review și merge-uit cu succes:**
 
 Execută SQL-ul DONE corespunzător din `reference/board-queries.md`, interpolând:
 - `:id` → `item_id`
@@ -609,8 +605,8 @@ Procesează rezultatele întoarse **unul câte unul** (NICIODATĂ două merge-ur
   PARK normal (Pas C6, fără worktree). Nu intra în C5.2 pentru aceste iteme. Rezultatul lor informează doar
   runda următoare (pașii `fail` apar pentru `resolving-failed-test-plans`).
 - **Merge DOAR dacă** `r.outcome ∈ {fixed, done}` **ȘI** `r.verified === true` **ȘI** itemul are worktree
-  (`r.no_worktree !== true`) **ȘI** trece poarta Cursor Bugbot de mai jos. Numai atunci codul a fost efectiv
-  verificat de un agent de verificare viu și de un reviewer independent → treci la C5.2 (merge).
+  (`r.no_worktree !== true`) **ȘI** trece review-ul de mai jos. Numai atunci codul a fost efectiv
+  verificat de un agent de verificare viu și revizuit cu metoda disponibilă → treci la C5.2 (merge).
 - **Dacă** `r.outcome ∈ {fixed, done}` **DAR** `r.verified !== true` (verificatorul a murit și itemul a degradat
   la passthrough, SAU `verify_channel:'none'` — n-a existat o verificare reală pe preview/SQL) → **NU face merge**.
   PARK-ează itemul (Pas C6) cu `question="verificare lipsă/eșuată — reia"` și **PĂSTREAZĂ** worktree-ul + branch-ul.
@@ -626,26 +622,22 @@ Procesează rezultatele întoarse **unul câte unul** (NICIODATĂ două merge-ur
 > rezultat înainte de merge. Singura combinație care intră la merge e `outcome ∈ {fixed,done}` **ȘI**
 > `verified === true`.
 
-#### C5.1.5 — Poarta Cursor Bugbot (model-D: NICIUN merge fără review curat)
+#### C5.1.5 — Review-ul diff-ului final
 
-Pentru fiecare rezultat care a trecut C5.1 și are worktree, citește
-`../references/cursor-bugbot-merge-gate.md`, apoi:
+Pentru fiecare rezultat verificat cu worktree, aplică
+`../references/code-review-before-merge.md`. Conductorul folosește un reviewer
+independent disponibil sau face review-ul în sesiunea curentă. Nu cere un bot
+anume și nu bloca livrarea pentru o integrare indisponibilă.
 
-1. Lansează exact un Cursor Bugbot pe `r.worktree`, cu `Diff: branch changes`.
-   Așteaptă verdictul; nu începe merge-ul cât timp Bugbot rulează.
-2. Dacă nu are findings acționabile, marchează rezultatul intern
-   `bugbot_clean:true` și treci la C5.2.
-3. Dacă are findings acționabile, nu merge-ui. Trimite findings-urile plus taskul
-   original unui worker de remediere pe același worktree/branch. Workerul repară,
-   rulează din nou verificările afectate, apoi rezultatul revine prin C5.1 și
-   primește un **Bugbot nou pe diff-ul actualizat**.
-4. Dacă finding-ul este ambiguu, Bugbot nu poate calcula diff-ul, expiră sau nu
-   dă verdict utilizabil, PARK. Nu lăsa conductorul să decidă unilateral că un
-   finding e fals pozitiv.
+Cu zero defecte confirmate nerezolvate, consemnează metoda și revizia verificată,
+setează rezultatul intern `review_clean:true` și continuă la C5.2. Dacă există un
+defect confirmat, workerul repară pe același branch, reface verificările afectate,
+iar conductorul revizuiește diff-ul actualizat. Investighează constatările ambigue;
+escaladează doar decizii reale de produs sau autorizare.
 
-> `verified:true` dovedește comportamentul; `bugbot_clean:true` dovedește că un
-> reviewer independent nu a găsit o problemă nerezolvată în diff. Ambele sunt
-> obligatorii. Niciuna nu o înlocuiește pe cealaltă.
+`verified:true` consemnează probele de comportament; `review_clean:true` consemnează
+review-ul efectuat fără defecte confirmate rămase. Niciun câmp nu reprezintă automat
+un rezultat al unui serviciu extern.
 
 #### C5.2 — Merge (doar pentru verzii verificați)
 
@@ -680,7 +672,7 @@ Interpretează **codul de ieșire** (vezi `reference/worktrees.md`):
      Decizia worktree (PĂSTREAZĂ vs CLEANUP) o ia Pas C6 prin `rev-list` — pentru un conflict branch-ul are
      mereu commit-uri (`>0`), deci rezultatul e **PĂSTREAZĂ**. NU face cleanup aici.
 
-Intră în C5.2 doar un rezultat cu `verified:true` **și** `bugbot_clean:true`.
+Intră în C5.2 doar un rezultat cu `verified:true` **și** `review_clean:true`.
 
 Ordinea merge-ului: după prioritate (verzii cu prioritate mai mare întâi), ca un eventual conflict să cadă
 pe itemul mai puțin prioritar.

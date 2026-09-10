@@ -126,7 +126,7 @@ day, which is the more expensive error: over-estimating wastes some capacity,
 under-estimating breaks the commitment the daily budget exists to protect.
 
 The script floors the remainder at a quarter of the estimate, never below 0.5h,
-because browser verification, the PR, a clean Bugbot review and the merge are
+because browser verification, the PR, a completed review and the merge are
 still owed however much of the build is done. When `remaining_floor_applied` is
 true, spent time has caught up with the estimate: treat it as an overrun signal,
 lower the confidence, and say so in the proposal rather than presenting the
@@ -541,7 +541,7 @@ build the draft on `ui/section-<id>-<slug>` (page skeleton included when it is
 the first section on its page); then the same walkthrough, criteria only from
 answers; finally write `code_refs`, the fingerprint and `inventory_state =
 'active'`, which are not human gates. That prompt keeps the full branch, PR and
-Bugbot contract. The plan item's `scope_reason` says `mode=construction`, but the
+review contract. The plan item's `scope_reason` says `mode=construction`, but the
 switch is the surface state, so plans written before this contract still get
 the right playbook.
 
@@ -580,12 +580,11 @@ Classify user-visible UI, responsive behavior, navigation, forms, auth, payments
 
 The final prompt instruction must update the owning tracker source only after the completion criterion and every required verification pass: bugs to `Fixed`, features and To-Dos to `Gata`, and test-plan results per executed step. If the tracker write fails, the execution is not fully complete and the exact error must be reported.
 
-For every code-changing task, the final verification sequence also includes the
-Cursor Bugbot merge gate: run Bugbot on the branch diff, wait for it to finish,
-fix all actionable findings, rerun the affected checks, then run a fresh Bugbot
-review. Merge only after Bugbot has no unresolved actionable findings. An
-ambiguous finding, unavailable Bugbot, timeout, or unusable verdict leaves the
-branch unmerged for a human decision; it is never silently waived.
+For every code-changing task, review the final diff according to
+`../../references/code-review-before-merge.md`. Use an available reviewer or inspect
+the diff in the current session; no external bot is required. Fix confirmed findings,
+rerun affected checks and review the repairs. Merge after verification, review and
+existing human gates pass. Record the actual review method and revision.
 
 ## Transactional daily apply
 
