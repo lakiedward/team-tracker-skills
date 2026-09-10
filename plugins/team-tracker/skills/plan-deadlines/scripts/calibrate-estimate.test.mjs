@@ -92,7 +92,7 @@ assert.equal(partlyDone.estimate_high, 3);
 assert.equal(partlyDone.spent_hours_applied, true);
 assert.equal(partlyDone.remaining_floor_applied, false);
 
-// Browser verification, a PR, a clean Bugbot review and the merge are still owed
+// Browser verification, a PR, a completed review and the merge are still owed
 // however much of the build is done, so the remainder never rounds towards zero.
 const overrun = calibrateEstimate({
   baseLow: 2,

@@ -70,7 +70,7 @@ testul", „cum deblochez mediul" sunt treaba orchestratorului.
   (`SET ROLE`, claims falsificate). Un refuz al DB-ului aici nu e un bug de rezolvat, e
   poarta funcționând: cere-i omului butonul.
 - **Niciun DDL pe tabelele `tt_`** fără acordul explicit al omului, în cuvintele lui.
-- **Disciplina git + Bugbot** din `../references/cursor-bugbot-merge-gate.md` rămâne
+- **Disciplina git + review** din `../references/code-review-before-merge.md` rămâne
   valabilă pentru orice merge. Poarta de browser din prompturile Productivitate rămâne
   obligatorie și e a orchestratorului — privirea finală a omului la features UI e *peste*
   ea, nu în locul ei.

@@ -48,8 +48,8 @@
   opened in the preview (`.claude/launch.json` → `{{PREVIEW_NAME}}`, port {{PREVIEW_PORT}})
   at the platform viewports — site: 1440 / 768 / 375; app: 375 — with screenshots as
   evidence. "It compiles" is not a verdict.
-- **Bugbot before merge.** Every PR gets a clean GitHub Bugbot review before it lands on
-  `main`; a finding is fixed or explicitly answered, never ignored.
+- **Review before merge.** Inspect the final PR diff with an available reviewer or
+  in the current session; no external bot is required. Fix confirmed defects before merge.
 - **Complete delivery autonomously.** For authorized file changes, commit, push, open or
   update the PR, and merge after the required checks, reviews and existing human gates
   pass. Do not request separate confirmation for each delivery step. Include only files
@@ -57,7 +57,7 @@
 - **Branch names**: `fix/bug-<id>-<slug>`, `feat/feature-<id>-<slug>`,
   `ui/section-<id>-<slug>` — the kind and id are the tracker's, so the branch says which row
   it closes. One branch, one tracker item.
-- `npm test` runs `check:rules` first, so Bugbot and CI see the rule suite too.
+- `npm test` runs `check:rules` first, so local verification and CI include the rule suite.
 
 ## 3. Commands
 

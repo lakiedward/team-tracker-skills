@@ -6,7 +6,7 @@
 // ARUNCĂ în acest sandbox — de aceea NU generăm aici niciun id/timestamp:
 //   - `run_id` vine din `args` (îl generează CONDUCTORUL în firul principal).
 //   - worktree-urile le creează MUNCITORUL (prima lui acțiune), nu scriptul.
-//   - Cursor Bugbot, merge / cleanup le face CONDUCTORUL după ce acest Workflow
+//   - code review, merge / cleanup le face CONDUCTORUL după ce acest Workflow
 //     întoarce rezultate verificate.
 //
 // Model A (preview single-tenant): implementare în PARALEL → verificare SQL în
@@ -62,7 +62,7 @@ function usesWorktree(it) {
 //   - resolving-failed-test-plans  → POATE edita cod (worktree, commit, merge — ca bug/feature)
 //   - auto-running-test-plans      → DOAR rulează    (no_worktree, fără commit, fără merge)
 // `no_worktree` (oricum impus de conductor pentru auto-running) e singura sursă de adevăr
-// pentru „nu produce diff de cod" — îl folosim și ca să NU cerem commit sau Bugbot pe astfel
+// pentru „nu produce diff de cod" — îl folosim și ca să NU cerem commit sau review pe astfel
 // de iteme, chiar dacă proiectul are git.
 const TEST_RUNNER_SKILL = 'auto-running-test-plans'
 function isTestRunner(it) {
@@ -291,8 +291,8 @@ const blockedOut = blocked.map((r) => ({ ...r, verified: false }))
 // ============================================================================
 // REZULTAT — fiecare item din `impl` apare EXACT o dată: blocate la implementare
 // + verificate SQL + verificate preview + test-runs (no_worktree, verificate prin rulare)
-// + restul (passthrough). Conductorul (firul principal) rulează Cursor Bugbot și face merge
-// secvențial DOAR pe verzi cu `verified===true` și Bugbot curat, cu worktree (sare merge-ul
+// + restul (passthrough). Conductorul (firul principal) rulează code review și face merge
+// secvențial DOAR pe verzi cu `verified===true` și review curat, cu worktree (sare merge-ul
 // pentru `no_worktree`); restul → PARK.
 // ============================================================================
 return [...blockedOut, ...sqlVerified, ...previewVerified, ...testRuns, ...passthrough]
