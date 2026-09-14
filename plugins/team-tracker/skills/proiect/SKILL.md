@@ -71,9 +71,9 @@ testul", „cum deblochez mediul" sunt treaba orchestratorului.
   poarta funcționând: cere-i omului butonul.
 - **Niciun DDL pe tabelele `tt_`** fără acordul explicit al omului, în cuvintele lui.
 - **Disciplina git + review** din `../references/code-review-before-merge.md` rămâne
-  valabilă pentru orice merge. Poarta de browser din prompturile Productivitate rămâne
-  obligatorie și e a orchestratorului — privirea finală a omului la features UI e *peste*
-  ea, nu în locul ei.
+  valabilă pentru orice merge. Merge când CI e verde; nu rula și nu aștepta Bugbot.
+  Poarta de browser din prompturile Productivitate rămâne obligatorie și e a
+  orchestratorului — privirea finală a omului la features UI e *peste* ea, nu în locul ei.
 
 ## Execuție locală
 

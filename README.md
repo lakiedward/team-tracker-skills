@@ -8,7 +8,8 @@ Lucrul se execută local. În **ChatGPT/Codex**, pentru testarea aplicației loc
 [contractul comun de execuție și verificare](plugins/team-tracker/skills/references/local-execution.md).
 
 Modificările autorizate se livrează prin commit, push, PR și merge după verificările,
-review-urile și porțile umane existente, fără confirmări suplimentare pentru fiecare pas.
+CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
+suplimentare pentru fiecare pas.
 
 Skill-uri incluse (apar ca slash-commands după instalare):
 

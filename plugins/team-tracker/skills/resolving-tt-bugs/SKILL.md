@@ -20,7 +20,7 @@ Manually walking through bug rows in the main thread blows the context window, l
 1. Query the DB once, list all open bugs for the current project.
 2. Delegate investigation, fix design, and root-cause tracing to subagents — main thread keeps a clean orchestration view.
 3. Verify via the channel that matches the bug: **Vite preview for UI-visible work, SQL impersonation for RLS / database work**. Native-only behavior is not in scope — leave such bugs `Open` with a clear reason.
-4. Review the final branch diff with the available method, fix confirmed findings and merge after the review and required checks, then update `status='Fixed'`.
+4. Review the final branch diff in session, fix confirmed findings, merge when CI is green (do not run or wait for Bugbot), then update `status='Fixed'`.
 
 ## Constants
 
@@ -196,10 +196,9 @@ If verification fails after up to 3 retry cycles, take the blocked path. Do not 
 ### 3e. Review and merge
 
 Read `../references/code-review-before-merge.md` after preview/SQL verification.
-Commit the final diff on the dedicated branch and review it with the tools available
-in the current session. Fix confirmed findings, rerun affected verification and
-review the updated diff. No external bot is required; its absence is not a blocker.
-Merge after the review, required checks and existing human gates pass.
+Commit the final diff on the dedicated branch and review it in the current session.
+Fix confirmed findings, rerun affected verification and review the updated diff.
+Do not run or wait for Bugbot. Merge when CI is green and existing human gates pass.
 In Orchestrator target mode, return the verified result and let the conductor own
 the final review and merge centrally.
 
@@ -310,7 +309,7 @@ Launch independent investigations as multiple `Agent` tool calls in **one messag
 | Trying to verify a native-only bug in preview | The native shell (push, biometrics, OAuth sheets) is not in the browser DOM; you'll get a misleading false fail. | Detect native-only keywords (push, FCM, biometric, Face ID, Apple Sign-In native, share sheet, Capacitor plugin) early and take the blocked path with the right reason. |
 | Using `preview_eval` to perform clicks | Bypasses React event handlers; gives false positives. | Use `preview_click` with a stable selector; reserve `preview_eval` for navigation and read-only inspection. |
 | Marking a bug `Fixed` based on a typecheck only | TS compile success doesn't prove the user-visible behavior is fixed. | Always run preview/SQL verification, review, and merge; evidence in hand before `status='Fixed'`. |
-| Skipping review or merging with confirmed unresolved defects | A fresh diff review is the last chance to catch regressions before main moves. | Follow `references/code-review-before-merge.md`; use an available review method, fix confirmed defects and rerun affected checks. |
+| Skipping review or merging with confirmed unresolved defects | A fresh diff review is the last chance to catch regressions before main moves. | Follow `references/code-review-before-merge.md`; review in session, fix confirmed defects, rerun affected checks, and merge when CI is green. Do not run or wait for Bugbot. |
 | Looping forever on a stubborn bug | Wastes time, won't converge. | 3 retry cycles max, then blocked path. |
 | Parallelizing across bugs | Bugs often touch overlapping code; the preview is single-tenant. | Sequential across bugs, parallel within a bug (3a). |
 | Re-running searches the subagent already did | Burns the context window for no signal. | Trust the subagent's report; only re-verify a specific assertion when you have concrete reason to doubt. |

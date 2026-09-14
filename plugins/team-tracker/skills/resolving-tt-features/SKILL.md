@@ -236,9 +236,9 @@ Verify the feature's **acceptance criteria from the description**, not just that
 
 Read `../references/code-review-before-merge.md` after verification succeeds.
 In standalone mode, commit the finished diff on the dedicated feature branch.
-Review the final diff with the available method, fix confirmed findings, rerun
-affected checks and review any repairs. No named bot or external service is required.
-Merge after the review, required verification and existing human UI acceptance pass.
+Review the final diff in the current session, fix confirmed findings, rerun
+affected checks and review any repairs. Do not run or wait for Bugbot.
+Merge when CI is green and existing human UI acceptance passes.
 In Orchestrator target mode, preserve the supplied worktree/branch and return the
 verified result; the conductor owns the final review and merge.
 
@@ -337,7 +337,7 @@ No epilogue after this block.
 | Processing `În Focus` rows | A human may be actively working on them; you'd collide. | Step 2 excludes them by design. |
 | Setting `is_archived = true` to "clean up" rejected features | Archiving is the user's call in the UI; a rejected proposal is still their data. | Rejected features stay `Propus` with the rationale appended. |
 | Marking `Gata` on a typecheck only | Compile success doesn't prove the acceptance criteria are met. | Verify against the description's acceptance criteria via preview/SQL, pass review, merge, then mark `Gata`. |
-| Skipping review or merging with confirmed unresolved defects | A fresh diff review catches regressions before main moves. | Follow `references/code-review-before-merge.md`; use an available review method, fix confirmed defects and rerun affected checks. |
+| Skipping review or merging with confirmed unresolved defects | A fresh diff review catches regressions before main moves. | Follow `references/code-review-before-merge.md`; review in session, fix confirmed defects, rerun affected checks, and merge when CI is green. Do not run or wait for Bugbot. |
 | Re-appending the same evaluation on every run | Descriptions balloon and the UI becomes unreadable. | Skip the append when an `--- Evaluat` block with the same recommendation already exists. |
 | Parallelizing across features in Step 4 | Features touch overlapping code; the preview is single-tenant. | Sequential across features, parallel within one (evaluators in 3a are the exception — read-only). |
 | Editing team-tracker's source while implementing for another project | The features are owned by team-tracker UI; implementations belong in `<source_root>`. | Never modify `C:/Users/lakie/Desktop/team-tracker/src` unless `project_id = 2`. |

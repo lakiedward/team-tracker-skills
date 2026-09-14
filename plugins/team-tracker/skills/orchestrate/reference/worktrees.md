@@ -68,10 +68,9 @@ cp "<repo_path>/.env.local" "C:/Users/lakie/Desktop/.orch-worktrees/<runId>/<slu
 ## MERGE-IF-GREEN (firul principal, secvențial)
 
 **Numai după** commit-ul muncitorului, verificare (`outcome ∈ {fixed,done}`
-și `verified === true`), review-ul final (`review_clean:true`) și porțile umane
-existente, conductorul face merge. Nu este necesar un anumit bot; absența unei
-integrări nu blochează review-ul cu metoda disponibilă. Defectele confirmate
-nerezolvate și verificările neefectuate blochează merge-ul.
+și `verified === true`), review-ul final (`review_clean:true`), CI verde și
+porțile umane existente, conductorul face merge. Nu rula și nu aștepta Bugbot.
+Defectele confirmate nerezolvate și verificările neefectuate blochează merge-ul.
 Merge-ui un singur item odată, secvențial, în `<repo_path>`:
 
 ```bash

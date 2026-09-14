@@ -334,11 +334,10 @@ Așteaptă finalizarea subagentului/subagentelor de testare înainte de a contin
 ### Pas B5.5 — Review + merge (înainte de write-back)
 
 Pentru un rezultat `fixed`/`done` cu diff de cod, citește
-`../references/code-review-before-merge.md`. Verifică diff-ul final cu metoda
-disponibilă în sesiune. Repară constatările confirmate pe același branch,
-repetă verificările afectate și revizuiește reparația. Absența unui bot nu este
-blocaj și nu necesită o aprobare separată. După review, verificări și porțile umane
-existente, merge-ui branchul și continuă la B6.
+`../references/code-review-before-merge.md`. Verifică diff-ul final în sesiune.
+Repară constatările confirmate pe același branch, repetă verificările afectate
+și revizuiește reparația. Nu rula și nu aștepta Bugbot. După review, CI verde
+și porțile umane existente, merge-ui branchul și continuă la B6.
 
 Pentru rezultate fără modificări de fișiere sau branch, sari review-ul și merge-ul;
 consemnează dovada operației executate. Branchurile care schimbă numai documentație
@@ -625,9 +624,8 @@ Procesează rezultatele întoarse **unul câte unul** (NICIODATĂ două merge-ur
 #### C5.1.5 — Review-ul diff-ului final
 
 Pentru fiecare rezultat verificat cu worktree, aplică
-`../references/code-review-before-merge.md`. Conductorul folosește un reviewer
-independent disponibil sau face review-ul în sesiunea curentă. Nu cere un bot
-anume și nu bloca livrarea pentru o integrare indisponibilă.
+`../references/code-review-before-merge.md`. Conductorul face review-ul în
+sesiunea curentă. Nu rula și nu aștepta Bugbot; CI verde este poarta de merge.
 
 Cu zero defecte confirmate nerezolvate, consemnează metoda și revizia verificată,
 setează rezultatul intern `review_clean:true` și continuă la C5.2. Dacă există un
@@ -636,8 +634,8 @@ iar conductorul revizuiește diff-ul actualizat. Investighează constatările am
 escaladează doar decizii reale de produs sau autorizare.
 
 `verified:true` consemnează probele de comportament; `review_clean:true` consemnează
-review-ul efectuat fără defecte confirmate rămase. Niciun câmp nu reprezintă automat
-un rezultat al unui serviciu extern.
+review-ul de sesiune fără defecte confirmate rămase. Nu trata Bugbot ca pe acest
+review și nu aștepta un check Bugbot.
 
 #### C5.2 — Merge (doar pentru verzii verificați)
 
