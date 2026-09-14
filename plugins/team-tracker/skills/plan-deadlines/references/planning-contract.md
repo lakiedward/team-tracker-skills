@@ -581,10 +581,10 @@ Classify user-visible UI, responsive behavior, navigation, forms, auth, payments
 The final prompt instruction must update the owning tracker source only after the completion criterion and every required verification pass: bugs to `Fixed`, features and To-Dos to `Gata`, and test-plan results per executed step. If the tracker write fails, the execution is not fully complete and the exact error must be reported.
 
 For every code-changing task, review the final diff according to
-`../../references/code-review-before-merge.md`. Use an available reviewer or inspect
-the diff in the current session; no external bot is required. Fix confirmed findings,
-rerun affected checks and review the repairs. Merge after verification, review and
-existing human gates pass. Record the actual review method and revision.
+`../../references/code-review-before-merge.md`. Inspect the diff in the current
+session. Fix confirmed findings, rerun affected checks and review the repairs.
+Merge when CI is green; do not run or wait for Bugbot. Record the actual review
+method and revision.
 
 ## Transactional daily apply
 

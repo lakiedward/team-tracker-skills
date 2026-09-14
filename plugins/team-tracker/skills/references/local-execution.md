@@ -26,9 +26,10 @@ fără `/proiect` înainte.
   testare produse de skill. Review-ul de cod și pașii de merge ai proiectului
   rămân aplicabili; execuția locală nu îi înlocuiește.
 - Pentru modificările autorizate, finalizează autonom commit, push, PR și merge după
-  verificările și review-urile cerute de proiect, fără a aștepta o confirmare suplimentară
-  pentru fiecare pas de livrare. Respectă porțile umane existente și include în commit
-  doar fișierele taskului. O sesiune care nu schimbă fișiere nu are nevoie de commit sau PR.
+  verificările cerute de proiect și CI verde, fără a aștepta Bugbot sau o confirmare
+  suplimentară pentru fiecare pas de livrare. Respectă porțile umane existente și include
+  în commit doar fișierele taskului. O sesiune care nu schimbă fișiere nu are nevoie de
+  commit sau PR.
 
 Aceste instrucțiuni de browser privesc testarea aplicației. Citirea unei facturi sau a unui
 dashboard extern autentificat, cum face `/supabase-cota`, folosește integrarea și

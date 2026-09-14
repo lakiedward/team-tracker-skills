@@ -209,10 +209,10 @@ If verification fails after up to 3 retry cycles, classify the item as `blocked`
 If the item passed without changing any files or branch state, skip review and merge.
 Documentation-only changes still need proportionate review and normal delivery.
 Otherwise read `../references/code-review-before-merge.md`, commit the task diff,
-review it using the available method, fix confirmed findings and rerun the affected
-verification. An unavailable bot does not block this step. Merge when checks,
-review and existing human gates pass. In Orchestrator target mode, return the
-verified result and let the conductor perform the final review and merge.
+review it in the current session, fix confirmed findings and rerun the affected
+verification. Do not run or wait for Bugbot. Merge when CI is green and existing
+human gates pass. In Orchestrator target mode, return the verified result and let
+the conductor perform the final review and merge.
 
 ### 3f. Update the item in the database
 
