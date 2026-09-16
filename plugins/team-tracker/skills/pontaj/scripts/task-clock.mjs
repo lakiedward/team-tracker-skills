@@ -115,6 +115,7 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
       if (command === 'pause' && task.status === 'active') { task.pauses.push([now, null]); task.status = 'paused'; }
       else if (command === 'resume' && task.status === 'paused') { task.pauses.at(-1)[1] = now; task.status = 'active'; }
       else if (command === 'prepare') {
+        if (task.status === 'recorded') return { status: 'recorded', verified_ids: task.prepared.rows.map(row => row.id) };
         if (task.prepared) return task.prepared;
         const ended_at = now;
         const times = transcriptTimes(input.transcripts, input.session);

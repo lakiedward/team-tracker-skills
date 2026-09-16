@@ -37,7 +37,8 @@ test('task lifecycle freezes retries, rejects other transcripts, overlaps and fa
     assert.deepEqual(run('prepare',{...input,transcripts:[]},root,stamp(8)),prepared);
     assert.throws(()=>run('ack',{...input,verified_ids:[42]},root,stamp(8)));
     assert.equal(run('ack',{...input,verified_ids:prepared.rows.map(r=>r.id)},root,stamp(8)).status,'recorded');
-    assert.deepEqual(run('prepare',input,root,stamp(10)),prepared);
+    assert.deepEqual(run('prepare',input,root,stamp(10)),{status:'recorded',verified_ids:prepared.rows.map(r=>r.id)});
+    assert.equal(run('prepare',input,root,stamp(10)).sql,undefined,'acknowledged logs must not be replayed after a human deletes them');
     assert.match(prepared.sql, /'high'/);
     assert.doesNotMatch(prepared.sql, /DO \$verify\$/);
   } finally { rmSync(root,{recursive:true,force:true}); }
