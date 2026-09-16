@@ -90,5 +90,7 @@ Această regulă se transmite în orice prompt de implementare sau testare al se
 
 După `/proiect`, celelalte skill-uri (`/plan-deadlines`, `/amana`, `/pontaj`,
 `/resolving-tt-bugs`, `/writing-*-test-plans`…) rulează în contextul proiectului deja
-rezolvat — nu re-întreba proiectul și nu re-face înrădăcinarea. La închiderea naturală a
-sesiunii de lucru, propune pontajul (`/pontaj`) dacă omul nu l-a cerut deja.
+rezolvat — nu re-întreba proiectul și nu re-face înrădăcinarea. Dacă Pontajul automat este
+activ, urmează checkpointul per task din contractul comun, inclusiv înainte de primul
+fișier modificat. La închidere salvează numai intervalul nou; nu propune încă un pontaj
+pentru întregul chat. Dacă este dezactivat, propune `/pontaj` la închiderea sesiunii.

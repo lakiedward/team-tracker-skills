@@ -3,6 +3,13 @@
 Contract comun tuturor skill-urilor Team Tracker, inclusiv când sunt invocate direct,
 fără `/proiect` înainte.
 
+- **Pontaj automat după task (opt-in):** la începutul lucrului citește `status` din
+  `../pontaj/scripts/task-clock.mjs`. Dacă utilizatorul l-a activat, aplică
+  [protocolul de checkpoint per task](../pontaj/references/automatic-task-log.md):
+  start înainte de lucru, pause/resume la așteptarea omului, prepare → SQL → verificare →
+  ack înainte de răspunsul final. Nu ponta subagenții sau automatizările nesupravegheate
+  ca ore ale omului. Dacă nu există dovezi sau salvarea eșuează, raportează Pontaj pending.
+
 - Execută lucrul în checkout-ul sau worktree-ul local al proiectului, în sesiunea curentă.
   Nu trimite taskurile către agenți cloud și nu configura servicii de dispatch la distanță.
   Păstrează modelul și instrumentele disponibile în clientul curent.

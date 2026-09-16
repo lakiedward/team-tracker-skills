@@ -550,7 +550,7 @@ For an existing current plan created before this contract changed, its persisted
 copied `needs_spec` prompt with the current guided-session completion contract;
 otherwise an old `zero INSERT` / `draft gata` line can contradict the live flow.
 
-The prompt must state `queue_role`. A reserve prompt says to start only after committed work is complete or documented as blocked, inspect the planning day's Pontaj before starting, and stop when actual logged work reaches `gross_daily_hours`.
+The prompt must state `queue_role`. A reserve prompt says to start only after committed work is complete or documented as blocked, inspect the planning day's Pontaj before starting, and stop when actual logged work reaches `day_stop_hours` (fallback to `gross_daily_hours` for legacy plans). In same-day replanning, `gross_daily_hours` is the remaining round budget, not the cumulative stop. Apply [incremental replanning](incremental-replanning.md) before packing and preserve its optional fields in `velocity_snapshot`.
 
 `scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, `verification_mode=browser|non_browser`, and the required tests or build checks. For browser mode, record the exact scenario plus relevant viewports/devices. A copied prompt must still be actionable when the source has no attachments.
 
