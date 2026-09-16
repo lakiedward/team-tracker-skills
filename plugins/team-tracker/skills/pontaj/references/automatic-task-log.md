@@ -53,6 +53,8 @@ Un worktree se rezolvă la proiectul repo-ului de origine, nu după numele folde
 - Eroarea de Pontaj nu anulează livrarea taskului. Spune „Pontaj în așteptare” și păstrează
   checkpointul pentru retry. Nu declara ore salvate înainte de confirmarea DB. Închiderea
   ceasului nu marchează automat taskul Gata și nu înlocuiește merge/deploy/verdictul omului.
+  După `ack`, un nou `prepare` returnează numai `recorded` și ID-urile confirmate, fără SQL:
+  nu recrea o înregistrare pe care omul a șters-o după încheierea taskului.
 
 ## Pontaj manual și limite de acoperire
 
