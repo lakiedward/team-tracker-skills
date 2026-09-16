@@ -1,9 +1,19 @@
 ---
 name: pontaj
-description: Use when the user wants to log their own work hours in Team Tracker or invokes "/pontaj". Resolve the project from the current codebase, ask for the team member only on the first run and remember it, summarize only the current chat, compute active chat duration rounded to 0.5h unless hours are explicit, and insert one tt_work_logs row. Link every exact same-project tracker item worked in the session, including source IDs from copied Productivitate or Focus prompts, and snapshot its planned estimate for calibration. Triggers include "ponteaza", "pontaj", "pontează ce am lucrat", "trece-mi orele", "log my hours", "clock my work", "add a worklog", and variants with explicit hours. Run unattended after identity setup.
+description: Log work in Team Tracker with /pontaj, ponteaza, log my hours, or automatic Pontaj after each task. Resolve and remember the member and project. Opt-in automatic mode records only checkpointed task activity with exact transcript identity, pauses, Bucharest dates and idempotent retries, without a minimum half-hour. Check existing checkpoints before manual whole-chat logging to avoid duplicates. Link verified same-project tracker sources and retain honest summaries. Run unattended after identity setup; missing evidence leaves Pontaj pending.
 ---
 
 # Pontaj
+
+## Pontaj incremental și automat
+
+Pentru „pontaj automat după fiecare task”, activare/dezactivare sau închiderea unui task
+cu automatizarea activă, folosește [protocolul automat](references/automatic-task-log.md)
+și `scripts/task-clock.mjs`. Acest mod are prioritate față de regulile istorice de mai jos:
+numai intervalul taskului, fără minimum 0.5h, retry idempotent și date Europe/Bucharest.
+Înainte de orice pontaj manual verifică `inspect` pentru conversația exactă. Dacă există
+checkpointuri, nu ponta întregul chat încă o dată. Regulile full-chat de mai jos se aplică
+numai unei conversații fără checkpointuri sau pontaj anterior verificat.
 
 Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 

@@ -11,6 +11,14 @@ Modificările autorizate se livrează prin commit, push, PR și merge după veri
 CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
 suplimentare pentru fiecare pas.
 
+Din v1.37, `/plan-deadlines` poate continua bugetul rămas al zilei și refolosi inventarul
+repo-urilor curate, neschimbate. Trackerul și bornele se recitesc mereu. Cererea
+„pontaj automat după fiecare task” activează checkpointuri locale pentru fluxurile
+pluginului: pauze explicite, durată estimată fără minimum 30 minute și salvare idempotentă.
+Clienții fără transcript cu ID și timestampuri verificabile raportează Pontaj în așteptare.
+Detalii: [replanificare](plugins/team-tracker/skills/plan-deadlines/references/incremental-replanning.md)
+și [Pontaj automat](plugins/team-tracker/skills/pontaj/references/automatic-task-log.md).
+
 Skill-uri incluse (apar ca slash-commands după instalare):
 
 | Skill | Ce face |

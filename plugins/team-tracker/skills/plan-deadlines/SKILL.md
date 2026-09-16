@@ -36,7 +36,7 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 2. Keep Supabase read-only until the user explicitly approves the displayed daily proposal.
 3. Never invent the brief, definition of done, deadline, owner, or future capacity.
 4. Read every project bug, feature, test plan, and To-Do on every run. Do not reuse yesterday's candidate list without refreshing it.
-5. Scan every registered codebase on every run and look for necessary work missing from the tracker.
+5. Verify every registered codebase on every run and look for necessary work missing from the tracker. Same-day unchanged clean codebases may reuse a complete inventory under [incremental replanning](references/incremental-replanning.md); changed or uncertain repositories require a full scan.
 6. Never derive future availability from historical Pontaj hours. Use Pontaj only to size work: statistical calibration of duration and confidence, and subtracting hours already spent on an item that is still in flight. Neither may create or reduce tomorrow's capacity.
 7. Never impose a fixed task count. Select as many executable actions as fit the daily hour target.
 8. Never exceed gross daily hours silently. Deadline pressure may consume the buffer, but not create imaginary hours.
@@ -68,6 +68,11 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
 ## Phase 0 — Resolve scope
+
+First apply [incremental replanning](references/incremental-replanning.md): distinguish
+new day, remaining-day continuation, explicitly authorized extra hours, and day closure.
+Its remaining-budget and inventory-reuse rules override the full-day/full-scan defaults
+below for repeated planning on the same day. Always refresh live tracker and milestones.
 
 1. Parse the optional slug.
 2. Query active projects and `tt_delivery_profiles`.
@@ -358,7 +363,7 @@ The script creates:
 - A queue containing only bugs, only features, or only tests is valid when the ranked candidates and available hours justify it. Show the cross-source candidate counts and state why the homogeneous queue won; never force artificial source diversity.
 - If the strongest item is larger than the committed budget, select a concrete daily slice with an observable checkpoint. Keep the same source key and report the full remaining estimate separately.
 - Reserve is optional execution capacity, not deadline commitment or mandatory progress.
-- Start reserve only after committed work is complete or documented as blocked. Stop execution when actual Pontaj for the planning day reaches `gross_daily_hours`.
+- Start reserve only after committed work is complete or documented as blocked. Stop execution when actual Pontaj for the planning day reaches `day_stop_hours` (legacy plans: `gross_daily_hours`). For incremental plans, `gross_daily_hours` is only the remaining budget of this round; never use it as the cumulative stop threshold.
 - Never treat the sum of all high estimates as mandatory hours; reserve rows are possibilities up to the real stop rule.
 - Set every selected item's `planned_due_date` to the planning date.
 
