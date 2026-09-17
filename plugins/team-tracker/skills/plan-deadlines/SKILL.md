@@ -157,7 +157,7 @@ Rebuild statuses from current evidence. Compare the resulting keys and statuses 
 
 Merge current UI Coverage into launch readiness:
 
-0. Every **unit** (`is_unit = true`) with `required_for_launch = true` is a launch outcome keyed `ui:<stable_key>`. Its status comes from `next_action`: `shipped` is met, `ready_for_production` and `needs_tests` are partial, `needs_work` is blocked, `blocked_on_you` and `needs_spec` are unknown. Record the criteria coverage as evidence and the manual note or blocking findings as blockers. A page is never its own outcome — it would restate its sections.
+0. Every **unit** (`is_unit = true`) with `required_for_launch = true` is a launch outcome keyed `ui:<stable_key>`. Its status comes from `next_action`: `shipped` is met only when `tt_ui_delivery_status.evidence_current = true`; otherwise it is publication-unconfirmed, `ready_for_production` and `needs_tests` are partial, `needs_work` is blocked, `blocked_on_you` and `needs_spec` are unknown. Record the criteria coverage as evidence and the manual note or blocking findings as blockers. A page is never its own outcome — it would restate its sections.
 1. A required section with manual verdict `needs_work` or `redesign` keeps the related launch outcome partial or blocked, depending on the manual note and objective evidence.
 2. A required section with manual verdict `unreviewed` remains unknown; the AI score cannot replace the user's verdict.
 2b. A required page with `child_required = 0` is an inventory gap, not an outcome. Record it as a blocked outcome keyed `ui:<stable_key>` whose only blocker is that the page has no sections, and request `/ui-audit <slug> "<page>"`.
@@ -203,9 +203,9 @@ Shared layout chrome (the same component — sidebar, brand panel, account nav �
 2. `build` — build or continue the section against its approved criteria. The step ends with two loops the estimate must cover: iterate the UI live with the user on every platform viewport — show, take the verdict, fix, show again — until they explicitly say they like it; then exercise the section's full functionality in the browser, following flows that continue on other pages to their end, and fix failures on the same branch. Every verdict question in that loop obeys rule 22: one marked recommendation, the precedent from the rest of the product, no bare options.
 3. `needs_work` — resolve exactly what `manual_note` and the current objective findings describe. Nothing more. Re-show the result on the platform viewports and repeat until the user likes it. A clarification asked because the note is too vague is still a rule 22 question: it arrives with the executor's own reading of what was meant, not as an open field.
 4. `needs_tests` — generate one test step per criterion with `criterion_id` set, plus functional steps (without `criterion_id`) for everything the section can do, cross-page flows included, then run them. A failing step is fixed and re-run, never reported and skipped. Report which criteria are still uncovered. When a fix changed the section's code, the design verdict goes stale and the section is re-shown for review — those questions follow rule 22 too.
-5. `ready_for_production` — merge, deploy, verify after deploy, then mark `shipped_at`.
+5. `ready_for_production` — merge, deploy when permitted, verify live and record delivery evidence; the human then confirms `shipped_at`.
 6. `blocked_on_you` — report only. It consumes no hours and is never queued. If `verdict_stale` is true, say that the approval expired because the code changed.
-7. `shipped` — excluded.
+7. `shipped` — exclude only with current publication evidence. Otherwise keep the missing verification visible and propose a verification task, preserving the human stamp.
 
 Attach the bugs, features, To-Dos and promoted findings that block a section to that section, so the report shows what has to land before the section can move. Deduplicate them against the freshly loaded tracker catalog. Ignore dismissed findings as scope; keep proposed or unpromoted AI findings in risks only. If UI evidence is stale, do not claim the issue is current solely from an old screenshot: state the stale risk and prefer a new `/ui-audit` before low-confidence polish work.
 
@@ -315,7 +315,7 @@ Historical Pontaj hours do not change these available hours.
 
 ## Phase 6 — Rank and pack both daily queues
 
-Exclude completed, archived, duplicate, unrelated, and dependency-blocked candidates. A blocking dependency becomes a candidate. Exclude every `shipped` and `blocked_on_you` section: the first is done, the second is waiting on the human. Exclude every source carrying an active `/amana` deferral marker whose return date has not arrived (rule 28), and keep it visible as deferred rather than silently dropped.
+Exclude completed, archived, duplicate, unrelated, and dependency-blocked candidates. A blocking dependency becomes a candidate. Exclude `shipped` sections only with current publication evidence; sections without it need publication verification, not another build. Exclude `blocked_on_you` sections waiting on the human. Exclude every source carrying an active `/amana` deferral marker whose return date has not arrived (rule 28), and keep it visible as deferred rather than silently dropped.
 
 Rank executable candidates by:
 
@@ -648,3 +648,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Only selected daily gap To-Dos are created after approval.
 - [ ] The exact daily diff is visible.
 - [ ] No write occurred before approval.
+
+## Publication and visual evidence
+
+Read [delivery evidence](../references/delivery-evidence.md) for every shipped launch unit: count only current evidence as published; retain historical human gates and propose missing verification explicitly. Do not silently remove an unconfirmed shipment from remaining work. Apply [visual reference](../references/visual-reference.md) inside the existing spec round, without another approval gate.

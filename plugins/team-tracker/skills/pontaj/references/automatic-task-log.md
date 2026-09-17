@@ -9,13 +9,13 @@ Nu este un monitor al tuturor aplicațiilor. Taskurile executate fără acest co
 
 - La cererea „pontaj automat după fiecare task”, rulează `node <skill_dir>/scripts/task-clock.mjs enable`.
   `status` verifică opțiunea; `disable` o dezactivează. Nu e nevoie de o nouă aprobare per task.
-- La începutul fiecărui task de lucru, înainte de implementare/testare, citește `status`.
+- La începutul fiecărui task de lucru, înainte de inventar, implementare sau testare, citește `status`.
   Dacă e activ, rezolvă membrul și proiectul live conform SKILL.md. Nu ghici identitatea.
 - Folosește ID-ul exact al conversației și un task key stabil, de exemplu `bug:640`.
   Pentru un task fără item TT folosește cheia turnului cererii. Un nou ciclu de lucru pe
   același item după înregistrare primește un sufix cu ID-ul noii cereri; reluarea aceleiași
   execuții păstrează cheia. Orchestratorul deține un singur ceas, fără orele subagenților.
-- Scrie un JSON temporar și rulează `node <skill_dir>/scripts/task-clock.mjs start <input.json>`:
+- Scrie un JSON temporar și rulează `node <skill_dir>/scripts/task-clock.mjs enter <input.json>`:
 
 ```json
 {"session":"exact-client-session-id","task":"bug:640","member":"<membru verificat>","project_id":1,"source":{"type":"bug","id":640,"estimated_hours":2}}
@@ -25,6 +25,15 @@ Nu este un monitor al tuturor aplicațiilor. Taskurile executate fără acest co
 itemul planului curent, doar dacă există; altfel omite `estimated_hours`. Pentru
 secțiuni schema curentă acceptă `ui_surface`; verifică suportul în DB înainte de scriere.
 Un worktree se rezolvă la proiectul repo-ului de origine, nu după numele folderului nou.
+
+Verifică receipt-ul înainte de lucru: `started` confirmă checkpointul nou, `active`
+reluarea aceluiași checkpoint, `paused` cere `resume` la reluarea efectivă, `pending`
+înseamnă SQL pregătit de reconciliat, `recorded` înseamnă task deja închis. Nu reporni
+același task și nu schimba cheia ca să ocolești un conflict. `enabled:false` respectă
+opțiunea dezactivată. `start` rămâne compatibil, dar verifică și el identitatea la retry.
+Schimbarea membrului, proiectului sau sursei unui checkpoint este respinsă; corectează
+identitatea din context, fără să rescrii registrul. Dacă nu se poate crea checkpointul,
+continuă munca autorizată, raportând Pontaj în așteptare; nu recupera retrospectiv ore ghicite.
 
 ## Pauze și închidere
 
@@ -55,6 +64,10 @@ Un worktree se rezolvă la proiectul repo-ului de origine, nu după numele folde
   ceasului nu marchează automat taskul Gata și nu înlocuiește merge/deploy/verdictul omului.
   După `ack`, un nou `prepare` returnează numai `recorded` și ID-urile confirmate, fără SQL:
   nu recrea o înregistrare pe care omul a șters-o după încheierea taskului.
+- Rulează `summary` cu session/task înainte de răspuns: `saved:true` indică un `ack`
+  verificat anterior în DB și afișează ID-urile; celelalte stări sunt „Pontaj în așteptare”.
+  `summary` nu scrie ore și nu pretinde că a recitit DB. La un task nou verifică salvarea
+  în DB înainte de ack; nu folosi un summary istoric pentru a recrea rânduri șterse de om.
 
 ## Pontaj manual și limite de acoperire
 

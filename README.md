@@ -11,6 +11,11 @@ Modificările autorizate se livrează prin commit, push, PR și merge după veri
 CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
 suplimentare pentru fiecare pas.
 
+Din v1.38, intrarea în task confirmă checkpointul Pontaj și verifică identitatea la retry;
+închiderea raportează salvat/în așteptare. Livrarea secțiunilor păstrează dovada PR →
+commit publicat → verificare live și legăturile la cererea principală. Specificarea
+include o fișă vizuală în runda existentă, fără încă un approve.
+
 Din v1.37, `/plan-deadlines` poate continua bugetul rămas al zilei și refolosi inventarul
 repo-urilor curate, neschimbate. Trackerul și bornele se recitesc mereu. Cererea
 „pontaj automat după fiecare task” activează checkpointuri locale pentru fluxurile

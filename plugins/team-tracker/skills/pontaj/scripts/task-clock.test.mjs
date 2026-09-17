@@ -51,3 +51,34 @@ test('source types and estimates cannot inject SQL; same scope gets stable ident
   assert.equal(rows[0].hours,0.033333);
   assert.equal(rows[0].id,prepareRows(task,{category:'Development',description:'test',ended_at:stamp(2)},[Date.parse(stamp(0)),Date.parse(stamp(2))])[0].id);
 });
+
+test('entry verifies identity before any retry and summary never invents a checkpoint', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tt-entry-'));
+  const input = {session:'codex-exact',task:'request:1',member:'Edy',project_id:2,source:{type:'feature',id:20}};
+  try {
+    assert.equal(run('summary',input,root).status,'no_checkpoint');
+    assert.equal(run('inspect',input,root).tasks[input.task],undefined);
+    assert.deepEqual(run('enter',input,root),{enabled:false});
+    run('enable',{},root);
+    assert.equal(run('enter',input,root,stamp(0)).status,'started');
+    assert.equal(run('enter',input,root,stamp(1)).status,'active');
+    for (const command of ['enter','start','resume','prepare','ack']) {
+      assert.throws(()=>run(command,{...input,project_id:3},root),/identity mismatch/);
+      assert.throws(()=>run(command,{...input,member:'Other'},root),/identity mismatch/);
+      assert.throws(()=>run(command,{...input,source:{type:'feature',id:21}},root),/source mismatch/);
+    }
+    run('pause',input,root,stamp(2));
+    assert.equal(run('enter',input,root,stamp(3)).status,'paused');
+    assert.equal(run('summary',input,root).saved,false);
+    run('resume',input,root,stamp(4));
+    const transcript=join(root,'transcript.jsonl');
+    writeFileSync(transcript,[{type:'session_meta',payload:{id:input.session}},...[0,2,4,6].map(m=>({type:'response_item',timestamp:stamp(m)}))].map(JSON.stringify).join('\n'));
+    const prepared=run('prepare',{...input,transcripts:[transcript],category:'Development',description:'Verified entry'},root,stamp(6));
+    assert.equal(run('enter',input,root,stamp(7)).status,'pending');
+    run('ack',{...input,verified_ids:prepared.rows.map(row=>row.id)},root);
+    assert.equal(run('enter',input,root).status,'recorded');
+    assert.equal(run('summary',input,root).saved,true);
+    assert.equal(run('summary',input,root).sql,undefined);
+    assert.throws(()=>run('resume',input,root),/invalid task state/);
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
