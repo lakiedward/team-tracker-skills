@@ -11,8 +11,8 @@ Modificările autorizate se livrează prin commit, push, PR și merge după veri
 CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
 suplimentare pentru fiecare pas.
 
-Din v1.39.1, `/prezentare` pregătește întâlnirile Motion cu clienții: schimbările de la ultima
-prezentare, resursele necesare, scenariul pe roluri/dispozitive și repetiția condusă de om.
+Din v1.39.2, `/prezentare` pregătește întâlnirile într-o singură rulare de aproximativ 20 de minute: schimbările de la ultima
+prezentare, resursele disponibile, scenariul pe roluri/dispozitive și verificările esențiale. Omul revizuiește singur și trimite problemele în același task.
 Adaptorul Motion are registre interne de proprietate și resetare sigură;
 datele populate și verificarea efectivă a fluxurilor rămân dovezi distincte.
 
@@ -36,7 +36,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `proiect-nou` | Sesiunea de creare a unui proiect: din site map-ul tău (pagini + ce face fiecare) scoate repo-ul din template (tokens ca sursă unică, catalog canonic de componente, `CLAUDE.md` cu reguli verificate de `npm run check:rules`, `AGENTS.md` oglindă), generează `docs/ui-conventions.md` pe care îl citește panoul Consistență UI, și creează proiectul în Team Tracker cu toate paginile și secțiunile ca suprafețe `planned`, cu scopul lor memorat — zero criterii, zero porți. |
 | `proiect` | Deschide sesiunea de lucru pe un proiect: înrădăcinare în codebase, raport din tracker, contractul sesiunii (inclusiv sesiunea de construcție pentru secțiunile `planned`), execuție locală și testare în browser, inclusiv prin @Browser sau @Chrome în ChatGPT/Codex. |
 | `borne` | Pune pragurile intermediare dintre azi și deadline în `tt_milestones`, cu propunere read-only și verificări de coerență; `/plan-deadlines` le citește la ranking. |
-| `prezentare` | Pregătește datele, accesul și scenariul întâlnirii Motion; compară cu ultima prezentare a clientului, ghidează repetiția condusă de om și resetează numai resursele deținute. |
+| `prezentare` | O singură rulare de aproximativ 20 de minute pentru noutăți, date/acces, scenariu și verificări esențiale; omul revizuiește apoi în ritmul lui. Popularea automată rămâne disponibilă prin adaptorul Motion. |
 | `ui-audit` | Inventariază și auditează suprafețele UI ale unui proiect pe desktop/tabletă/telefon și salvează un snapshot UI Coverage versionat, fără să modifice cod. |
 | `orchestrate` | Mătură board-ul Focus al unui proiect și coordonează lucrul pe itemele active. |
 | `pontaj` | Pontează orele tale de lucru din sesiunea curentă în `tt_work_logs` (pagina „Pontaj"). |
