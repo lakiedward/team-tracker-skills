@@ -121,7 +121,8 @@ major, nimic nu e: pe linie se vede exact la fel ca un rând de buline egale.
 
 ## Unde se vede
 
-Pentru demonstrația aferentă unei borne, folosește [prezentare](../prezentare/SKILL.md):
+Pentru demonstrația Motion aferentă unei borne, folosește [prezentare](../prezentare/SKILL.md),
+al cărui adaptor disponibil este Motion:
 datele pregătite, scenariul și istoricul întâlnirii au propriul modul. Crearea sau închiderea
 unei prezentări nu mută borna și nu o marchează automat atinsă.
 

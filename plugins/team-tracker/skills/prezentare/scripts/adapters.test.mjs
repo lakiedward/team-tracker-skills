@@ -19,12 +19,7 @@ async function database() {
   const db = new PGlite();
   await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE ROLE agent_sql BYPASSRLS;
     CREATE TABLE profiles(id uuid PRIMARY KEY,role text); INSERT INTO profiles VALUES ('${OWNER}','PARENT'),('${OTHER}','COACH');
-    CREATE TABLE children(id uuid PRIMARY KEY,parent_id uuid REFERENCES profiles(id),name text NOT NULL,birth_date date NOT NULL,level text,created_at timestamptz DEFAULT now());
-    CREATE TABLE addresses(id uuid PRIMARY KEY,user_id uuid REFERENCES profiles(id),name text NOT NULL,details text[] NOT NULL,type text,is_default boolean,created_at timestamptz DEFAULT now());
-    CREATE TABLE users(id uuid PRIMARY KEY); INSERT INTO users VALUES ('${OWNER}');
-    CREATE TABLE matches(id text PRIMARY KEY,provider_fixture_id text,start_time timestamptz,odds_stale boolean);
-    CREATE TABLE api_odds(match_id text,updated_at timestamptz);
-    CREATE TABLE user_favorites(user_id uuid REFERENCES users(id),match_id text REFERENCES matches(id),created_at timestamptz DEFAULT now(),PRIMARY KEY(user_id,match_id));`);
+    CREATE TABLE children(id uuid PRIMARY KEY,parent_id uuid REFERENCES profiles(id),name text NOT NULL,birth_date date NOT NULL,level text,created_at timestamptz DEFAULT now());`);
   await db.exec(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO agent_sql;`);
   await db.exec(readFileSync(new URL('./source-receipts.sql', import.meta.url), 'utf8').replace(/^\uFEFF/, ''));
@@ -139,18 +134,6 @@ test('Motion reset locks and rejects polymorphic enrollments and notification hi
   } finally { await db.close(); }
 });
 
-test('Culcush addresses preserve text-array shape and never modify default address', async () => {
-  const db = await database();
-  try {
-    const input = { ...base, adapter: 'culcush', projectId: 7, table: 'addresses', resourceKey: 'address', payload: { name: 'Strada Florilor 10', details: ['Timișoara', 'Timiș', '300001'] } };
-    await run(db, prepare(input));
-    const row = (await db.query('SELECT details,is_default FROM addresses')).rows[0];
-    assert.deepEqual(row.details, input.payload.details); assert.equal(row.is_default, false);
-    await run(db, prepare(input));
-    assert.equal((await db.query('SELECT count(*)::int AS count FROM addresses')).rows[0].count, 1);
-  } finally { await db.close(); }
-});
-
 test('SQL preserves hostile quoted text and dollar delimiters as ordinary data', async () => {
   const db = await database();
   try {
@@ -160,32 +143,15 @@ test('SQL preserves hostile quoted text and dollar delimiters as ordinary data',
   } finally { await db.close(); }
 });
 
-test('Betora refuses fabricated/started/stale matches and prepares real fresh favorites', async () => {
+test('lost reset acknowledgement never adopts or deletes a child record recreated afterward', async () => {
   const db = await database();
   try {
-    const input = { ...base, adapter: 'betora', projectId: 1, table: 'user_favorites', resourceKey: 'favorite', payload: { match_id: '1234' } };
-    await assert.rejects(() => run(db, prepare(input)), /match_or_odds_not_fresh/);
-    await db.exec("INSERT INTO matches VALUES('1234','provider-1234',now()+interval '1 day',false); INSERT INTO api_odds VALUES('1234',now()-interval '1 day')");
-    await assert.rejects(() => run(db, prepare(input)), /match_or_odds_not_fresh/);
-    await db.exec('UPDATE api_odds SET updated_at=now()');
-    const receipt = (await run(db, prepare(input)))[0];
-    await run(db, prepare(input));
-    await run(db, reset({ ...input, expectedFingerprint: receipt.fingerprint }));
-    assert.equal((await db.query('SELECT count(*)::int AS count FROM matches')).rows[0].count, 1);
-  } finally { await db.close(); }
-});
-
-test('lost reset acknowledgement never adopts or deletes a favorite recreated afterward', async () => {
-  const db = await database();
-  try {
-    await db.exec("INSERT INTO matches VALUES('1234','provider-1234',now()+interval '1 day',false); INSERT INTO api_odds VALUES('1234',now())");
-    const input = { ...base, adapter: 'betora', projectId: 1, table: 'user_favorites', resourceKey: 'favorite', payload: { match_id: '1234' } };
-    const receipt = (await run(db, prepare(input)))[0];
-    const operation = reset({ ...input, expectedFingerprint: receipt.fingerprint });
+    const receipt = (await run(db, prepare(base)))[0];
+    const operation = reset({ ...base, expectedFingerprint: receipt.fingerprint });
     await run(db, operation);
-    await db.exec(`INSERT INTO user_favorites(user_id,match_id) VALUES('${OWNER}','1234')`);
+    await db.exec(`INSERT INTO children(id,parent_id,name,birth_date) VALUES('${stableResourceId('motion',P,'child-1')}','${OWNER}','Created afterward','2017-01-01')`);
     await assert.rejects(() => run(db, operation), /resource_reappeared/);
-    assert.equal((await db.query('SELECT count(*)::int AS count FROM user_favorites')).rows[0].count, 1);
+    assert.equal((await db.query('SELECT name FROM children')).rows[0].name, 'Created afterward');
   } finally { await db.close(); }
 });
 
@@ -223,21 +189,24 @@ test('receipt ACL removes inherited destructive and agent_sql privileges', async
   } finally { await db.close(); }
 });
 
-test('guardrails reject cross-project, raw account/payment/ticket mutations and unowned data', () => {
+test('guardrails reject unsupported adapters, cross-project, raw account/payment mutations and unowned data', () => {
   assert.throws(() => prepare({ ...base, projectId: 7 }), /project_adapter_mismatch/);
-  assert.throws(() => prepare({ ...base, table: 'orders' }), /unsupported_resource/);
+  assert.throws(() => prepare({ ...base, table: 'payments' }), /unsupported_resource/);
   assert.throws(() => prepare({ ...base, table: 'profiles' }), /unsupported_resource/);
   assert.throws(() => prepare({ ...base, dedicatedAccountIds: [] }), /dedicated_account_required/);
   assert.throws(() => prepare({ ...base, payload: { ...base.payload, qr_token: 'secret' } }), /unsupported_field/);
-  assert.equal(inspect({ adapter: 'culcush' }).capabilities.productFlows.includes('cart'), true);
+  assert.throws(() => inspect({ adapter: 'other-project' }), /unsupported_adapter/);
+  assert.throws(() => prepare({ ...base, adapter: 'other-project' }), /unsupported_adapter/);
+  assert.throws(() => productOperation({ adapter: 'other-project', projectId: 7, operation: 'payment' }), /unsupported_adapter/);
+  assert.equal(inspect({ adapter: 'motion' }).capabilities.productFlows.includes('android'), true);
 });
 
 test('external flows require recent TEST proof and test-only recipients', () => {
   const now = Date.now(), good = { mode: 'test', livemode: false, recipients: 'test_only', providerReference: 'provider-proof', verifiedAt: new Date(now).toISOString() };
   requireTestBoundary(good, now);
   for (const evidence of [undefined, { ...good, livemode: true }, { ...good, recipients: 'mixed' }, { ...good, verifiedAt: new Date(now-3600001).toISOString() }]) assert.throws(() => requireTestBoundary(evidence, now), /verified_test_boundary_required/);
-  assert.throws(() => productOperation({ adapter: 'culcush', projectId: 7, operation: 'checkout' }), /verified_test_boundary_required/);
-  assert.equal(productOperation({ adapter: 'culcush', projectId: 7, operation: 'cart' }).kind, 'browser');
+  assert.throws(() => productOperation({ adapter: 'motion', projectId: 16, operation: 'payment' }), /verified_test_boundary_required/);
+  assert.equal(productOperation({ adapter: 'motion', projectId: 16, operation: 'payment', testEvidence: good, now }).kind, 'browser');
   assert.equal(productOperation({ adapter: 'motion', projectId: 16, operation: 'android_install' }).blocked, true);
 });
 

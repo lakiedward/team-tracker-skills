@@ -1,14 +1,15 @@
 ---
 name: prezentare
-description: "Pregătește întâlnirile cu clienții din Team Tracker: progresul de la ultima prezentare, date reale pentru demonstrație, accesul, scenariul pe roluri și dispozitive, repetiția ghidată și resetarea resurselor deținute. Folosește când utilizatorul invocă /prezentare ori cere să pregătească o demonstrație pentru Motion, Culcush sau Betora. Se leagă de bornele și întâlnirile existente; nu mută borne și nu confirmă în locul omului pașii făcuți pe telefon."
+description: "Pregătește întâlnirile Motion cu clienții din Team Tracker: progresul de la ultima prezentare, date reale pentru demonstrație, accesul, scenariul pe roluri și dispozitive, repetiția ghidată și resetarea resurselor deținute. Folosește când utilizatorul invocă /prezentare pentru Motion ori cere să pregătească o demonstrație Motion. Se leagă de bornele și întâlnirile existente; nu mută borne și nu confirmă în locul omului pașii făcuți pe telefon."
 ---
 
-# prezentare — pregătirea unei întâlniri cu clientul
+# prezentare — pregătirea unei întâlniri Motion cu clientul
 
 Aplică [execuția locală](../references/local-execution.md). Folosește pluginul instalat,
 registrul [proiectelor](../orchestrate/projects.json) și prezentarea salvată în Team Tracker.
-Exemple: `/prezentare motion planifica prezentarea <uuid>`, `/prezentare culcush pregateste prezentarea <uuid>`,
-`/prezentare betora repeta prezentarea <uuid>`, `/prezentare motion reseteaza prezentarea <uuid>`.
+Adaptorul disponibil este Motion. Pentru alt proiect raportează capabilitatea indisponibilă.
+Exemple: `/prezentare motion planifica prezentarea <uuid>`, `/prezentare motion pregateste prezentarea <uuid>`,
+`/prezentare motion repeta prezentarea <uuid>`, `/prezentare motion reseteaza prezentarea <uuid>`.
 Acceptă și argumentele `--planifica`, `--pregateste`, `--repeta`, `--reseteaza`.
 
 ## Contractul întâlnirii
@@ -33,8 +34,8 @@ Acceptă și argumentele `--planifica`, `--pregateste`, `--repeta`, `--reseteaza
    Nu executa un adaptor pe alt proiect decât cel verificat în registru și prezentare.
 3. Citește [contractul de persistare](references/tracker-contract.md). Helperul
    `scripts/prezentare.mjs` produce descriptori SQL/pași; nu execută nimic în fundal.
-4. Pentru operațiile pe produs citește numai adaptorul relevant din
-   [pregătirea proiectelor](references/project-adapters.md), regulile repo-ului și schema live.
+4. Pentru operațiile pe produs citește
+   [pregătirea Motion](references/project-adapters.md), regulile repo-ului și schema live.
 
 ## Planifică
 
@@ -76,7 +77,7 @@ resetarea, nu lectura sau prezentarea acelei resurse.
 
 ## Repetă
 
-Execută preflight-ul versiunii, accesului, datelor și integrărilor; recitește meciurile/cotele
+Execută preflight-ul versiunii, accesului, datelor și integrărilor; recitește cursurile, taberele
 și evenimentele dependente de timp. Oferă omului scenariul ordonat cu linkuri și QR din Team Tracker.
 O verificare web a agentului este dovadă de pregătire și se menționează separat.
 
@@ -92,7 +93,7 @@ Pornește rulare `reset`. Resetează numai ID-uri cu ownership creat verificat, 
 inversă a dependențelor. Helperul cere fingerprintul recitit și refuză modificări concurente,
 FK-uri dependente sau resurse străine. Nu folosi nume/prefixe și nu șterge receipt-urile.
 
-Conturile Auth nu se șterg automat. Comenzile, plățile, biletele, înscrierile și acțiunile cu
+Conturile Auth nu se șterg automat. Plățile, înscrierile și acțiunile cu
 efecte externe se tratează numai prin contractele lor de produs; nu se anulează prin DELETE.
 O resursă reutilizată rămâne intactă. La resetare nesuportată marchează blocajul și propune
 un scenariu nou, fără a falsifica starea inițială.
