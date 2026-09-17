@@ -11,6 +11,11 @@ Modificările autorizate se livrează prin commit, push, PR și merge după veri
 CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
 suplimentare pentru fiecare pas.
 
+Din v1.39, `/prezentare` pregătește întâlnirile cu clienții: schimbările de la ultima
+prezentare, resursele necesare, scenariul pe roluri/dispozitive și repetiția condusă de om.
+Adaptoarele Motion, Culcush și Betora au registre interne de proprietate și resetare sigură;
+datele populate și verificarea efectivă a fluxurilor rămân dovezi distincte.
+
 Din v1.38, intrarea în task confirmă checkpointul Pontaj și verifică identitatea la retry;
 închiderea raportează salvat/în așteptare. Livrarea secțiunilor păstrează dovada PR →
 commit publicat → verificare live și legăturile la cererea principală. Specificarea
@@ -31,6 +36,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `proiect-nou` | Sesiunea de creare a unui proiect: din site map-ul tău (pagini + ce face fiecare) scoate repo-ul din template (tokens ca sursă unică, catalog canonic de componente, `CLAUDE.md` cu reguli verificate de `npm run check:rules`, `AGENTS.md` oglindă), generează `docs/ui-conventions.md` pe care îl citește panoul Consistență UI, și creează proiectul în Team Tracker cu toate paginile și secțiunile ca suprafețe `planned`, cu scopul lor memorat — zero criterii, zero porți. |
 | `proiect` | Deschide sesiunea de lucru pe un proiect: înrădăcinare în codebase, raport din tracker, contractul sesiunii (inclusiv sesiunea de construcție pentru secțiunile `planned`), execuție locală și testare în browser, inclusiv prin @Browser sau @Chrome în ChatGPT/Codex. |
 | `borne` | Pune pragurile intermediare dintre azi și deadline în `tt_milestones`, cu propunere read-only și verificări de coerență; `/plan-deadlines` le citește la ranking. |
+| `prezentare` | Pregătește datele, accesul și scenariul întâlnirii; compară cu ultima prezentare a clientului, ghidează repetiția condusă de om și resetează numai resursele deținute. |
 | `ui-audit` | Inventariază și auditează suprafețele UI ale unui proiect pe desktop/tabletă/telefon și salvează un snapshot UI Coverage versionat, fără să modifice cod. |
 | `orchestrate` | Mătură board-ul Focus al unui proiect și coordonează lucrul pe itemele active. |
 | `pontaj` | Pontează orele tale de lucru din sesiunea curentă în `tt_work_logs` (pagina „Pontaj"). |

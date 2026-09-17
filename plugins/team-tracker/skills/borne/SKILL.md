@@ -121,6 +121,10 @@ major, nimic nu e: pe linie se vede exact la fel ca un rând de buline egale.
 
 ## Unde se vede
 
+Pentru demonstrația aferentă unei borne, folosește [prezentare](../prezentare/SKILL.md):
+datele pregătite, scenariul și istoricul întâlnirii au propriul modul. Crearea sau închiderea
+unei prezentări nu mută borna și nu o marchează automat atinsă.
+
 Productivitate → proiectul selectat → panoul **Borne**. Linia pornește de azi, ca
 viitorul apropiat să nu se comprime; bornele atinse din trecut ies din fereastră și
 rămân un contor, cu un comutator care le aduce înapoi. O bornă trecută și neatinsă
