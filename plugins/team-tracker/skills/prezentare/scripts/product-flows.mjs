@@ -25,17 +25,11 @@ export function productOperation(input) {
   const a = adapterFor(input.adapter);
   if (Number(input.projectId) !== a.projectId) throw Error('project_adapter_mismatch');
   const common = { projectRef: a.ref, proof: 'execute_then_verify', reset: 'product_flow_only' };
-  if (a.key === 'betora' && input.operation === 'manual_premium') {
-    if (!/^[\da-f-]{36}$/i.test(input.accountId || '') || !input.dedicatedAccountIds?.includes(input.accountId)) throw Error('dedicated_account_required');
-    return { ...common, kind: 'edge_function', name: 'admin-grant-premium', body: { targetUserId: input.accountId, action: 'grant' }, authentication: 'authenticated_product_admin', readBack: ['users.subscription', 'subscriptions.subscription_source', 'subscriptions.manual_premium_until'], warning: 'Do not replace existing real Stripe customer/subscription bindings.' };
-  }
-  if (a.key === 'betora' && input.operation === 'ticket') return { ...common, kind: 'browser', steps: ['Authenticate dedicated account.', 'Read fresh real matches and bookmaker odds; refuse stale or started matches.', 'Build and save a ticket through the existing ticket UI/service.', 'Record returned ticket id, user_id and selections; verify the saved ticket UI.'], recordInTracker: 'created product row; never reset by raw DELETE; use delete_or_hide_ticket under this user.' };
-  if (a.key === 'culcush' && input.operation === 'cart') return { ...common, kind: 'browser', steps: ['Authenticate dedicated customer.', 'Select published products, variants and colors with live stock.', 'Add to the cart in this browser.', 'Read cart UI and totals; cart is browser storage, not a database table.'] };
-  if ((a.key === 'culcush' && input.operation === 'checkout') || (a.key === 'motion' && input.operation === 'payment')) {
+  if (input.operation === 'payment') {
     requireTestBoundary(input.testEvidence, input.now);
-    return { ...common, kind: 'browser', steps: a.key === 'culcush' ? ['Inspect currently deployed checkout and Stripe TEST configuration; use dedicated test recipients.', 'Submit existing checkout with server price/stock confirmation and its current idempotency contract.', 'Complete Stripe TEST flow.', 'Read order and webhook-backed payment_status; record returned order/payment identifiers.'] : ['Use the existing create-enrollment/payment flow for the dedicated parent and child.', 'Complete Stripe TEST card / 3DS / Google Pay only on supported device.', 'Read authoritative payment and enrollment state after webhook completion.'], externalEffects: 'verified_test_only', reset: 'Never delete payment, order or enrollment rows to undo an external operation.' };
+    return { ...common, kind: 'browser', steps: ['Use the existing create-enrollment/payment flow for the dedicated parent and child.', 'Complete Stripe TEST card / 3DS / Google Pay only on supported device.', 'Read authoritative payment and enrollment state after webhook completion.'], externalEffects: 'verified_test_only', reset: 'Never delete payment or enrollment rows to undo an external operation.' };
   }
-  if (a.key === 'motion' && ['enrollment', 'attendance', 'club_course', 'club_camp'].includes(input.operation)) {
+  if (['enrollment', 'attendance', 'club_course', 'club_camp'].includes(input.operation)) {
     // Current live triggers enqueue notifications; a public club can have real followers.
     requireTestBoundary(input.testEvidence, input.now);
     return { ...common, kind: 'browser', steps: ['Read current account roles, resource ownership and all notification recipients; test-only recipients are mandatory.', `Execute ${input.operation} in the existing product UI and existing domain API.`, 'Capture exact resulting IDs under the dedicated account and register them before continuing.', 'Verify with a fresh query and the affected role UI; any device-only action remains open without that device.'], externalEffects: 'verified_test_only' };

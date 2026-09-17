@@ -1,7 +1,7 @@
--- Install in each product database through apply_migration, never execute during inspect.
+-- Install in the Motion database through apply_migration, never execute during inspect.
 -- Atomic receipt and product-row mutations are performed in one transaction by the adapter.
 CREATE TABLE public.tt_demo_source_receipts (
-  adapter text NOT NULL CHECK (adapter IN ('motion', 'culcush', 'betora')),
+  adapter text NOT NULL CHECK (adapter = 'motion'),
   presentation_id uuid NOT NULL,
   resource_key text NOT NULL CHECK (length(resource_key) BETWEEN 1 AND 160),
   run_id uuid NOT NULL,

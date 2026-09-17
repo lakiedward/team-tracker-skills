@@ -24,16 +24,10 @@ export const DEFINITIONS = {
     courses: { owner: 'coach_id', role: 'COACH', fields: ['name', 'sport_id', 'location_id', 'description', 'capacity', 'age_from', 'age_to'], required: ['name', 'sport_id', 'location_id'], defaults: { club_id: null, price: 0, price_per_session: 0, currency: 'RON', active: true } },
     camps: { owner: 'coach_id', role: 'COACH', fields: ['title', 'slug', 'period_start', 'period_end', 'location_text', 'description', 'capacity'], required: ['title', 'slug', 'period_start', 'period_end'], defaults: { club_id: null, price: 0, currency: 'RON', allow_cash: false } },
   } },
-  culcush: { registry: 'culcush', ref: 'rwdpjuxhmrcmhbaltidf', accountTable: 'profiles', tables: {
-    addresses: { owner: 'user_id', fields: ['name', 'details'], required: ['name', 'details'], defaults: { type: 'Livrare', is_default: false } },
-  } },
-  betora: { registry: 'betro', ref: 'ntjzghsbrzkvpkniotaj', accountTable: 'users', tables: {
-    user_favorites: { owner: 'user_id', fields: ['match_id'], required: ['match_id'], composite: true },
-  } },
 };
 
 export function adapterFor(name) {
-  const key = ({ motiontimisoara: 'motion', betro: 'betora' })[name] || name;
+  const key = name === 'motiontimisoara' ? 'motion' : name;
   const definition = Object.hasOwn(DEFINITIONS, key) ? DEFINITIONS[key] : null;
   if (!definition) throw Error('unsupported_adapter');
   return { key, ...definition, projectId: registry[definition.registry].project_id, repoPath: registry[definition.registry].repo_path };
@@ -65,30 +59,27 @@ function ownerCheck(c) {
 
 export function inspect(input) {
   const a = adapterFor(input.adapter);
-  const tables = [...Object.keys(a.tables), a.accountTable, ...(a.key === 'motion' ? ['enrollments', 'attendance', 'camp_coaches'] : a.key === 'culcush' ? ['products', 'product_variants', 'orders', 'order_items'] : ['subscriptions', 'matches', 'api_odds', 'tickets'])];
+  const tables = [...Object.keys(a.tables), a.accountTable, 'enrollments', 'attendance', 'camp_coaches'];
   return { projectId: a.projectId, projectRef: a.ref, repoPath: a.repoPath, sql: [
     `SELECT table_name,column_name,data_type,is_nullable,column_default FROM information_schema.columns WHERE table_schema='public' AND table_name IN (${tables.map(sql).join(',')}) ORDER BY table_name,ordinal_position;`,
     `SELECT event_object_table,trigger_name,action_statement FROM information_schema.triggers WHERE event_object_schema='public' AND event_object_table IN (${tables.map(sql).join(',')});`,
     `SELECT to_regclass('public.tt_demo_source_receipts') IS NOT NULL AS receipts_installed;`,
-  ], capabilities: { database: Object.keys(a.tables), productFlows: a.key === 'motion' ? ['accounts', 'club_courses', 'club_camps', 'enrollment', 'attendance', 'stripe_test', 'android'] : a.key === 'culcush' ? ['accounts', 'cart', 'checkout_test'] : ['accounts', 'free_access', 'manual_premium', 'tickets'], proof: 'configuration_and_rows_only' } };
+  ], capabilities: { database: Object.keys(a.tables), productFlows: ['accounts', 'club_courses', 'club_camps', 'enrollment', 'attendance', 'stripe_test', 'android'], proof: 'configuration_and_rows_only' } };
 }
 
 export function prepare(input) {
   const c = context(input), payload = input.payload || {};
   for (const key of Object.keys(payload)) if (!c.schema.fields.includes(key)) throw Error(`unsupported_field:${key}`);
   for (const key of c.schema.required) if (payload[key] === undefined || payload[key] === null || payload[key] === '') throw Error(`required_field:${key}`);
-  if (c.table === 'addresses' && (!Array.isArray(payload.details) || payload.details.length !== 3 || payload.details.some(v => typeof v !== 'string'))) throw Error('address_details_must_be_city_county_postcode');
-  const identity = c.schema.composite ? { user_id: c.ownerId, match_id: payload.match_id } : { id: stableResourceId(c.adapter.key, c.presentationId, c.resourceKey) };
+  const identity = { id: stableResourceId(c.adapter.key, c.presentationId, c.resourceKey) };
   const row = canonical({ ...c.schema.defaults, ...payload, ...identity, [c.schema.owner]: c.ownerId });
   const requestHash = digest(row);
-  const freshness = c.table === 'user_favorites' ? `IF NOT EXISTS (SELECT 1 FROM public.matches m WHERE m.id=${sql(payload.match_id)} AND m.start_time > now() AND m.provider_fixture_id IS NOT NULL AND NOT COALESCE(m.odds_stale,true) AND EXISTS (SELECT 1 FROM public.api_odds o WHERE o.match_id=m.id AND o.updated_at > now()-interval '15 minutes')) THEN RAISE EXCEPTION 'match_or_odds_not_fresh'; END IF;` : '';
   const tag = dollarTag(input);
   const statement = `DO ${tag}
 DECLARE r public.tt_demo_source_receipts%ROWTYPE; current_row jsonb; initial_fingerprint text;
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended(${sql(`${c.adapter.key}:${c.presentationId}:${c.resourceKey}`)},0));
   ${ownerCheck(c)}
-  ${freshness}
   SELECT * INTO r FROM public.tt_demo_source_receipts WHERE ${recordQuery(c)} FOR UPDATE;
   IF FOUND THEN
     IF r.ownership <> 'created' OR r.owner_id <> ${sql(c.ownerId)}::uuid OR r.resource_table <> ${sql(c.table)} OR r.identity <> ${json(identity)} OR r.request_hash <> ${sql(requestHash)} THEN RAISE EXCEPTION 'resource_definition_changed'; END IF;
@@ -108,7 +99,7 @@ BEGIN
     ON CONFLICT (adapter,presentation_id,resource_key) DO UPDATE SET run_id=excluded.run_id,fingerprint=excluded.fingerprint,state='ready',updated_at=now();
 END ${tag};
 SELECT resource_key,resource_table,identity,ownership,fingerprint,state FROM public.tt_demo_source_receipts WHERE ${recordQuery(c)};`;
-  return { projectRef: c.adapter.ref, sql: statement, externalId: c.schema.composite ? JSON.stringify(identity) : identity.id, resource: { resource_key: c.resourceKey, resource_type: `${c.adapter.key}.${c.table}`, external_id: '', ownership: 'created', state: 'intent', owner_ref: c.ownerId, fingerprint: '', metadata: { adapter: c.adapter.key, identity, proof: 'populated_state' } } };
+  return { projectRef: c.adapter.ref, sql: statement, externalId: identity.id, resource: { resource_key: c.resourceKey, resource_type: `${c.adapter.key}.${c.table}`, external_id: '', ownership: 'created', state: 'intent', owner_ref: c.ownerId, fingerprint: '', metadata: { adapter: c.adapter.key, identity, proof: 'populated_state' } } };
 }
 
 export function verify(input) {

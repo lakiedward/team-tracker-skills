@@ -21,7 +21,7 @@ Un client autentificat administrator folosește propriul client Supabase/RPC nor
 Nu folosi INSERT/UPDATE direct în tabelele Team Tracker.
 
 O resursă nouă creată începe cu `external_id=''`, `state='intent'`, `ownership='created'`,
-`resource_type` calificat (`motion.children`, `culcush.addresses`, `betora.user_favorites`),
+`resource_type` calificat (`motion.children`, `motion.courses`, `motion.camps`),
 `resource_key` stabil în prezentare și `owner_ref` egal cu ID-ul contului dedicat.
 După confirmarea produsului trimite același key/type/owner, ID-ul extern și fingerprintul.
 Tipul, proprietarul și un ID extern existent nu se schimbă. Resursele reutilizate pot începe
