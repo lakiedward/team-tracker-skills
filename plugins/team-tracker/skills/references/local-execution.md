@@ -6,13 +6,21 @@ fără `/proiect` înainte.
 - **Pontaj automat după task (opt-in):** la începutul lucrului citește `status` din
   `../pontaj/scripts/task-clock.mjs`. Dacă utilizatorul l-a activat, aplică
   [protocolul de checkpoint per task](../pontaj/references/automatic-task-log.md):
-  start înainte de lucru, pause/resume la așteptarea omului, prepare → SQL → verificare →
-  ack înainte de răspunsul final. Nu ponta subagenții sau automatizările nesupravegheate
+  `enter` imediat după identificarea membrului/proiectului, înainte de primul pas de
+  lucru (inclusiv inventarul repo-ului), cu verificarea rezultatului started/active.
+  Un rezultat paused cere resume la reluarea efectivă; pending cere reconciliere, iar
+  recorded nu se repornește. O eroare nu înseamnă checkpoint creat. La închidere:
+  prepare → SQL → verificare → ack → summary, cu salvat/în așteptare în răspuns.
+  Nu ponta subagenții sau automatizările nesupravegheate
   ca ore ale omului. Dacă nu există dovezi sau salvarea eșuează, raportează Pontaj pending.
 
 - Execută lucrul în checkout-ul sau worktree-ul local al proiectului, în sesiunea curentă.
   Nu trimite taskurile către agenți cloud și nu configura servicii de dispatch la distanță.
   Păstrează modelul și instrumentele disponibile în clientul curent.
+- Pentru lucru UI, aplică [fișa vizuală în runda existentă](visual-reference.md)
+  înainte de cod; refolosește răspunsurile și aprobările deja date.
+- Pentru livrarea secțiunilor, aplică [dovada publicării](delivery-evidence.md).
+  PR integrat, versiune publicată și cerere închisă sunt rezultate distincte.
 - **În ChatGPT/Codex, poți folosi `@Browser`, browserul integrat în IDE, sau `@Chrome`.**
   Alege opțiunea potrivită verificării, dintre instrumentele de browser disponibile în
   sesiune. Pornește serverul local, deschide URL-ul lui în browserul ales și parcurge

@@ -103,13 +103,30 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
     if (command === 'inspect') return ledger;
     if (!input.task || ['__proto__', 'constructor', 'prototype'].includes(input.task)) throw Error('Stable task key required');
     let task = Object.hasOwn(ledger.tasks, input.task) ? ledger.tasks[input.task] : null;
-    if (command === 'start') {
+    if (command === 'summary') return {
+      status: task?.status ?? 'no_checkpoint',
+      saved: task?.status === 'recorded',
+      message: task?.status === 'recorded' ? 'Pontaj salvat (confirmat în DB la ack)' : 'Pontaj în așteptare',
+      verified_ids: task?.status === 'recorded' ? task.prepared.rows.map(row => row.id) : [],
+    };
+    if (task) {
+      for (const key of ['member', 'project_id']) {
+        if (input[key] !== undefined && input[key] !== task[key]) throw Error(`Checkpoint identity mismatch: ${key}`);
+      }
+      if (input.source !== undefined && (input.source?.type !== task.source?.type || input.source?.id !== task.source?.id)) throw Error('Checkpoint source mismatch');
+    }
+    const entering = command === 'enter';
+    let created = false;
+    if (command === 'start' || entering) {
       if (!read(configPath)?.enabled) return { enabled: false };
-      if (task) return task;
-      if (Object.values(ledger.tasks).some(t => !['prepared', 'recorded'].includes(t.status))) throw Error('Finish or pause scope reconciliation for the active task first');
       if (!input.member?.trim() || !Number.isSafeInteger(input.project_id) || input.project_id <= 0) throw Error('Verified member and project required');
+      if (task) return entering ? { enabled: true, status: task.status === 'prepared' ? 'pending' : task.status, started_at: task.started_at, project_id: task.project_id, member: task.member } : task;
+      if (Object.values(ledger.tasks).some(t => !['prepared', 'recorded'].includes(t.status))) throw Error('Finish or pause scope reconciliation for the active task first');
+      // Validate the source before starting, not at the end of measured work.
+      if (input.source) workLogSql([], input.source);
       task = { session: input.session, task: input.task, member: input.member, project_id: input.project_id, source: input.source || null, started_at: now, pauses: [], status: 'active' };
       ledger.tasks[input.task] = task;
+      created = true;
     } else {
       if (!task) throw Error('No start checkpoint; do not backfill guessed hours');
       if (command === 'pause' && task.status === 'active') { task.pauses.push([now, null]); task.status = 'paused'; }
@@ -128,6 +145,7 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
       } else throw Error('Unknown command or invalid task state');
     }
     save(path, ledger);
+    if (entering) return { enabled: true, status: created ? 'started' : task.status, started_at: task.started_at, project_id: task.project_id, member: task.member };
     return command === 'prepare' ? task.prepared : task;
   } finally { rmdirSync(lock); }
 }

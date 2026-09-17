@@ -29,7 +29,8 @@ o singură dată (`AskUserQuestion`).
    proiecte cu mai multe codebase-uri, adaugă-le pe toate.
 3. Citește `CLAUDE.md` și `AGENTS.md` ale proiectului dacă există. Nu sări peste: acolo
    stau convențiile pentru care alte sesiuni au plătit deja.
-4. `git status` + branch curent + ultimele ~5 commit-uri, ca să știi pe ce stare pornești.
+4. După rezolvarea membrului/proiectului, confirmă `enter` din protocolul Pontaj înainte de inventar sau lucru.
+5. `git status` + branch curent + ultimele ~5 commit-uri, ca să știi pe ce stare pornești.
    Worktree murdar nu blochează sesiunea, dar se raportează.
 
 ## Faza 1 — Context tracker
