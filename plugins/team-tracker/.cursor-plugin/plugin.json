@@ -1,0 +1,9 @@
+{
+  "name": "team-tracker",
+  "displayName": "Team Tracker",
+  "version": "1.39.3",
+  "description": "Proiecte, prezentări pentru clienți într-o singură rulare de aproximativ 20 de minute, borne, pontaj, QA și livrare în Team Tracker.",
+  "author": { "name": "Edy", "email": "lakiedward03@gmail.com" },
+  "repository": "https://github.com/lakiedward/team-tracker-skills",
+  "skills": "./skills/"
+}

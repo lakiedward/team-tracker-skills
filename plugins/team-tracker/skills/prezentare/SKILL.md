@@ -22,6 +22,28 @@ respectă cererea. `repeta` oferă implicit verificarea pregătirii și scenariu
 interviu pas cu pas. Repetiția ghidată începe numai la cererea explicită a omului.
 `reseteaza` / `--reseteaza` rămâne operație separată, numai la cerere; nu intră în fluxul implicit.
 
+## Rulare în Cursor
+
+În Cursor, folosește același skill din pluginul Team Tracker instalat în Cursor.
+Deschide local proiectul demonstrat și rulează `/prezentare <proiect> prezentarea <uuid>`
+sau lipește promptul copiat din Team Tracker. Un prompt care menționează Codex ori
+`team-tracker:prezentare` desemnează acest flux; execută-l în sesiunea Cursor curentă.
+Nu cere schimbarea aplicației și nu lansa încă un agent sau trei skilluri pentru cele trei etape.
+
+- Rezolvă scripturile și referințele relativ la acest `SKILL.md` instalat. Nu fixa o
+  versiune din cache-ul Codex și nu folosi copiile vechi din `.agents/skills`.
+- Verifică accesul MCP Supabase disponibil în Cursor la tracker și la proiectul demonstrat.
+  Refolosește conexiunile existente; lipsa accesului devine blocaj explicit pentru pașii
+  dependenți. Nu copia tokenuri din alt client și nu cere chei în conversație.
+- Pornește aplicația cu comenzile repo-ului și verifică prin browserul disponibil în
+  sesiunea Cursor. `@Browser`, `@Chrome` și Claude Preview din prompturi indică etapa de
+  verificare, nu un nume obligatoriu de instrument. Dacă browserul lipsește, predă
+  scenariul cu verificările web deschise; nu declara succes doar din build sau cod.
+- Păstrează ținta de aproximativ 20 de minute și revizuirea independentă. Omul trimite
+  problemele în aceeași conversație Cursor. Telefonul rămâne operat de om.
+- Aplică Pontajul comun numai cu identitatea și timestampurile verificabile ale acestei
+  conversații. Nu folosi transcriptul Codex; fără dovezi compatibile, Pontajul rămâne în așteptare.
+
 ## Bugetul unei rulări complete
 
 Ținta implicită este aproximativ **20 de minute de lucru al agentului**, distinct de

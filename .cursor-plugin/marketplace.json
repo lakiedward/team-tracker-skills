@@ -1,0 +1,14 @@
+{
+  "name": "team-tracker",
+  "owner": { "name": "Edy", "email": "lakiedward03@gmail.com" },
+  "metadata": {
+    "description": "Skill-uri Team Tracker pentru Cursor, inclusiv pregătirea prezentărilor într-o singură rulare."
+  },
+  "plugins": [
+    {
+      "name": "team-tracker",
+      "source": "./plugins/team-tracker",
+      "description": "Proiecte, prezentări pentru clienți, borne, pontaj, QA și livrare în Team Tracker."
+    }
+  ]
+}

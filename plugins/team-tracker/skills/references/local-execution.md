@@ -26,9 +26,12 @@ fără `/proiect` înainte.
   sesiune. Pornește serverul local, deschide URL-ul lui în browserul ales și parcurge
   scenariul afectat pe viewportunile relevante. Verificarea vizuală și end-to-end include
   consola și capturi când sunt necesare pentru dovedirea rezultatului.
+- **În Cursor, folosește browserul disponibil în sesiunea locală Cursor** și comenzile
+  repo-ului pentru server. Mențiunile `@Browser` / `@Chrome` din prompturi desemnează
+  verificarea în browser; nu cer mutarea conversației în Codex sau un instrument cu acel nume.
 - Referințele din skilluri la `Claude Preview`, `mcp__Claude_Preview__*` sau
   `.claude/launch.json` descriu serverul și operațiile de preview din Claude. În
-  ChatGPT/Codex, folosește comenzile repo-ului și instrumentele de browser disponibile pentru
+  ChatGPT/Codex sau Cursor, folosește comenzile repo-ului și instrumentele de browser disponibile pentru
   aceleași operații. Disponibilitatea unui tool cu numele Claude nu este o condiție.
 - Dacă browserul ales nu este disponibil, folosește alt browser accesibil în sesiune. Dacă
   nu poți executa verificarea cu niciunul, raportează exact scenariile rămase neverificate.
