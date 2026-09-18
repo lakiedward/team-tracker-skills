@@ -1,7 +1,7 @@
 # team-tracker — skill-uri pentru echipă
 
 Plugin care împachetează skill-urile de **team-tracker** pentru Claude Code și
-ChatGPT/Codex, disponibile global în client, în orice proiect.
+ChatGPT/Codex și Cursor, disponibile în proiectele în care pluginul este activat.
 
 Lucrul se execută local. În **ChatGPT/Codex**, pentru testarea aplicației locale poți folosi
 **@Browser**, browserul integrat în IDE, **@Chrome** sau alt browser disponibil în sesiune. Toate skill-urile folosesc
@@ -131,6 +131,8 @@ explicită pentru `--equal` — nu împarte egal pe tăcute.
 
 ## Instalare (per coleg)
 
+### Claude Code
+
 ```text
 /plugin marketplace add lakiedward/team-tracker-skills
 /plugin install team-tracker@team-tracker
@@ -160,13 +162,26 @@ Pui în `.claude/settings.json` (în repo-urile partajate sau în settings-ul fi
 
 Modifici un skill aici → `git commit` + `git push`. Colegii primesc versiunea nouă la
 următorul start de Claude (sau prin `/plugin marketplace update team-tracker`). Bump la
-`version` în `plugins/team-tracker/.claude-plugin/plugin.json` pentru un release controlat.
+`version` în ambele manifeste, `plugins/team-tracker/.claude-plugin/plugin.json` și
+`plugins/team-tracker/.cursor-plugin/plugin.json`, pentru un release controlat.
+
+## Cursor
+
+Din v1.39.3, manifestele native Cursor folosesc același director `skills/`; nu există o
+copie separată a scenariului de prezentare. Instalarea și verificarea sunt descrise în
+[ghidul Cursor](docs/cursor.md).
+
+În Agent, în proiectul demonstrat, selectează `/prezentare` și adaugă proiectul și ID-ul
+prezentării, sau lipește promptul copiat din Team Tracker. Pregătirea durează aproximativ
+20 de minute, apoi revizuiești singur și trimiți problemele în aceeași conversație.
 
 ## Structură
 
 ```
 .claude-plugin/marketplace.json          # catalogul (un singur plugin)
+.cursor-plugin/marketplace.json          # același catalog pentru Cursor
 plugins/team-tracker/
   .claude-plugin/plugin.json             # manifest plugin
-  skills/<nume>/SKILL.md                 # cele 16 skill-uri (+ scripts/ / references/ / templates/ unde e cazul)
+  .cursor-plugin/plugin.json             # manifest Cursor, aceeași versiune
+  skills/<nume>/SKILL.md                  # sursa comună (+ scripts/ / references/ / templates/)
 ```
