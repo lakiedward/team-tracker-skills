@@ -65,6 +65,16 @@ Popularea și resetarea automate sunt disponibile numai pentru Motion. Un browse
 telefon absent, accesul lipsă și modul TEST neconfirmat rămân limite vizibile în rezultat.
 Nu porni pregătirea simultan în Cursor și Codex pentru aceeași prezentare.
 
+## Conversații Cursor cloud
+
+Instalarea locală nu actualizează pluginul unei conversații cloud deja pornite. Verifică
+în acel mediu versiunea manifestului skillului efectiv folosit; un `git pull` într-un alt
+repository nu este dovadă de instalare. Fluxul acestui plugin cere execuție în checkout-ul
+local. Continuă corecțiile într-o conversație locală cu ID-ul prezentării existente și
+versiunea actuală a pluginului; nu recrea prezentarea și nu porni două pregătiri simultane.
+Din v1.39.4, predarea cere și actualizarea textelor după rezolvarea blocajelor, versiunile
+aplicației/datelor, contextul beneficiarului și verificarea separată a pașilor mobili.
+
 Referințe: [pluginuri Cursor](https://cursor.com/docs/plugins),
 [formatul pluginurilor](https://cursor.com/docs/reference/plugins),
 [skilluri Cursor](https://cursor.com/docs/skills).

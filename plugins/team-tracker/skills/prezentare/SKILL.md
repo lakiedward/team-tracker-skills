@@ -8,6 +8,11 @@ description: "Pregătește o prezentare pentru client într-o singură rulare de
 Aplică [execuția locală](../references/local-execution.md). Folosește pluginul instalat,
 registrul [proiectelor](../orchestrate/projects.json) și prezentarea salvată în Team Tracker.
 Intrarea implicită este `/prezentare <proiect> prezentarea <uuid>` sau `Operație: complet`.
+La început consemnează clientul de execuție, calea reală și versiunea manifestului
+pluginului care furnizează acest fișier. Actualizarea Codex/Cursor local nu actualizează
+un task Cursor cloud. Nu declara un checkout descărcat drept plugin instalat. Dacă taskul
+folosește o versiune veche, explică diferența și actualizează prin mecanismul acelui client;
+nu fixa un cache local într-un prompt destinat altui mediu și nu trimite execuția în cloud.
 Execută planificarea, pregătirea și verificarea esențială în aceeași rulare, apoi predă
 scenariul pentru revizuire. Nu cere omului să trimită pe rând trei prompturi.
 Planificarea și verificarea resurselor existente sunt comune proiectelor. Adaptorul de
@@ -54,6 +59,9 @@ nu promite finalizarea unor fluxuri neverificate ca să te încadrezi.
   etapă; după 15 minute concentrează-te pe livrabil, iar de la 18 minute salvează și predă.
   Nu porni operații lente aproape de termen. Închide scrierile deja începute în siguranță;
   orice depășire tehnică se raportează, nu se ascunde.
+- Salvează în rezumat începutul și sfârșitul întregii pregătiri, plus durata calculată.
+  Intervalul `tt_demo_runs.started_at`–`completed_at` poate acoperi doar etapa de persistare;
+  nu îl raporta drept durata întregului task. Fără timestampuri sigure, durata e neconfirmată.
 - Citește contextul o singură dată; grupează lecturile independente. Recitește revizia
   înaintea scrierilor și configurația sensibilă înaintea efectelor externe.
 - Distribuție orientativă: 5 minute progres și selecție, 8 minute date/acces, 5 minute
@@ -97,6 +105,13 @@ nu promite finalizarea unor fluxuri neverificate ca să te încadrezi.
 
 ## Planifică
 
+Stabilește ce trebuie să vadă destinatarul: beneficiarul/partenerul proiectului poate
+avea nevoie atât de fluxul cumpărătorului, cât și de administrare. „Client” nu înseamnă
+automat „utilizator final”. Refolosește contextul explicit; dacă lipsește, clarifică o dată.
+Nu exclude schimbările din admin numai fiindcă întâlnirea este cu un client. În scenariu
+separă sesiunea de cumpărător de sesiunea admin a prezentatorului; nu acorda acces admin
+destinatarului implicit și nu folosi admin în locul unui cumpărător.
+
 Folosește ultima prezentare **ținută** cu același destinatar, nu data ultimei borne și nici
 ultima prezentare cu alt client. Pentru prima prezentare cere data de început dacă lipsește.
 Snapshotul întâlnirii anterioare și rezultatele efective decid ce a fost demonstrat.
@@ -106,6 +121,9 @@ To-Do și dovezile existente din UI Coverage/teste/publicare. Grupează sursele 
 schimbări; investighează detaliat doar elementele selectate pentru scenariu. Compară cu
 Git și versiunea publicată. Dacă bugetul nu permite terminarea inventarului, declară
 acoperirea parțială și sursele rămase; nu pretinde că ai inventariat tot proiectul.
+Păstrează în `document.preparation` intervalul, numărul de candidați per sursă, acoperirea
+Git și motivul grupării/excluderii. Citește toate paginile inventarului, nu doar primele N
+rezultate. Inventar complet nu înseamnă verificare completă a tuturor fluxurilor.
 `updated_at` selectează candidați, nu dovedește finalizarea. Notează pentru fiecare schimbare
 beneficiul clientului, sursa, dovada și starea. `scripts/planning.mjs` oferă selecția baseline-ului,
 reportarea elementelor sărite și clasificarea conservatoare a dovezilor.
@@ -142,10 +160,14 @@ resetarea, nu lectura sau prezentarea acelei resurse.
 
 ## Verifică și predă
 
+Aplică [verificarea predării și corectarea unui blocaj rezolvat](references/handoff-quality.md).
+
 Execută preflight-ul versiunii, accesului, datelor și integrărilor; recitește cursurile, taberele
 și evenimentele dependente de timp. Oferă omului scenariul ordonat cu linkuri și QR din Team Tracker.
 O verificare web a agentului este dovadă de pregătire și se menționează separat.
-În fluxul complet, salvează verificările agentului în rularea `prepare` și predă scenariul.
+În fluxul complet, salvează observațiile și dovezile agentului în `prepare.summary` și
+în dovezile schimbărilor, apoi predă scenariul. Contractul actual cere `prepare.results=[]`;
+rezultatele de pas sunt rezervate repetiției/întâlnirii, nu pregătirii.
 Nu porni automat `rehearsal` și nu transforma predarea într-o conversație cu întrebări
 după fiecare pas. Absența telefonului se notează, fără a bloca predarea scenariului web.
 
@@ -180,6 +202,9 @@ Nu schimba durata întâlnirii, selecția sau notele omului pentru a economisi t
 Când omul revine cu o problemă, continuă în același task: recitește pasul și versiunea
 curentă, investighează și corectează punctual datele/scenariul sau codul autorizat, apoi
 reverifică partea afectată. Nu relua întregul inventar și nu cere alte skilluri/prompturi.
+Actualizează și titlul, rezumatul, precondițiile și explicația blocajului din scenariul
+curent. Nu adăuga un pas funcțional lângă un pas activ care încă afirmă că același cont
+sau aceeași resursă lipsește. Istoricul rămâne în snapshoturile rulărilor anterioare.
 Pentru reparații de cod aplică verificările și livrarea proiectului; bugetul pregătirii
 nu anulează aceste cerințe și nu înseamnă că orice reparație încape în 20 de minute.
 
