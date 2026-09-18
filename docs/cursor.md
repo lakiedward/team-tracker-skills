@@ -27,6 +27,23 @@ pluginului trebuie să fie cel puțin **1.39.3**, cu secțiunea „Rulare în Cu
 Nu modifica manual cache-ul identificat prin SHA și nu crea încă o copie personală a
 skillului. Un plugin omonim din marketplace are prioritate față de o instalare locală.
 
+### Dacă actualizarea păstrează versiunea veche
+
+Verifică `cursor-agent plugin marketplace list --format json`: `gitRef` trebuie să
+corespundă commitului publicat. În unele instalări, `update` reindexează commitul vechi,
+iar un nou `add` schimbă descrierea fără să schimbe referința instalării. În acest caz,
+reînregistrează numai marketplace-ul Team Tracker:
+
+```powershell
+cursor-agent plugin marketplace remove team-tracker
+cursor-agent plugin marketplace add https://github.com/lakiedward/team-tracker-skills --git-ref master
+```
+
+Aceasta elimină și instalarea Cursor asociată. Reinstalează **Team Tracker** în același
+scope din **Customize → Plugins** sau, în Cursor Agent CLI, din `/plugin` → Marketplace.
+Verifică atât versiunea instalată, cât și prezența skillului; descrierea nouă din catalog
+nu este suficientă. Nu este necesară ștergerea manuală a fișierelor sau a configurației MCP.
+
 MCP Supabase trebuie conectat în Cursor, cu acces la Team Tracker și la proiectul
 demonstrat. Folosește configurarea/autentificarea MCP din Cursor; nu pune chei în skill,
 repository, prezentare sau conversație.
