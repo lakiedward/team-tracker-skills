@@ -61,9 +61,12 @@ fabrica audit items, findings, scoruri, teste trecute sau dovezi de publicare. N
 
 1. Recitește rândurile afectate, părinții și copiii unei pagini mutate/retrase.
    Păstrează snapshotul cu `updated_at` și lista exactă de ID-uri.
-2. Aplică delta într-o tranzacție: blochează rândurile în ordine de ID, compară
-   reviziile și actualizează cu `project_id` + `id` + `updated_at`. Verifică numărul
-   de rânduri RETURNING; un conflict anulează întreaga delta. Recitește și reconstruiește.
+2. Aplică delta într-o tranzacție: blochează rândurile în ordine de ID și compară
+   toate reviziile înainte de prima scriere. Actualizează numai ID-urile blocate,
+   filtrate și după proiect. Triggerul unui copil schimbă `updated_at` al părintelui:
+   nu confunda această schimbare proprie tranzacției cu un conflict extern.
+   Verifică numărul de rânduri RETURNING; un conflict anulează întreaga delta.
+   Recitește și reconstruiește înainte de retry.
 3. Un retry care găsește aceleași valori este no-op. După timeout recitește DB înainte
    de reinserare. Unicitatea `(project_id, stable_key)` nu înlocuiește deduplicarea semantică.
 4. UPDATE permite doar `parent_id`, `label`, `codebase_label`, `route_pattern`,
