@@ -19,6 +19,12 @@ fără `/proiect` înainte.
   Păstrează modelul și instrumentele disponibile în clientul curent.
 - Pentru lucru UI, aplică [fișa vizuală în runda existentă](visual-reference.md)
   înainte de cod; refolosește răspunsurile și aprobările deja date.
+- **UI Coverage după fiecare task:** aplică [sincronizarea incrementală a inventarului](ui-inventory-sync.md)
+  când modifici interfața, inclusiv la buguri, features, To-Do și taskuri libere.
+  Identifică suprafețele înainte de cod; după integrare adaugă/actualizează/retrage
+  numai delta confirmată, păstrând identitatea, istoricul și porțile umane. Draftul
+  nu suprascrie inventarul canonic. Include contractul în prompturile de execuție
+  produse și raportează rezultatul verificat sau „inventar UI nesincronizat”.
 - Pentru livrarea secțiunilor, aplică [dovada publicării](delivery-evidence.md).
   PR integrat, versiune publicată și cerere închisă sunt rezultate distincte.
 - **În ChatGPT/Codex, poți folosi `@Browser`, browserul integrat în IDE, sau `@Chrome`.**

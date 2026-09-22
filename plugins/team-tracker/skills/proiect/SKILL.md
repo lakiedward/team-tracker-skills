@@ -40,6 +40,10 @@ Cu `project_id` din registru, citește din Supabase (`ntjzghsbrzkvpkniotaj`):
 - bug-uri `Open`/`In Progress` din `tt_bugs`;
 - features `Propus`/`Planificat`/`În Focus` din `tt_features`;
 - pipeline-ul de secțiuni din `tt_section_pipeline` (count pe `next_action`);
+- harta paginilor/secțiunilor din `tt_ui_surfaces`, cu ID, părinte, cheie stabilă,
+  codebase, rută, referințe de cod, amprentă, stare și revizie; include și rândurile
+  `planned`/`missing`/`archived`, cu paginare, conform
+  [contractului de sincronizare UI](../references/ui-inventory-sync.md);
 - planul zilei din `tt_delivery_plans`/`tt_delivery_plan_items` (dacă există unul activ);
 - pontajul recent din `tt_work_logs` (ultimele ~10 intrări).
 
@@ -48,10 +52,15 @@ coada zilei, ce s-a lucrat recent. Raportul e punctul de plecare al conversație
 
 ## Contractul sesiunii
 
+Orice task ulterior care schimbă UI, inclusiv o cerere liberă, moștenește
+[sincronizarea incrementală UI Coverage](../references/ui-inventory-sync.md).
+Harta încărcată servește identificării; înainte de scriere recitește rândurile.
+Sincronizarea după integrare face parte din task, fără o nouă cerere de aprobare.
+
 | Tip task | Omul | Chatul (orchestratorul) |
 |---|---|---|
 | **Sesiune ghidată (UI)** | conduce răspunsurile + 2 apăsări: „Aprob criteriile", „Producție" | conduce sesiunea în browser, întreabă la final și ce lipsește față de o secțiune de felul ei (cu recomandare: adaugă acum / mai târziu / nu), salvează criteriile în `tt_ui_surface_criteria` și lipsurile mari sau amânate ca `tt_features` legate de secțiune, apoi build → verificare → merge |
-| **Sesiune de construcție (secțiune `planned`, din `/proiect-nou`)** | răspunde la 2–4 întrebări de structură, apoi conduce verdictele + aceleași 2 apăsări | citește `purpose`, tokens, convențiile și `CLAUDE.md`, propune structura, construiește primul draft pe branch (și scheletul paginii dacă e prima secțiune de pe ea), apoi exact sesiunea ghidată pe draftul construit; la final scrie `code_refs`, amprenta și `inventory_state = 'active'` — nu sunt porți umane. Modul se alege singur din `inventory_state`, nu dintr-un buton |
+| **Sesiune de construcție (secțiune `planned`, din `/proiect-nou`)** | răspunde la 2–4 întrebări de structură, apoi conduce verdictele + aceleași 2 apăsări | citește `purpose`, tokens, convențiile și `CLAUDE.md`, propune structura, construiește primul draft pe branch (și scheletul paginii dacă e prima secțiune de pe ea), apoi exact sesiunea ghidată pe draftul construit; păstrează delta draftului și sincronizează `code_refs`, amprenta și `inventory_state = 'active'` numai după integrare, conform contractului UI. Modul se alege singur din `inventory_state`, nu dintr-un buton |
 | **Bug** | nimic | tot, cap-coadă |
 | **Feature non-UI** | nimic | tot, cap-coadă |
 | **Feature cu UI** | o privire la final: „merge cum vreau?" | tot, inclusiv verificarea completă, **înainte** de privirea omului |
