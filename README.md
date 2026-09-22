@@ -11,6 +11,11 @@ Modificările autorizate se livrează prin commit, push, PR și merge după veri
 CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
 suplimentare pentru fiecare pas.
 
+Din v1.40.0, taskurile care schimbă UI sincronizează incremental paginile și secțiunile
+din UI Coverage după integrare, inclusiv fără `/proiect`. Redenumirile păstrează
+identitatea; eliminările păstrează istoricul; drafturile și porțile umane sunt protejate.
+Detalii: [inventarul UI după task](plugins/team-tracker/skills/references/ui-inventory-sync.md).
+
 Din v1.39.2, `/prezentare` pregătește întâlnirile într-o singură rulare de aproximativ 20 de minute: schimbările de la ultima
 prezentare, resursele disponibile, scenariul pe roluri/dispozitive și verificările esențiale. Omul revizuiește singur și trimite problemele în același task.
 Adaptorul Motion are registre interne de proprietate și resetare sigură;
