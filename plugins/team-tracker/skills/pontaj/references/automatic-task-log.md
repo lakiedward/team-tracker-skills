@@ -5,6 +5,10 @@ Nu este un monitor al tuturor aplicațiilor. Taskurile executate fără acest co
 și activitatea umană externă rămân de reconciliat separat. Automatizările nesupravegheate
 și subagenții nu pontează timp pe numele omului.
 
+Aplică [proveniența orelor](time-basis.md): fiecare înregistrare automată nouă este
+`conversation_estimate`, separat de orele declarate de om. Nu consumă automat
+capacitatea umană și nu calibrează efortul uman al planurilor.
+
 ## Activare și început
 
 - La cererea „pontaj automat după fiecare task”, rulează `node <skill_dir>/scripts/task-clock.mjs enable`.
@@ -49,8 +53,11 @@ continuă munca autorizată, raportând Pontaj în așteptare; nu recupera retro
 - Scriptul exclude gapurile peste 15 minute și pauzele explicite, separă zilele în
   Europe/Bucharest și păstrează fracțiile de oră fără minimum 0.5h. Este o **estimare a
   activității conversației**, nu măsurarea exactă a efortului uman. Precizează asta în log.
+  Scriptul adaugă markerul `[pontaj:basis=conversation_estimate]` și eticheta lizibilă.
 - `prepare` salvează întâi rezultatul într-un registru local durabil la
   `~/.claude/team-tracker-task-clock/`. La retry returnează aceeași durată și același SQL.
+  Un receipt pregătit înainte de upgrade nu se rescrie pentru a adăuga markerul;
+  eticheta istorică rămâne recunoscută drept estimare a conversației.
   Execută SQL-ul returnat prin Supabase MCP, în baza TT. Inserarea folosește un ID negativ
   determinist, sigur pentru numerele JavaScript, din domeniul existent BIGSERIAL; secvența
   pozitivă rămâne intactă. PK previne duplicatele, iar un conflict cu date diferite oprește
@@ -81,3 +88,6 @@ de activare într-o conversație deja pontată; pornește doar de acum înainte.
 Pe clienți/calculatoare diferite, conversațiile au identități diferite; verifică logurile
 live înainte de transfer și nu porni ceasuri paralele pentru același efort uman. Registrul
 local nu promite deduplicare a unor sesiuni distincte care descriu aceeași muncă.
+Păstrează estimările lor separate; nu le prezenta suma drept ore umane și nu deduce
+efortul uman din suprapunerea ori reuniunea intervalelor. Disponibilitatea actuală
+deja declarată de persoană prevalează, fără o nouă confirmare per task.

@@ -31,8 +31,7 @@ function roundUpQuarter(value) {
   return Math.ceil((value - Number.EPSILON) * 4) / 4;
 }
 
-// The smallest unit Pontaj records, so a remaining estimate under it could not be
-// checked against reality even if it were accurate.
+// Keep the verification/review tail on the books even when build work is done.
 const MIN_REMAINING_HOURS = 0.5;
 // The mandatory tail scales with the item rather than being a constant, so the
 // floor is a share. A quarter is a judgement call, written down as one.
@@ -74,12 +73,14 @@ export function calibrateEstimate({
   baseLow,
   baseHigh,
   sampleItems = 0,
+  calibrationBasis = 'unspecified',
   p50HoursPerItem = null,
   p75HoursPerItem = null,
   appliedCorrectionFactor = 1,
   browserRequired = false,
   riskMultiplier = 1,
   spentHours = 0,
+  spentHoursBasis = 'unspecified',
   inFlight = false,
 }) {
   const low = positiveNumber(baseLow, 'baseLow');
@@ -87,6 +88,9 @@ export function calibrateEstimate({
   if (low > high) throw new Error('baseLow must not exceed baseHigh');
 
   const spent = nonNegativeNumber(spentHours, 'spentHours');
+  if (spent > 0 && spentHoursBasis !== 'human_declared') {
+    throw new Error('spentHours requires explicitly human-declared or reconciled hours');
+  }
   const samples = nonNegativeInteger(sampleItems, 'sampleItems');
   const risk = positiveNumber(riskMultiplier, 'riskMultiplier');
   const verificationMultiplier = Math.max(
@@ -100,7 +104,7 @@ export function calibrateEstimate({
   const p75 = p75HoursPerItem === null
     ? null
     : positiveNumber(p75HoursPerItem, 'p75HoursPerItem');
-  const hasCalibration = samples >= 2 && p50 !== null && p75 !== null;
+  const hasCalibration = calibrationBasis === 'human_declared' && samples >= 2 && p50 !== null && p75 !== null;
 
   if (!hasCalibration) {
     const remaining = applySpentHours(low, high, spent, inFlight);
@@ -164,7 +168,8 @@ function main() {
       'Usage: node calibrate-estimate.mjs --base-low N --base-high N '
       + '[--sample-items N --p50-hours N --p75-hours N --factor N '
       + '--browser true|false --risk-multiplier N '
-      + '--spent-hours N --in-flight true|false]\n',
+      + '--calibration-basis human_declared --spent-hours N '
+      + '--spent-hours-basis human_declared --in-flight true|false]\n',
     );
     process.exitCode = 2;
     return;
@@ -176,12 +181,14 @@ function main() {
     baseLow,
     baseHigh,
     sampleItems: readArgument('sample-items') ?? 0,
+    calibrationBasis: readArgument('calibration-basis') ?? 'unspecified',
     p50HoursPerItem: readArgument('p50-hours'),
     p75HoursPerItem: readArgument('p75-hours'),
     appliedCorrectionFactor: readArgument('factor') ?? 1,
     browserRequired: browser === 'true',
     riskMultiplier: readArgument('risk-multiplier') ?? 1,
     spentHours: readArgument('spent-hours') ?? 0,
+    spentHoursBasis: readArgument('spent-hours-basis') ?? 'unspecified',
     inFlight: inFlight === 'true',
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

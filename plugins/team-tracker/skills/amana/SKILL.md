@@ -264,9 +264,9 @@ cannot show its proof does not hold, and saying so is the point of the skill.
 
 | Categorie | Sună a | Proba care îl demontează | Reparația, azi |
 |---|---|---|---|
-| `prea_mare` | „nu am timp de tot azi” | `estimate_hours_high` vs orele rămase real (gross − pontaj de azi) | **taie o felie** cu un checkpoint observabil; `manual_estimate_hours` = felia, restul rămâne pe sursă |
+| `prea_mare` | „nu am timp de tot azi” | `estimate_hours_high` vs disponibilitatea actuală declarată, altfel gross − ore umane declarate/reconciliate de azi; estimările conversațiilor rămân separate | **taie o felie** cu un checkpoint observabil; `manual_estimate_hours` = felia, restul rămâne pe sursă |
 | `neclar` | „nu știu ce vrea de fapt” | `scope_reason.completion` lipsește sau nu e verificabil | **rescrie criteriul** împreună cu omul, într-o singură rundă; dacă e secțiune la `needs_spec`, exact asta e sesiunea de spec |
-| `estimare_gresita` | „e mult mai mult decât scrie” | compară cu `tt_delivery_calibration` și cu orele deja pontate | **re-estimează** (`manual_estimate_hours` + `estimate_locked`); dacă ziua se sparge, altceva iese din committed — și asta se spune |
+| `estimare_gresita` | „e mult mai mult decât scrie” | compară estimarea din cod cu un eșantion de calibrare verificat ca exclusiv uman și cu orele umane declarate/reconciliate; fără acestea, păstrează incertitudinea | **re-estimează** (`manual_estimate_hours` + `estimate_locked`); dacă ziua se sparge, altceva iese din committed — și asta se spune |
 | `nu_stiu_cum` | „nu știu de unde s-o apuc” | nu e blocaj, e necunoscut | prima felie devine **o investigație cu timebox** (0,5–1h) și un rezultat scris; aia e munca de azi |
 | `fara_chef` | „nu am chef / e plictisitor / vreau altceva” | nimic obiectiv | **nu e motiv de amânare.** Spune-o simplu, fără morală, și oferă: reordonare în interiorul zilei, sau cea mai mică felie onestă |
 | `alta_prioritate` | „e altceva mai important” | rulează criteriile de rank din `/plan-deadlines` faza 6 pe ambele | dacă celălalt chiar câștigă → **reordonare**, amândouă rămân committed. Dacă nu → arată de ce și păstrează ordinea |

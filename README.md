@@ -11,6 +11,12 @@ Modificările autorizate se livrează prin commit, push, PR și merge după veri
 CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
 suplimentare pentru fiecare pas.
 
+Din v1.40.1, Pontaj separă orele declarate de om de estimările conversațiilor și de
+istoricul fără proveniență. Estimările nu consumă automat capacitatea umană; o
+disponibilitate deja declarată este folosită fără încă o întrebare. Receipts în
+așteptare și logurile istorice rămân intacte. Detalii:
+[proveniența orelor](plugins/team-tracker/skills/pontaj/references/time-basis.md).
+
 Din v1.40.0, taskurile care schimbă UI sincronizează incremental paginile și secțiunile
 din UI Coverage după integrare, inclusiv fără `/proiect`. Redenumirile păstrează
 identitatea; eliminările păstrează istoricul; drafturile și porțile umane sunt protejate.

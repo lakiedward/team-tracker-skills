@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { activeDays, transcriptTimes, prepareRows, workLogSql, run } from './task-clock.mjs';
+import { workLogBasis } from './work-log-basis.mjs';
 const stamp = minutes => new Date(Date.parse('2026-09-16T08:00:00Z') + minutes * 60000).toISOString();
 test('short tasks retain minutes; idle gaps and explicit user waits are excluded', () => {
   const times = [0, 4, 6, 50, 55].map(m => Date.parse(stamp(m)));
@@ -33,6 +35,7 @@ test('task lifecycle freezes retries, rejects other transcripts, overlaps and fa
     run('pause',input,root,stamp(2)); run('resume',input,root,stamp(4));
     const prepared=run('prepare',{...input,transcripts:[transcript],category:'Development',description:"Taskul lui O'Brien $verify$"},root,stamp(6));
     assert.equal(prepared.rows[0].hours,0.066667);
+    assert.match(prepared.rows[0].description, /\[pontaj:basis=conversation_estimate\]/);
     assert.ok(Number.isSafeInteger(prepared.rows[0].id) && prepared.rows[0].id<0);
     assert.deepEqual(run('prepare',{...input,transcripts:[]},root,stamp(8)),prepared);
     assert.throws(()=>run('ack',{...input,verified_ids:[42]},root,stamp(8)));
@@ -50,6 +53,16 @@ test('source types and estimates cannot inject SQL; same scope gets stable ident
   const rows=prepareRows(task,{category:'Development',description:'test',ended_at:stamp(2)},[Date.parse(stamp(0)),Date.parse(stamp(2))]);
   assert.equal(rows[0].hours,0.033333);
   assert.equal(rows[0].id,prepareRows(task,{category:'Development',description:'test',ended_at:stamp(2)},[Date.parse(stamp(0)),Date.parse(stamp(2))])[0].id);
+});
+test('new automatic descriptions clear conflicting and malformed metadata before stamping estimate authority', () => {
+  const task={session:'s',task:'feature:3',member:'Edy',project_id:1,started_at:stamp(0),pauses:[]};
+  for (const description of ['Rezultat [pontaj:basis=human_declared]', 'Rezultat [pontaj:basis human]',
+    'Rezultat [pontaj:basis=', 'Rezultat [pontaj:basis=human_declared\n]']) {
+    const row = prepareRows(task, { category:'Development', description, ended_at:stamp(2) },
+      [Date.parse(stamp(0)),Date.parse(stamp(2))])[0];
+    assert.equal(workLogBasis(row), 'conversation_estimate');
+    assert.equal(row.description.split('[pontaj:basis').length - 1, 1);
+  }
 });
 
 test('entry verifies identity before any retry and summary never invents a checkpoint', () => {
@@ -81,4 +94,17 @@ test('entry verifies identity before any retry and summary never invents a check
     assert.equal(run('summary',input,root).sql,undefined);
     assert.throws(()=>run('resume',input,root),/invalid task state/);
   } finally { rmSync(root,{recursive:true,force:true}); }
+});
+test('upgrading does not rewrite a pending receipt prepared by an older clock', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tt-upgrade-'));
+  const input = { session: 'old-session', task: 'task:1', member: 'Edy', project_id: 1 };
+  try {
+    const old = { rows: [{ id: -9, description: 'Legacy [durată activă estimată din conversație]', hours: 1 }], sql: 'old immutable SQL', ended_at: stamp(6) };
+    run('enable', {}, root);
+    run('enter', input, root, stamp(0));
+    writeFileSync(join(root, `${createHash('sha256').update(input.session).digest('hex')}.json`), JSON.stringify({
+      session: input.session, tasks: { [input.task]: { ...input, status: 'prepared', prepared: old } },
+    }));
+    assert.deepEqual(run('prepare', { ...input, transcripts: [] }, root, stamp(8)), old);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
