@@ -15,13 +15,18 @@ numai intervalul taskului, fără minimum 0.5h, retry idempotent și date Europe
 checkpointuri, nu ponta întregul chat încă o dată. Regulile full-chat de mai jos se aplică
 numai unei conversații fără checkpointuri sau pontaj anterior verificat.
 
+Citește [proveniența orelor](references/time-basis.md) înainte de calcul sau scriere.
+Orele automate sunt estimări ale conversației, separate de orele umane declarate.
+Numai declarația explicită a omului permite `human_declared`; estimările nu consumă
+automat capacitatea umană și nu se transformă în ore reale printr-un retry.
+
 Aplică [execuția locală și verificarea în browser](../references/local-execution.md) înainte de pașii de mai jos; în ChatGPT/Codex poți folosi `@Browser`, `@Chrome` sau alt instrument de browser disponibil.
 
 Turn the work done in the **current chat session** into one time-log entry for **the person running it** and write it to the team-tracker Supabase database, so it shows up on the "Pontaj" page. One run = one `tt_work_logs` row: who (resolved from `TT_MEMBER`), which project (resolved from the working directory), what category, what was done, how many hours, on what date. The same write may add zero or more `tt_work_log_items` links when this session names exact tracker items with high confidence.
 
 ## Why this skill exists
 
-A team member jumps between several apps in the same day and wants a frictionless way to record their hours without opening team-tracker and filling the form by hand. Running `/pontaj` (or just saying "ponteaza ce am lucrat") should: figure out who they are, figure out which project this folder belongs to, write a short honest summary of what was worked on in this session, work out the hours from how long the chat actually ran, and insert the row directly. The **only** question it ever asks is on the very first run — "which team member are you?" — and it remembers the answer from then on. After that it's fully unattended. The one thing it can't measure is effort vs. wall-clock, so the chat duration is taken as *active* time (idle gaps clamped) and an explicit number in the invocation always overrides it.
+A team member jumps between several apps in the same day and wants a frictionless record without opening team-tracker. `/pontaj` resolves the person and project, summarizes the session and records either explicitly declared human hours or a separately labelled conversation-activity estimate. Conversation time cannot measure human effort. An explicit number in the invocation wins, subject to the existing duplicate checks. Automatic estimates need no extra confirmation; first-run identity setup and missing measurement evidence retain their existing recovery steps.
 
 The Pontaj page in team-tracker reads `tt_work_logs` and groups by member / project / category to answer "cine, cât și la ce a lucrat". So the row this skill writes has to use the **exact** member name and a category from the page's fixed list, or it lands in the wrong bucket / a stray "Other".
 
@@ -264,6 +269,9 @@ Do **not** ask. Work the hours out from how long this chat session actually ran.
 
 **A. The user stated hours in the invocation → use those, skip the script.** Recognize `/pontaj 4`, `ponteaza 3.5 ore`, `ponteaza-ma cu 2h`, `pontaj 1,5`, `pune 6 ore`. Normalize a comma decimal to a dot (`1,5` → `1.5`) and strip an `h`/`ore`/`hours` suffix. An explicit number always wins — the human knows their effort better than the clock.
 
+Set the basis to `human_declared`. A measured duration cannot substitute for this
+declaration. Do not insert another whole-chat row over existing checkpoint logs.
+
 **B. Otherwise, run the bundled script** to read the current session transcript's timestamps:
 
 ```bash
@@ -272,12 +280,20 @@ node "<skill_dir>/scripts/chat_hours.mjs" "<source_root>"
 
 `<skill_dir>` is the folder this SKILL.md lives in (its `scripts/` subfolder holds `chat_hours.mjs`); `<source_root>` is the cwd from Step 0 (the script uses it to locate the right transcript dir, and falls back to `process.cwd()`). The script supports **both Claude Code** (`~/.claude/projects/`) and **Cursor** (`~/.cursor/projects/agent-transcripts/`) — it picks the newest transcript for the cwd and rounds to 0.5h. It prints one JSON line:
 
+This legacy fallback is usable only in its matching client when the selected
+transcript identity is verified. In Codex, use the exact-session checkpoint
+protocol instead; never read another application's history to measure Codex work.
+
 ```json
 {"transcript":"...","first":"...","last":"...","num_messages":119,
  "raw_hours":0.4,"active_hours":0.4,"idle_clamp_min":15,"round_to":0.5,"hours":0.5}
 ```
 
 Use the **`hours`** field as-is. It is the *active engagement* time — the sum of gaps between messages with any gap over 15 min clamped out, so a chat left open or an overnight pause doesn't inflate it — rounded to the nearest 0.5h, floored at 0.5, capped at 24. No confirmation: the user chose fully auto.
+
+Set the basis to `conversation_estimate`, not human work. Append the readable
+estimate label and `[pontaj:basis=conversation_estimate]`; keep it separate from
+human hours in summaries and capacity decisions.
 
 Keep `raw_hours` and `active_hours` for the Step 5 report so the basis is visible (and if they differ a lot, that's the signal the chat had long idle gaps).
 
@@ -286,6 +302,13 @@ Keep `raw_hours` and `active_hours` for the Step 5 report so the basis is visibl
 ## Step 4 — Insert the row and validated links (directly, no confirmation)
 
 Once hours are known, insert immediately — the user chose direct insert, so there's no separate "OK?" prompt. **Escape single quotes** in `description` (and in `member`, if a name contains one) by doubling them (`'` → `''`) or the SQL breaks.
+
+Before insertion remove any basis tokens from the user-facing summary and append
+exactly one authoritative token: `[pontaj:basis=human_declared]` for an explicit
+human hours declaration, otherwise `[pontaj:basis=conversation_estimate]` plus
+`[durată activă estimată din conversație]`. The fallback answer supplying hours is
+a human declaration. Preserve existing rows; corrections require the person's
+explicit selection and verified hours. No schema change is necessary.
 
 ```sql
 INSERT INTO tt_work_logs (member, project_id, category, description, hours, work_date)
@@ -386,7 +409,7 @@ Print the confirmation and the basis for the hours, nothing more:
 ```
 Pontat ✓  tt_work_logs #<id> — <member> · <project_name> · <category> · <hours>h · <work_date>
 <descrierea>
-Ore: <hours>h — calculat din chat (~<active_hours>h activ din <raw_hours>h total)
+Ore estimate din conversație: <hours>h (~<active_hours>h activ din <raw_hours>h total); separat de timpul uman
 ```
 
 The third line lets the user sanity-check the auto figure at a glance. When the hours came from an explicit number in the invocation instead of the script, say so: `Ore: <hours>h — specificat de tine`. If `raw_hours` is much larger than `active_hours`, add ` (au fost pauze lungi în chat)` so the gap is explained rather than surprising.

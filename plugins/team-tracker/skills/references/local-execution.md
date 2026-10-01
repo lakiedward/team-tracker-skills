@@ -13,6 +13,9 @@ fără `/proiect` înainte.
   prepare → SQL → verificare → ack → summary, cu salvat/în așteptare în răspuns.
   Nu ponta subagenții sau automatizările nesupravegheate
   ca ore ale omului. Dacă nu există dovezi sau salvarea eșuează, raportează Pontaj pending.
+  Aplică [proveniența orelor](../pontaj/references/time-basis.md): orele estimate ale
+  conversației rămân separate de orele declarate de om și nu consumă automat
+  capacitatea umană în niciun flux. Refolosește disponibilitatea deja declarată.
 
 - Execută lucrul în checkout-ul sau worktree-ul local al proiectului, în sesiunea curentă.
   Nu trimite taskurile către agenți cloud și nu configura servicii de dispatch la distanță.

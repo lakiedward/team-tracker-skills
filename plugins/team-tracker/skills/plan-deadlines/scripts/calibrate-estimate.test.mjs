@@ -6,6 +6,7 @@ assert.deepEqual(
     baseLow: 1,
     baseHigh: 1.5,
     sampleItems: 5,
+    calibrationBasis: 'human_declared',
     p50HoursPerItem: 0.375,
     p75HoursPerItem: 0.5,
     appliedCorrectionFactor: 0.5,
@@ -29,6 +30,7 @@ const browserEstimate = calibrateEstimate({
   baseLow: 0.5,
   baseHigh: 1,
   sampleItems: 5,
+  calibrationBasis: 'human_declared',
   p50HoursPerItem: 0.375,
   p75HoursPerItem: 0.5,
   appliedCorrectionFactor: 0.5,
@@ -72,6 +74,7 @@ const sunk = calibrateEstimate({
   baseLow: 2,
   baseHigh: 4,
   spentHours: 3,
+  spentHoursBasis: 'human_declared',
   inFlight: false,
 });
 assert.equal(sunk.estimate_low, 2, 'a stalled item keeps its full estimate');
@@ -85,6 +88,7 @@ const partlyDone = calibrateEstimate({
   baseLow: 2,
   baseHigh: 4,
   spentHours: 1,
+  spentHoursBasis: 'human_declared',
   inFlight: true,
 });
 assert.equal(partlyDone.estimate_low, 1);
@@ -98,6 +102,7 @@ const overrun = calibrateEstimate({
   baseLow: 2,
   baseHigh: 4,
   spentHours: 5,
+  spentHoursBasis: 'human_declared',
   inFlight: true,
 });
 assert.equal(overrun.estimate_high, 1, 'the floor is a quarter of the estimate');
@@ -114,6 +119,7 @@ const tiny = calibrateEstimate({
   baseLow: 0.5,
   baseHigh: 0.5,
   spentHours: 10,
+  spentHoursBasis: 'human_declared',
   inFlight: true,
 });
 assert.equal(tiny.estimate_low, 0.5);
@@ -125,10 +131,12 @@ const calibratedAndPartlyDone = calibrateEstimate({
   baseLow: 4,
   baseHigh: 8,
   sampleItems: 12,
+  calibrationBasis: 'human_declared',
   p50HoursPerItem: 1,
   p75HoursPerItem: 2,
   appliedCorrectionFactor: 1,
   spentHours: 2,
+  spentHoursBasis: 'human_declared',
   inFlight: true,
 });
 assert.equal(calibratedAndPartlyDone.calibration_used, true);
@@ -139,5 +147,12 @@ assert.throws(
   () => calibrateEstimate({ baseLow: 1, baseHigh: 2, spentHours: -1 }),
   /spentHours must be zero or positive/,
 );
+
+const mixedHistory = calibrateEstimate({ baseLow: 2, baseHigh: 4, sampleItems: 12,
+  p50HoursPerItem: 0.1, p75HoursPerItem: 0.2, appliedCorrectionFactor: 0.25 });
+assert.equal(mixedHistory.calibration_used, false, 'mixed or unknown cached views cannot calibrate human effort');
+assert.equal(mixedHistory.estimate_high, 4);
+assert.throws(() => calibrateEstimate({ baseLow: 2, baseHigh: 4, spentHours: 2,
+  spentHoursBasis: 'conversation_estimate', inFlight: true }), /human-declared/);
 
 console.log('plan-deadlines estimate calibration tests passed');

@@ -37,7 +37,7 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 3. Never invent the brief, definition of done, deadline, owner, or future capacity.
 4. Read every project bug, feature, test plan, and To-Do on every run. Do not reuse yesterday's candidate list without refreshing it.
 5. Verify every registered codebase on every run and look for necessary work missing from the tracker. Same-day unchanged clean codebases may reuse a complete inventory under [incremental replanning](references/incremental-replanning.md); changed or uncertain repositories require a full scan.
-6. Never derive future availability from historical Pontaj hours. Use Pontaj only to size work: statistical calibration of duration and confidence, and subtracting hours already spent on an item that is still in flight. Neither may create or reduce tomorrow's capacity.
+6. Never derive future availability from historical Pontaj hours. Read work-log provenance before using history: only explicitly human-declared/reconciled hours may consume human capacity, calibrate human effort or reduce an in-flight item's remaining estimate. Conversation estimates and unspecified history stay separate. Never sum parallel chats as human work. A current availability declaration already authorized by the user wins without another question; neither history nor its reconciliation may create or reduce tomorrow's capacity.
 7. Never impose a fixed task count. Select as many executable actions as fit the daily hour target.
 8. Never exceed gross daily hours silently. Deadline pressure may consume the buffer, but not create imaginary hours.
 9. Do not assign dates to every candidate or persist the whole release roadmap. Persist only the approved daily queue.
@@ -216,6 +216,12 @@ The candidate pool must contain tracker work, UI sections, and newly discovered 
 Derive a code-evidence low/high estimate before using history. Then calibrate it
 with the matching `tt_delivery_calibration.source_type`.
 
+First verify the live view definition and sample provenance as described in
+`references/planning-contract.md`. Mixed-source or unspecified cached views do
+not calibrate human effort. Omit their factors/P50/P75 and feature/hour fallback;
+retain the code-evidence estimate and state the uncertainty. Only confirmed human
+samples permit `--calibration-basis human_declared`.
+
 Choose item calibration in this order:
 
 1. project `direct` with at least 10 completed linked items of the same source type;
@@ -234,20 +240,24 @@ node "<skill_dir>/scripts/calibrate-estimate.mjs" \
   --base-low "<code_evidence_low>" \
   --base-high "<code_evidence_high>" \
   --sample-items "<sample_items>" \
+  --calibration-basis "human_declared" \
   --p50-hours "<p50_hours_per_item>" \
   --p75-hours "<p75_hours_per_item>" \
   --factor "<applied_correction_factor>" \
   --browser "<true_or_false>" \
   --risk-multiplier "<1_to_2>" \
-  --spent-hours "<allocated_hours_already_logged>" \
+  --spent-hours "<confirmed_human_allocated_hours>" \
+  --spent-hours-basis "human_declared" \
   --in-flight "<true_or_false>"
 ```
 
 When no usable item calibration exists, omit `--p50-hours` and `--p75-hours`;
 the script keeps the code-evidence estimate unchanged.
 
-`--spent-hours` is the sum of `tt_work_log_items.allocated_hours` already logged
-against that source, and `--in-flight` says whether the tracker shows work
+`--spent-hours` is the deduplicated sum of `tt_work_log_items.allocated_hours`
+linked to explicitly human-declared/reconciled logs for that source. Conversation
+estimates and unspecified logs are reported separately and never subtracted.
+`--in-flight` says whether the tracker shows work
 actually open on it. Calibration cannot supply this: it samples completed
 sources, so it sizes the kind of work and never how much of this one is left.
 Both arguments and the per-source definition of "in flight" are in the planning
@@ -606,6 +616,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Codebase gaps were checked against tracker items before proposal.
 - [ ] No codebase file changed.
 - [ ] Pontaj calibrated estimates but did not define availability.
+- [ ] Only confirmed human hours consumed human capacity or calibrated effort; conversation estimates and unspecified history remained separate, and an existing availability declaration was reused without a redundant question.
 - [ ] Each source type used its own calibration; feature/hour fallback was not applied to bugs, tests, or To-Dos.
 - [ ] A 2–9 item sample used the provisional factor from the view, never the lower raw factor.
 - [ ] Daily hours came from the profile.

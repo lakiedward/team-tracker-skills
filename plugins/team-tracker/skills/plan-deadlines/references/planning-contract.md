@@ -2,6 +2,9 @@
 
 Read this reference before querying or writing delivery-planning data.
 
+Apply [work-log provenance](../../pontaj/references/time-basis.md) before treating
+any hours as human effort. The live schema is checked first; no DDL is authorized.
+
 ## Data ownership
 
 - `tt_delivery_profiles`: human-owned outcome, definition of done, deadline, owner, future weekly capacity, and `launch_stage` (`pre_launch` / `in_production`) with the `launched_at` the database stamps. `launch_stage` is a human gate like the section ones: a trigger rejects agent-side SQL writes to it, so this skill only reads it. Whether the project is already live is never re-derived from release outcomes or a reachable URL — that column is the answer.
@@ -66,6 +69,14 @@ ORDER BY source_type, scope;
 
 Select calibration separately for `bug`, `feature`, `test_plan`, and `todo`:
 
+First inspect the live view definition and provenance of its sampled work logs.
+Only a sample built exclusively from explicitly human-declared/reconciled hours
+can calibrate human effort. Mixed-source or unspecified cached views remain
+historical information: omit their factors/P50/P75 and the feature/hour fallback.
+Use the code-evidence estimate, or recompute read-only on confirmed human rows
+when the same source, allocation and sample rules can be verified. Pass
+`--calibration-basis human_declared` only after that check.
+
 1. project `direct`;
 2. project `provisional`;
 3. personal `direct`;
@@ -97,18 +108,27 @@ hours split across its links, so a multi-item session is never counted in full
 against each one.
 
 ```sql
-SELECT link.source_type,
+SELECT work.id,
+       work.member,
+       work.project_id,
+       work.work_date,
+       work.description,
+       work.hours,
+       link.source_type,
        link.source_id,
-       sum(link.allocated_hours)::numeric AS spent_hours
+       link.allocated_hours
 FROM public.tt_work_log_items link
 JOIN public.tt_work_logs work ON work.id = link.work_log_id
 WHERE work.project_id = <project_id>
   AND link.confidence = 'high'
-  AND link.allocated_hours > 0
-GROUP BY link.source_type, link.source_id;
+  AND link.allocated_hours > 0;
 ```
 
-Pass the sum as `--spent-hours` to `calibrate-estimate.mjs`, together with
+Classify the underlying work logs with `pontaj/scripts/work-log-basis.mjs`.
+Deduplicate each `(work.id, source_type, source_id)` and sum allocated hours only
+for `human_declared` rows; report estimates and unknown history separately.
+Do not sum raw `work.hours` for each link. Pass only the confirmed human sum as
+`--spent-hours` with `--spent-hours-basis human_declared` to `calibrate-estimate.mjs`, together with
 `--in-flight`, which decides whether it is subtracted at all:
 
 | source | in flight when |
@@ -550,7 +570,7 @@ For an existing current plan created before this contract changed, its persisted
 copied `needs_spec` prompt with the current guided-session completion contract;
 otherwise an old `zero INSERT` / `draft gata` line can contradict the live flow.
 
-The prompt must state `queue_role`. A reserve prompt says to start only after committed work is complete or documented as blocked, inspect the planning day's Pontaj before starting, and stop when actual logged work reaches `day_stop_hours` (fallback to `gross_daily_hours` for legacy plans). In same-day replanning, `gross_daily_hours` is the remaining round budget, not the cumulative stop. Apply [incremental replanning](incremental-replanning.md) before packing and preserve its optional fields in `velocity_snapshot`.
+The prompt must state `queue_role`. A reserve prompt says to start only after committed work is complete or documented as blocked, inspect the planning day's Pontaj before starting, and stop when confirmed human-declared/reconciled hours reach `day_stop_hours` (fallback to `gross_daily_hours` for legacy plans). Conversation estimates and unspecified logs stay separate and cannot trigger this human-capacity stop. Reuse an already authorized current availability declaration; otherwise reconcile unknown time before promising new capacity. In same-day replanning, `gross_daily_hours` is the remaining round budget, not the cumulative stop. Apply [incremental replanning](incremental-replanning.md) before packing and preserve its optional fields in `velocity_snapshot`.
 
 `scope_reason` is the compact execution contract. It must contain why the item is selected now, an observable completion criterion, verified starting paths/symbols from the codebase, `verification_mode=browser|non_browser`, and the required tests or build checks. For browser mode, record the exact scenario plus relevant viewports/devices. A copied prompt must still be actionable when the source has no attachments.
 

@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, writeFileSync, mkdirSync, renameSync, rmdirSync, existsSync } from 'node:fs';
+import { CONVERSATION_HOURS_MARKER } from './work-log-basis.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const quote = value => `'${String(value).replaceAll("'", "''")}'`;
@@ -67,7 +68,7 @@ export function prepareRows(task, input, times) {
     // the positive BIGSERIAL sequence. Retry conflicts are verified, never ignored.
     id: -parseInt(hash(`${task.session}\0${task.task}\0${task.member}\0${task.project_id}\0${day.work_date}`).slice(0, 13), 16) - 1,
     member: task.member, project_id: task.project_id, category: input.category,
-    description: `${input.description.trim()} [durată activă estimată din conversație]`,
+    description: `${input.description.trim().replace(/\[pontaj:basis[^\]\r\n]*(?:\]|$)/gm, '').trim()} [durată activă estimată din conversație] ${CONVERSATION_HOURS_MARKER}`,
     ...day,
   }));
 }
