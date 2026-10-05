@@ -1,0 +1,20 @@
+{
+  "name": "team-tracker",
+  "interface": {
+    "displayName": "Team Tracker"
+  },
+  "plugins": [
+    {
+      "name": "team-tracker",
+      "source": {
+        "source": "local",
+        "path": "./plugins/team-tracker"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

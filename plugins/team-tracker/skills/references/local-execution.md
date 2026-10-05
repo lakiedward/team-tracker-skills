@@ -57,6 +57,10 @@ fără `/proiect` înainte.
   suplimentară pentru fiecare pas de livrare. Respectă porțile umane existente și include
   în commit doar fișierele taskului. O sesiune care nu schimbă fișiere nu are nevoie de
   commit sau PR.
+- **MCP Team Tracker:** dacă serverul MCP `team-tracker` e conectat (tool-uri `whoami`,
+  `projects_list` etc.), folosește tool-urile lui tipizate în locul SQL-ului pe `tt_*`; SQL-ul
+  rămâne varianta de rezervă. Porțile umane se apasă doar prin `gate_*`, doar la cererea
+  explicită a omului din conversația curentă — vezi [politica MCP](mcp-tools.md).
 
 Aceste instrucțiuni de browser privesc testarea aplicației. Citirea unei facturi sau a unui
 dashboard extern autentificat, cum face `/supabase-cota`, folosește integrarea și

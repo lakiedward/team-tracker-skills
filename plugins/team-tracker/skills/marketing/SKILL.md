@@ -151,7 +151,9 @@ Pentru fiecare postare cu `status = 'needs_changes'`:
   `published_at`, `published_url` și statusurile `needs_changes` / `approved` / `published` /
   `rejected` se scriu doar din Team Tracker, de către om. Trigger-ul
   `tt_guard_marketing_post_human_gates` respinge scrierea din sesiune (și TRUNCATE-ul). Un
-  refuz aici e poarta funcționând, nu un bug: cere-i omului butonul.
+  refuz aici e poarta funcționând, nu un bug: cere-i omului butonul. Cu MCP-ul `team-tracker`
+  conectat, `gate_marketing_*` se folosesc doar la cererea explicită a omului din conversația
+  curentă ([politica MCP](../references/mcp-tools.md)); nimic din sesiunea de generare nu le apasă.
 - **Niciun DDL** pe tabelele `tt_` fără cuvintele omului.
 - **Nimic nu se publică pe Instagram** din sesiune (v1 e manual: omul descarcă și postează).
 - **Cifrele de mockup nu sunt rezultate.** Site-ul afișează valori de produs (85%, +27%

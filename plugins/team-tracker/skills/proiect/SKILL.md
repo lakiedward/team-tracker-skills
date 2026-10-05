@@ -78,7 +78,11 @@ testul", „cum deblochez mediul" sunt treaba orchestratorului.
   triggerul verifică rolul real al sesiunii SQL, iar `app.gate_override` nu mai există
   (migrarea `harden_human_gates`, 2026-08-25). Nu încerca să le scrii, nu căuta ocolișuri
   (`SET ROLE`, claims falsificate). Un refuz al DB-ului aici nu e un bug de rezolvat, e
-  poarta funcționând: cere-i omului butonul.
+  poarta funcționând: cere-i omului butonul. Singura excepție: dacă MCP-ul `team-tracker`
+  e conectat și omul cere **explicit, în conversația curentă**, o anumită apăsare, o faci
+  doar prin tool-urile `gate_*`, citându-i cuvintele în `human_instruction` — niciodată
+  din proprie inițiativă, niciodată înlănțuită după munca ta
+  ([politica MCP](../references/mcp-tools.md)).
 - **Niciun DDL pe tabelele `tt_`** fără acordul explicit al omului, în cuvintele lui.
 - **Disciplina git + review** din `../references/code-review-before-merge.md` rămâne
   valabilă pentru orice merge. Merge când CI e verde; nu rula și nu aștepta Bugbot.

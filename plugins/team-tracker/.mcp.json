@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "team-tracker": {
+      "type": "http",
+      "url": "https://team-tracker.alkistudio.com/api/mcp"
+    }
+  }
+}

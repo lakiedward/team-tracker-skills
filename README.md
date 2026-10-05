@@ -11,6 +11,82 @@ Modificările autorizate se livrează prin commit, push, PR și merge după veri
 CI verde și porțile umane existente, fără a aștepta Bugbot și fără confirmări
 suplimentare pentru fiecare pas.
 
+## MCP Team Tracker
+
+Din **v1.41.0**, pluginul vine și cu un **server MCP la distanță** prin care agentul AI
+(Claude Code, Cursor, Codex, ChatGPT, claude.ai) lucrează direct în Team Tracker, cu tool-uri
+tipizate în loc de SQL scris de mână: bug-uri, features, To-Do, planuri de test, Pontaj,
+ședințe, borne, planul de livrare, UI Coverage și tabloul Focus.
+
+- **URL:** `https://team-tracker.alkistudio.com/api/mcp` (Streamable HTTP, OAuth 2.1).
+- **Cine e agentul:** lucrează ca **tine** (sesiune Supabase proprie), deci RLS, trigger-ele și
+  porțile din bază se comportă ca la un click în aplicație. Doar conturile de admin se pot
+  conecta.
+- **Porțile umane** („Aprob criteriile", verdictul, „Marchează livrat", `launch_stage`,
+  aprobarea postărilor) se apasă **doar** prin tool-urile `gate_*`, **doar** când le ceri
+  explicit în conversația curentă, iar agentul citează cuvintele tale în `human_instruction`.
+  Nu le apasă niciodată din proprie inițiativă. La conectare poți debifa „Permite agentului să
+  apese porțile umane" — atunci tool-urile `gate_*` refuză.
+- **Skill-urile** folosesc tool-urile MCP când sunt conectate și cad pe Supabase SQL când nu
+  sunt. Catalogul și politica: [`mcp-tools.md`](plugins/team-tracker/skills/references/mcp-tools.md).
+- **Control:** pagina **„Agenți AI"** din Team Tracker arată URL-ul și snippet-urile pe client,
+  conexiunile active (cu **Revocă**), ultimele acțiuni ale agenților și poate genera un
+  **token personal** (afișat o singură dată) pentru clienții configurați cu header static.
+
+### Instalare pe client
+
+**Claude Code** — MCP-ul vine cu pluginul (`plugins/team-tracker/.mcp.json`):
+
+```text
+/plugin marketplace add lakiedward/team-tracker-skills
+/plugin install team-tracker@team-tracker
+```
+
+Prima utilizare: rulează `/mcp`, alege `team-tracker` și autentifică-te în browser (OAuth,
+cont admin Team Tracker). Din shell: `claude mcp login team-tracker`.
+
+**Cursor** — pluginul aduce serverul prin `plugins/team-tracker/mcp.json`. Adaugă
+marketplace-ul (vezi [ghidul Cursor](docs/cursor.md)) și activează **Team Tracker** din
+**Customize → Plugins**. Doar serverul MCP, fără skill-uri, prin deeplink
+([Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=team-tracker&config=eyJ1cmwiOiJodHRwczovL3RlYW0tdHJhY2tlci5hbGtpc3R1ZGlvLmNvbS9hcGkvbWNwIn0=)):
+
+```text
+cursor://anysphere.cursor-deeplink/mcp/install?name=team-tracker&config=eyJ1cmwiOiJodHRwczovL3RlYW0tdHJhY2tlci5hbGtpc3R1ZGlvLmNvbS9hcGkvbWNwIn0=
+```
+
+(`config` = base64 pentru `{"url":"https://team-tracker.alkistudio.com/api/mcp"}`.)
+
+**Codex** — pluginul are manifest `.codex-plugin/plugin.json` și catalog `.agents/plugins/marketplace.json`:
+
+```bash
+codex plugin marketplace add lakiedward/team-tracker-skills
+codex mcp login team-tracker        # OAuth, o singură dată
+```
+
+Doar serverul, fără skill-uri, în `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.team-tracker]
+url = "https://team-tracker.alkistudio.com/api/mcp"
+```
+
+apoi `codex mcp login team-tracker` (sau `codex mcp add team-tracker --url https://team-tracker.alkistudio.com/api/mcp`).
+
+**ChatGPT** — conector custom (planuri cu Developer mode): **Settings → Connectors → Advanced
+→ Developer mode**, apoi **Create**: nume „Team Tracker", URL
+`https://team-tracker.alkistudio.com/api/mcp`, autentificare **OAuth**. Aprobă conexiunea în
+Team Tracker când te redirecționează.
+
+**claude.ai și Claude Desktop** — **Customize → Connectors → Add → Add custom connector**,
+nume „Team Tracker", URL `https://team-tracker.alkistudio.com/api/mcp`; la autentificare alege
+OAuth cu înregistrare automată (sau identitatea publicată de Claude) și conectează-te cu contul
+de admin. Pe Team/Enterprise, un owner adaugă întâi conectorul în **Organization settings →
+Connectors**.
+
+Dacă te răzgândești: **Agenți AI → Revocă** oprește imediat accesul unui client.
+
+---
+
 Din v1.40.1, Pontaj separă orele declarate de om de estimările conversațiilor și de
 istoricul fără proveniență. Estimările nu consumă automat capacitatea umană; o
 disponibilitate deja declarată este folosită fără încă o întrebare. Receipts în
@@ -173,8 +249,9 @@ Pui în `.claude/settings.json` (în repo-urile partajate sau în settings-ul fi
 
 Modifici un skill aici → `git commit` + `git push`. Colegii primesc versiunea nouă la
 următorul start de Claude (sau prin `/plugin marketplace update team-tracker`). Bump la
-`version` în ambele manifeste, `plugins/team-tracker/.claude-plugin/plugin.json` și
-`plugins/team-tracker/.cursor-plugin/plugin.json`, pentru un release controlat.
+`version` în toate manifestele, `plugins/team-tracker/.claude-plugin/plugin.json`,
+`plugins/team-tracker/.cursor-plugin/plugin.json` și
+`plugins/team-tracker/.codex-plugin/plugin.json`, pentru un release controlat.
 
 ## Cursor
 
@@ -191,8 +268,13 @@ prezentării, sau lipește promptul copiat din Team Tracker. Pregătirea dureaz�
 ```
 .claude-plugin/marketplace.json          # catalogul (un singur plugin)
 .cursor-plugin/marketplace.json          # același catalog pentru Cursor
+.agents/plugins/marketplace.json         # același catalog pentru Codex
 plugins/team-tracker/
   .claude-plugin/plugin.json             # manifest plugin
   .cursor-plugin/plugin.json             # manifest Cursor, aceeași versiune
+  .codex-plugin/plugin.json              # manifest Codex, aceeași versiune
+  .mcp.json                              # serverul MCP team-tracker (Claude Code și Codex)
+  mcp.json                               # același server, pentru Cursor
   skills/<nume>/SKILL.md                  # sursa comună (+ scripts/ / references/ / templates/)
+  skills/references/mcp-tools.md          # catalogul de tool-uri MCP + politica porților
 ```
