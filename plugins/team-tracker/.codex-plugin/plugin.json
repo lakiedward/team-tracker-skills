@@ -1,0 +1,19 @@
+{
+  "name": "team-tracker",
+  "version": "1.41.0",
+  "description": "Skill-uri team-tracker plus serverul MCP Team Tracker: agentul lucrează în Team Tracker cu tool-uri tipizate (bug-uri, features, To-Do, QA, Pontaj, ședințe, borne, UI Coverage), iar porțile umane se apasă doar la cererea explicită a omului.",
+  "author": { "name": "Edy", "email": "lakiedward03@gmail.com" },
+  "repository": "https://github.com/lakiedward/team-tracker-skills",
+  "keywords": ["team-tracker", "mcp", "pontaj", "planning", "qa", "bugs", "features", "ui-coverage"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Team Tracker",
+    "shortDescription": "Skill-uri și server MCP pentru Team Tracker",
+    "longDescription": "Proiecte, bug-uri, features, To-Do, QA, Pontaj, ședințe, borne, planificare zilnică și UI Coverage în Team Tracker. Serverul MCP dă agentului tool-uri tipizate (autentificare OAuth, doar admin); porțile umane se apasă numai la cererea explicită a omului.",
+    "developerName": "Edy",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": ["Arată-mi ce e de făcut azi în Team Tracker"]
+  }
+}

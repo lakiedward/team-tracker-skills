@@ -74,7 +74,9 @@ user asks otherwise.
 5. **Never answer a human gate.** Do not write `spec_approved_at`, `manual_verdict`,
    `verdict_fingerprint`, `verified_at`, `shipped_at` or `launch_stage`. The database
    rejects agent writes to these anyway; the correct move is to point at the button
-   in Productivitate. A section sitting at `blocked_on_you` is not a deferral
+   in Productivitate (a gate is pressed from here only through the MCP `gate_*` tools
+   on the human's explicit request, see `../references/mcp-tools.md` — never as part
+   of a deferral). A section sitting at `blocked_on_you` is not a deferral
    candidate at all — it already consumes no planned hours.
 6. **Never change a tracker status, priority or effort to express a deferral.** A
    postponed bug is not `Fixed`, a postponed feature is not `Gata`, and dropping a

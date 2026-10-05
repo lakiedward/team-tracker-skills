@@ -30,7 +30,8 @@ cu 2–4 variante, una marcată „Propunerea mea: …" cu motivul în aceeași 
    în `tt_ui_surface_criteria`. Un criteriu se scrie doar după ce omul a văzut secțiunea pe
    ecran; altfel Gate 0 s-ar putea apăsa pe hârtie.
 3. **Nicio poartă umană.** `manual_verdict`, `verdict_fingerprint`, `spec_approved_at`,
-   `shipped_at`, `launch_stage` nu se scriu — baza le respinge oricum. `planning_enabled`
+   `shipped_at`, `launch_stage` nu se scriu — baza le respinge oricum (prin MCP, doar
+   `gate_*` și doar la cererea explicită a omului; aici nu e cazul). `planning_enabled`
    rămâne al omului.
 4. **Niciun DDL.** Migrarea care a adus `planned`, `purpose` și coloanele de convenții e în
    app (`20260904120000_planned_surfaces_and_purpose.sql`). Dacă lipsește din bază (eroare pe
