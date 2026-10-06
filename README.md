@@ -87,6 +87,12 @@ Dacă te răzgândești: **Agenți AI → Revocă** oprește imediat accesul unu
 
 ---
 
+Din v1.43.0, `review-video` produce clipurile de review din scenariile deja verificate:
+GPT Sol `low` implicit, `medium` pentru cazuri ambigue, câte un worker local per clip.
+În Codex folosește sloturile libere și înregistrează în paralel numai cu recorder și
+input izolate; pe desktop comun filmează pe rând. Verifică recorderul disponibil
+înainte de lucru și livrează numai în chat, fără să instaleze alt stack de captură.
+
 Din v1.42.0, după orice task cu schimbare vizibilă agentul îți atașează **în chat** un **video scurt al
 rezultatului** (cursor și click-uri vizibile, desktop + mobil), ca să verifici repede dacă ești de acord cu
 cum funcționează. Skill-urile descriu doar ce trebuie să arate clipul; fiecare agent îl înregistrează cum îi
@@ -131,6 +137,7 @@ Skill-uri incluse (apar ca slash-commands după instalare):
 | `borne` | Pune pragurile intermediare dintre azi și deadline în `tt_milestones`, cu propunere read-only și verificări de coerență; `/plan-deadlines` le citește la ranking. |
 | `prezentare` | O singură rulare de aproximativ 20 de minute pentru noutăți, date/acces, scenariu și verificări esențiale; omul revizuiește apoi în ritmul lui. Popularea automată rămâne disponibilă prin adaptorul Motion. |
 | `ui-audit` | Inventariază și auditează suprafețele UI ale unui proiect pe desktop/tabletă/telefon și salvează un snapshot UI Coverage versionat, fără să modifice cod. |
+| `review-video` | Clipuri scurte desktop/mobil ale rezultatului după task, cu GPT Sol low/medium și workers locali independenți în Codex. Refolosește verificarea existentă; captură simultană numai când recorderul și inputul sunt izolate. |
 | `orchestrate` | Mătură board-ul Focus al unui proiect și coordonează lucrul pe itemele active. |
 | `pontaj` | Pontează orele tale de lucru din sesiunea curentă în `tt_work_logs` (pagina „Pontaj"). |
 | `plan-deadlines` | Recitește repo-urile și tot backlog-ul, apoi propune pentru azi câte taskuri încap în orele disponibile și ritmul din Pontaj; scrie numai după confirmare. |

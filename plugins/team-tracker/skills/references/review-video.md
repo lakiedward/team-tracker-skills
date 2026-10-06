@@ -8,6 +8,12 @@ Aici e descris **ce** trebuie să primească omul. **Cum** produci și cum ataș
 ta: înregistrarea nativă a platformei (Cursor, Devin etc.), un script de browser sau orice altă
 metodă care respectă contractul. Nu există o unealtă impusă.
 
+Pentru execuție rapidă, folosește [`team-tracker:review-video`](../review-video/SKILL.md):
+brief din scenariul deja verificat, GPT Sol low/medium și joburi pe clip/viewport.
+Paralelismul capturii depinde de izolarea reală a recorderului și inputului; pe
+desktop/focus comun se filmează pe rând. Dacă nu există recorder permis, livrarea
+video rămâne deschisă, cu motivul concret; screenshots nu țin loc de înregistrare.
+
 ## Ce trebuie să arate clipul
 
 - **Rezultatul terminat, în aplicația reală.** Clipul arată comportamentul, nu codul și nici
