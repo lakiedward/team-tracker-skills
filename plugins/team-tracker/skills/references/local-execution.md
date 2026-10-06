@@ -30,8 +30,12 @@ fără `/proiect` înainte.
   produse și raportează rezultatul verificat sau „inventar UI nesincronizat”.
 - **Video de review după task:** la orice schimbare vizibilă pentru utilizator, atașează
   în chat un clip scurt al rezultatului, conform [contractului video](review-video.md):
-  acolo scrie ce trebuie să arate clipul; cum îl înregistrezi e alegerea ta. Clipul rămâne
-  doar în conversație, nu se urcă în Team Tracker.
+  acolo scrie ce trebuie să arate clipul. Pentru producerea rapidă aplică
+  [`team-tracker:review-video`](../review-video/SKILL.md): refolosește scenariul testat,
+  deleagă clipuri independente către GPT Sol low/medium când clientul permite și
+  serializează capturarea când focusul/inputul sunt comune. Verifică întâi recorderul
+  disponibil; skillul nu inventează o unealtă de captură. Clipul rămâne doar în
+  conversație, nu se urcă în Team Tracker.
 - Pentru livrarea secțiunilor, aplică [dovada publicării](delivery-evidence.md).
   PR integrat, versiune publicată și cerere închisă sunt rezultate distincte.
 - **În ChatGPT/Codex, poți folosi `@Browser`, browserul integrat în IDE, sau `@Chrome`.**
