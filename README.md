@@ -87,6 +87,12 @@ Dacă te răzgândești: **Agenți AI → Revocă** oprește imediat accesul unu
 
 ---
 
+Din v1.42.0, după orice task cu schimbare vizibilă agentul îți atașează **în chat** un **video scurt al
+rezultatului** (cursor și click-uri vizibile, desktop + mobil), ca să verifici repede dacă ești de acord cu
+cum funcționează. Skill-urile descriu doar ce trebuie să arate clipul; fiecare agent îl înregistrează cum îi
+e mai ușor (nativ în Cursor/Devin, scriptat în Claude/Codex). Detalii:
+[contractul video](plugins/team-tracker/skills/references/review-video.md).
+
 Din v1.40.1, Pontaj separă orele declarate de om de estimările conversațiilor și de
 istoricul fără proveniență. Estimările nu consumă automat capacitatea umană; o
 disponibilitate deja declarată este folosită fără încă o întrebare. Receipts în
