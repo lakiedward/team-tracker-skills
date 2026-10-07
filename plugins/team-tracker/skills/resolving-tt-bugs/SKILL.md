@@ -142,7 +142,7 @@ WHERE id = <bug_id> AND status = 'Open'
 RETURNING id, status;
 ```
 
-With automatic Pontaj on, give each bug its own checkpoint keyed `bug:<id>` (prepare/ack after 3f), or `link` it now when one clock already covers the sweep ([protocol](../pontaj/references/automatic-task-log.md)); in orchestrator target mode the dispatcher's clock links it instead.
+With automatic Pontaj on, `link` this bug into the clock you opened for the sweep as soon as you start working it (`bug:<id>`). Per-item checkpoints are the alternative only if you prepare/ack the previous one first — the clock allows one open checkpoint per conversation ([protocol](../pontaj/references/automatic-task-log.md)); in orchestrator target mode the dispatcher's clock links it instead.
 
 ### 3a. Investigation — dispatch in parallel
 

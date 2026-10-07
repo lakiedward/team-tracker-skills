@@ -98,9 +98,12 @@ După `prepare` receipt-ul e imuabil și `link` e respins. Nu edita manual SQL-u
   determinist, sigur pentru numerele JavaScript, din domeniul existent BIGSERIAL; secvența
   pozitivă rămâne intactă. PK previne duplicatele, iar un conflict cu date diferite oprește
   tranzacția. Logul și legăturile se salvează atomic. Nu necesită DDL.
-- Verifică rândurile returnate (membru, proiect, zi, ore, legături), apoi `ack` cu
-  `verified_ids`. Un timeout nu înseamnă eșec sigur: repetă SQL-ul pregătit, nu genera alt ID.
-  Nu șterge registrul și nu modifica manual payloadul pregătit ca să „repari” un conflict.
+  O legătură către un item care nu mai există sau e din alt proiect se sare, nu oprește
+  logul; la fel o zi atât de scurtă încât cota ar ieși 0. Orele rămân salvate.
+- Verifică rândurile returnate (membru, proiect, zi, ore și coloana `links`), apoi `ack` cu
+  `verified_ids`. Raportează fiecare item legat care lipsește din `links`; nu-l adăuga după
+  `ack` fără confirmarea omului. Un timeout nu înseamnă eșec sigur: repetă SQL-ul pregătit,
+  nu genera alt ID. Nu șterge registrul și nu modifica manual payloadul pregătit ca să „repari” un conflict.
   O corecție făcută de om în Pontaj prevalează; raportează conflictul.
 - Eroarea de Pontaj nu anulează livrarea taskului. Spune „Pontaj în așteptare” și păstrează
   checkpointul pentru retry. Nu declara ore salvate înainte de confirmarea DB. Închiderea

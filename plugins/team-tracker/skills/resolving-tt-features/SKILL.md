@@ -207,7 +207,7 @@ RETURNING id, status;
 
 If `RETURNING` comes back empty, the row changed under you (a human moved it in the team-tracker UI between the decision gate and this feature's turn in the queue) — re-read the row and skip it instead of forcing the flip.
 
-With automatic Pontaj on, give each feature its own checkpoint keyed `feature:<id>` (prepare/ack after 4e), or `link` it now when one clock already covers the sweep ([protocol](../pontaj/references/automatic-task-log.md)); in orchestrator target mode the dispatcher's clock links it instead.
+With automatic Pontaj on, `link` this feature into the clock you opened for the sweep as soon as you start working it (`feature:<id>`). Per-item checkpoints are the alternative only if you prepare/ack the previous one first — the clock allows one open checkpoint per conversation ([protocol](../pontaj/references/automatic-task-log.md)); in orchestrator target mode the dispatcher's clock links it instead.
 
 ### 4a. Design — dispatch `feature-dev:code-architect`
 

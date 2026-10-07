@@ -76,54 +76,85 @@ export function prepareRows(task, input, times) {
 const SOURCE_TYPES = ['bug', 'feature', 'test_plan', 'todo', 'ui_surface'];
 const MAX_SOURCES = 25;
 
+const SOURCE_TABLES = { bug: 'tt_bugs', feature: 'tt_features', test_plan: 'tt_test_plans', todo: 'tt_todos', ui_surface: 'tt_ui_surfaces' };
+
 function validSource(source) {
   if (!source || !SOURCE_TYPES.includes(source.type) || !Number.isSafeInteger(source.id) || source.id <= 0) throw Error('Invalid tracker source');
-  if (source.estimated_hours != null && (typeof source.estimated_hours !== 'number' || !Number.isFinite(source.estimated_hours) || !(source.estimated_hours > 0) || source.estimated_hours > 24)) throw Error('Invalid verified plan estimate');
-  return { type: source.type, id: source.id, ...(source.estimated_hours != null ? { estimated_hours: source.estimated_hours } : {}) };
+  if (source.estimated_hours == null) return { type: source.type, id: source.id };
+  // estimated_hours_snapshot is numeric(10,4) with CHECK > 0: an estimate that
+  // rounds to 0 would be rejected by the DB, and the split below must use the
+  // same 4-decimal value the trigger will read back.
+  const estimate = typeof source.estimated_hours === 'number' && Number.isFinite(source.estimated_hours) ? Number(source.estimated_hours.toFixed(4)) : NaN;
+  if (!(estimate >= 0.0001) || estimate > 24) throw Error('Invalid verified plan estimate');
+  return { type: source.type, id: source.id, estimated_hours: estimate };
 }
 
-// Explicit sources from `source` and/or `sources`, deduplicated by type:id.
-export function explicitSources(input) {
-  const list = [...(input.source ? [input.source] : []), ...(Array.isArray(input.sources) ? input.sources : [])];
-  const seen = new Map();
-  for (const source of list.map(validSource)) seen.set(`${source.type}:${source.id}`, source);
-  if (seen.size > MAX_SOURCES) throw Error('Too many tracker sources for one checkpoint');
-  return [...seen.values()];
+// One rule wherever sources meet: deduplicate by type:id, keep the first entry,
+// and let a later entry fill in a plan estimate the first one lacked.
+export function mergeSources(...lists) {
+  const merged = new Map();
+  for (const source of lists.flat().map(validSource)) {
+    const key = `${source.type}:${source.id}`;
+    const known = merged.get(key);
+    if (!known) merged.set(key, source);
+    else if (known.estimated_hours == null && source.estimated_hours != null) merged.set(key, { ...known, estimated_hours: source.estimated_hours });
+  }
+  if (merged.size > MAX_SOURCES) throw Error('Too many tracker sources for one checkpoint');
+  return [...merged.values()];
 }
 
-// A task key that names a tracker item — `bug:640`, `ui_surface:874:approve-spec` —
-// already says where the hours belong. Without this, 141 of 351 checkpoints were
-// saved with no link, so finished tasks showed no duration in Team Tracker.
+// `source: null` and `sources: []` name nothing; both are kept for retries of old JSON.
+const namedSources = input => [...(input.source ? [input.source] : []), ...(Array.isArray(input.sources) ? input.sources : [])];
+export const explicitSources = input => mergeSources(namedSources(input));
+
+// A task key that names a tracker item — `bug:640`, `ui_surface:874:approve-spec`,
+// and the Focus/plan aliases `test:<id>` and `section:<id>` — already says where
+// the hours belong; an item checkpoint started without `source` used to save no link.
+const KEY_ALIASES = { test: 'test_plan', section: 'ui_surface' };
 export function sourceFromTaskKey(key) {
-  const match = /^(bug|feature|test_plan|todo|ui_surface):(\d+)(?::|$)/.exec(key || '');
-  return match && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 0 ? { type: match[1], id: Number(match[2]) } : null;
+  const match = /^(bug|feature|test_plan|todo|ui_surface|test|section):(\d+)(?::|$)/.exec(key || '');
+  const id = match ? Number(match[2]) : 0;
+  return match && Number.isSafeInteger(id) && id > 0 ? { type: KEY_ALIASES[match[1]] ?? match[1], id } : null;
 }
 
 // Ledgers written before multi-source support carry a single `source`.
 export const taskSources = task => task?.sources ?? (task?.source ? [task.source] : []);
 
+// The smallest share any link can get while the DB re-splits after each insert:
+// an AFTER INSERT trigger runs per link, so every intermediate set matters, not
+// only the final one. Weighted while all links so far have estimates, equal
+// otherwise — the bound covers both, in any order and for any subset.
+function minimumShare(hours, sources) {
+  const estimates = sources.filter(source => source.estimated_hours != null).map(source => source.estimated_hours);
+  const equal = hours / sources.length;
+  if (!estimates.length) return equal;
+  return Math.min(equal, hours * Math.min(...estimates) / estimates.reduce((sum, value) => sum + value, 0));
+}
+
 export function workLogSql(rows, sourceOrSources) {
-  const sources = (Array.isArray(sourceOrSources) ? sourceOrSources : sourceOrSources ? [sourceOrSources] : []).map(validSource);
+  const sources = mergeSources(Array.isArray(sourceOrSources) ? sourceOrSources : sourceOrSources ? [sourceOrSources] : []);
   const statements = ['BEGIN;', 'SET LOCAL standard_conforming_strings = on;'];
   for (const row of rows) {
+    if (!Number.isSafeInteger(row.project_id) || row.project_id <= 0 || !Number.isSafeInteger(row.id)) throw Error('Verified project and row ID required');
     const keys = ['id', 'member', 'project_id', 'category', 'description', 'hours', 'work_date'];
     const values = keys.map(k => typeof row[k] === 'number' ? String(row[k]) : quote(row[k]));
     statements.push(`INSERT INTO public.tt_work_logs (${keys.join(', ')}) VALUES (${values.join(', ')}) ON CONFLICT (id) DO NOTHING;`);
     const match = keys.map((k, i) => `${k} = ${values[i]}`).join(' AND ');
     statements.push(`DO ${quote(`BEGIN IF NOT EXISTS (SELECT 1 FROM public.tt_work_logs WHERE ${match}) THEN RAISE EXCEPTION 'Pontaj retry conflict: existing row differs'; END IF; END`)};`);
-    // The DB triggers re-split a log's hours across all its links — by plan estimate
-    // when every link has one, equally otherwise — rounded to allocated_hours'
-    // numeric(10,4), which has CHECK > 0. The same split is computed here: a sliver
-    // of a day (tenths of a second at Bucharest midnight) whose share would round
-    // to 0 is saved without links, instead of failing the whole transaction.
-    const weighted = sources.length > 0 && sources.every(source => source.estimated_hours > 0);
-    const weights = sources.map(source => (weighted ? source.estimated_hours : 1));
-    const total = weights.reduce((sum, weight) => sum + weight, 0);
-    const shares = weights.map(weight => Number((row.hours * weight / total).toFixed(4)));
-    if (!sources.length || shares.some(share => !(share > 0))) continue;
-    sources.forEach((source, index) => statements.push(`INSERT INTO public.tt_work_log_items (work_log_id, source_type, source_id, link_method, confidence, allocated_hours, allocation_method, estimated_hours_snapshot) VALUES (${row.id}, ${quote(source.type)}, ${source.id}, 'explicit', 'high', ${shares[index]}, ${quote(weighted ? 'plan_weighted' : 'equal')}, ${source.estimated_hours ?? 'NULL'}) ON CONFLICT (work_log_id, source_type, source_id) DO NOTHING;`));
+    // The DB triggers re-split a log's hours across its links after every insert,
+    // rounded to allocated_hours' numeric(10,4), which has CHECK > 0. A sliver of a
+    // day (tenths of a second at Bucharest midnight) whose share could round to 0
+    // at any step is saved without links instead of failing the whole transaction.
+    // The trigger overwrites the starting value, which only has to pass the CHECK.
+    if (!sources.length) continue;
+    const floor = Number(minimumShare(row.hours, sources).toFixed(4));
+    if (!(floor >= 0.0001)) continue;
+    // Each link lands only if its item still exists in the log's project: an item
+    // deleted or moved before the clock closed is skipped, not left to abort the
+    // log on every retry of an immutable receipt. The final SELECT shows which landed.
+    for (const source of sources) statements.push(`INSERT INTO public.tt_work_log_items (work_log_id, source_type, source_id, link_method, confidence, allocated_hours, allocation_method, estimated_hours_snapshot) SELECT ${row.id}, ${quote(source.type)}, ${source.id}, 'explicit', 'high', ${floor}, 'equal', ${source.estimated_hours ?? 'NULL'} WHERE EXISTS (SELECT 1 FROM public.${SOURCE_TABLES[source.type]} WHERE id = ${source.id} AND project_id = ${row.project_id}) ON CONFLICT (work_log_id, source_type, source_id) DO NOTHING;`);
   }
-  statements.push(`SELECT id, member, project_id, hours, work_date FROM public.tt_work_logs WHERE id IN (${rows.map(r => r.id).join(', ')});`, 'COMMIT;');
+  statements.push(`SELECT work.id, work.member, work.project_id, work.hours, work.work_date, COALESCE(json_agg(json_build_object('source_type', link.source_type, 'source_id', link.source_id, 'allocated_hours', link.allocated_hours) ORDER BY link.source_type, link.source_id) FILTER (WHERE link.source_id IS NOT NULL), '[]'::json) AS links FROM public.tt_work_logs work LEFT JOIN public.tt_work_log_items link ON link.work_log_id = work.id WHERE work.id IN (${rows.map(r => r.id).join(', ')}) GROUP BY work.id, work.member, work.project_id, work.hours, work.work_date ORDER BY work.work_date;`, 'COMMIT;');
   return statements.join('\n');
 }
 
@@ -154,10 +185,10 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
       }
       // Outside `link`, a source named on a retry must already belong to the
       // checkpoint: sources are added deliberately, never swapped on a retry.
-      if (command !== 'link' && (input.source !== undefined || input.sources !== undefined)) {
+      const named = command === 'link' ? [] : namedSources(input);
+      if (named.length) {
         const known = new Set(taskSources(task).map(s => `${s.type}:${s.id}`));
-        const named = [...(input.source ? [input.source] : []), ...(Array.isArray(input.sources) ? input.sources : [])];
-        if (!named.length || named.some(s => !known.has(`${s?.type}:${s?.id}`))) throw Error('Checkpoint source mismatch');
+        if (named.some(s => !known.has(`${s?.type}:${s?.id}`))) throw Error('Checkpoint source mismatch');
       }
     }
     const entering = command === 'enter';
@@ -179,12 +210,10 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
         // A thread that works several tracker items under one clock names each
         // item as it is actually worked on; the DB then splits the hours.
         if (!['active', 'paused'].includes(task.status)) throw Error('Link sources before prepare; a prepared receipt is immutable');
+        if (input.member === undefined || input.project_id === undefined) throw Error('Verified member and project required');
         const added = explicitSources(input);
         if (!added.length) throw Error('Name at least one tracker source to link');
-        const merged = new Map(taskSources(task).map(s => [`${s.type}:${s.id}`, s]));
-        for (const source of added) if (!merged.has(`${source.type}:${source.id}`)) merged.set(`${source.type}:${source.id}`, source);
-        if (merged.size > MAX_SOURCES) throw Error('Too many tracker sources for one checkpoint');
-        task.sources = [...merged.values()];
+        task.sources = mergeSources(taskSources(task), added);
         delete task.source;
         save(path, ledger);
         return { status: task.status, sources: task.sources };
