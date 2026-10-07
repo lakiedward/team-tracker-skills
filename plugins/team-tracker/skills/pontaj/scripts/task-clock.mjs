@@ -111,10 +111,17 @@ export function workLogSql(rows, sourceOrSources) {
     statements.push(`INSERT INTO public.tt_work_logs (${keys.join(', ')}) VALUES (${values.join(', ')}) ON CONFLICT (id) DO NOTHING;`);
     const match = keys.map((k, i) => `${k} = ${values[i]}`).join(' AND ');
     statements.push(`DO ${quote(`BEGIN IF NOT EXISTS (SELECT 1 FROM public.tt_work_logs WHERE ${match}) THEN RAISE EXCEPTION 'Pontaj retry conflict: existing row differs'; END IF; END`)};`);
-    // The DB triggers re-split a log's hours across all its links (by plan estimate
-    // when every link has one, equally otherwise); the even split here is only the start.
-    const share = sources.length ? Number((row.hours / sources.length).toFixed(6)) : 0;
-    for (const source of sources) statements.push(`INSERT INTO public.tt_work_log_items (work_log_id, source_type, source_id, link_method, confidence, allocated_hours, allocation_method, estimated_hours_snapshot) VALUES (${row.id}, ${quote(source.type)}, ${source.id}, 'explicit', 'high', ${share}, 'equal', ${source.estimated_hours ?? 'NULL'}) ON CONFLICT (work_log_id, source_type, source_id) DO NOTHING;`);
+    // The DB triggers re-split a log's hours across all its links — by plan estimate
+    // when every link has one, equally otherwise — rounded to allocated_hours'
+    // numeric(10,4), which has CHECK > 0. The same split is computed here: a sliver
+    // of a day (tenths of a second at Bucharest midnight) whose share would round
+    // to 0 is saved without links, instead of failing the whole transaction.
+    const weighted = sources.length > 0 && sources.every(source => source.estimated_hours > 0);
+    const weights = sources.map(source => (weighted ? source.estimated_hours : 1));
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    const shares = weights.map(weight => Number((row.hours * weight / total).toFixed(4)));
+    if (!sources.length || shares.some(share => !(share > 0))) continue;
+    sources.forEach((source, index) => statements.push(`INSERT INTO public.tt_work_log_items (work_log_id, source_type, source_id, link_method, confidence, allocated_hours, allocation_method, estimated_hours_snapshot) VALUES (${row.id}, ${quote(source.type)}, ${source.id}, 'explicit', 'high', ${shares[index]}, ${quote(weighted ? 'plan_weighted' : 'equal')}, ${source.estimated_hours ?? 'NULL'}) ON CONFLICT (work_log_id, source_type, source_id) DO NOTHING;`));
   }
   statements.push(`SELECT id, member, project_id, hours, work_date FROM public.tt_work_logs WHERE id IN (${rows.map(r => r.id).join(', ')});`, 'COMMIT;');
   return statements.join('\n');

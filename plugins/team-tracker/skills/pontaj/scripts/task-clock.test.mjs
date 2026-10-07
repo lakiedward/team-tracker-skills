@@ -164,3 +164,17 @@ test('several sources split the starting allocation evenly and stay injection-sa
   assert.throws(() => explicitSources({ sources: Array.from({ length: 26 }, (_, i) => ({ type: 'bug', id: i + 1 })) }), /Too many/);
   assert.deepEqual(taskSources({ source: { type: 'bug', id: 4 } }), [{ type: 'bug', id: 4 }], 'ledgers from before multi-source still prepare');
 });
+
+test('links mirror the DB split and skip a sliver that would round to zero', () => {
+  const row = { id: -7, member: 'Edy', project_id: 1, category: 'Development', description: 'x', hours: 1, work_date: '2026-10-07' };
+  const weighted = workLogSql([row], [{ type: 'bug', id: 1, estimated_hours: 3 }, { type: 'feature', id: 2, estimated_hours: 1 }]);
+  assert.match(weighted, /'bug', 1, 'explicit', 'high', 0\.75, 'plan_weighted', 3\)/);
+  assert.match(weighted, /'feature', 2, 'explicit', 'high', 0\.25, 'plan_weighted', 1\)/);
+  const mixed = workLogSql([row], [{ type: 'bug', id: 1, estimated_hours: 3 }, { type: 'feature', id: 2 }]);
+  assert.equal((mixed.match(/0\.5, 'equal'/g) || []).length, 2, 'one missing estimate makes the DB split equally');
+  const sliver = { ...row, id: -8, hours: 0.00004 };
+  const sql = workLogSql([sliver, row], [{ type: 'bug', id: 1 }]);
+  assert.match(sql, /INSERT INTO public\.tt_work_logs .*-8,/, 'the sliver itself is still logged');
+  assert.doesNotMatch(sql, /VALUES \(-8, 'bug'/, 'but not linked: numeric(10,4) would make its share 0 and fail the CHECK');
+  assert.match(sql, /VALUES \(-7, 'bug', 1/);
+});
