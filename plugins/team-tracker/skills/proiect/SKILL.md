@@ -127,5 +127,7 @@ După `/proiect`, celelalte skill-uri (`/plan-deadlines`, `/amana`, `/pontaj`,
 `/resolving-tt-bugs`, `/writing-*-test-plans`…) rulează în contextul proiectului deja
 rezolvat — nu re-întreba proiectul și nu re-face înrădăcinarea. Dacă Pontajul automat este
 activ, urmează checkpointul per task din contractul comun, inclusiv înainte de primul
-fișier modificat. La închidere salvează numai intervalul nou; nu propune încă un pontaj
+fișier modificat: un item la rând primește cheia `<tip>:<id>`, iar un thread care lucrează
+mai multe iteme sub același ceas („terminăm planul de azi") le leagă cu `link` pe măsură
+ce le lucrează efectiv. La închidere salvează numai intervalul nou; nu propune încă un pontaj
 pentru întregul chat. Dacă este dezactivat, propune `/pontaj` la închiderea sesiunii.

@@ -22,6 +22,12 @@ Nu rescrie înregistrările istorice și nu adăuga o declarație umană pe baza
 agentului. O corecție de timp se face numai pentru rândurile și orele confirmate
 explicit de persoană; nu se dublează checkpointurile printr-un nou pontaj integral.
 
+Productivitate și paginile de taskuri (Bug Reports, Funcționalități, To-Do, Testing,
+Focus) afișează pe fiecare task terminat suma `allocated_hours` din legăturile lui ca
+„pontat ~X”: în mod obișnuit o estimare a conversațiilor, niciodată efort uman măsurat; dacă un log manual declarat de om e legat și el, suma le amestecă, iar pagina le arată separat în detalii. De aceea legăturile
+trebuie să fie exacte: un log fără legătură nu apare la niciun task, iar unul legat
+greșit umflă alt task. O sesiune care a lucrat mai multe iteme apare împărțită între ele.
+
 La fiecare replanificare citește toate logurile live ale persoanei pentru ziua
 locală, din toate proiectele. Deduplică după ID; o copie contradictorie oprește
 calculul. Arată separat orele umane declarate, estimările conversațiilor și orele

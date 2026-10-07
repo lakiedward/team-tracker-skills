@@ -133,6 +133,8 @@ For each `process` plan, fetch the item-level detail (description, expected_resu
 
 Iterate the `process` queue **sequentially** — plans may touch overlapping code. **Do parallelize the subagent calls within a single plan** when they're independent.
 
+With automatic Pontaj on, `link` this plan into the clock you opened for the sweep as soon as you start working it (`test_plan:<id>`). Per-item checkpoints are the alternative only if you prepare/ack the previous one first — the clock allows one open checkpoint per conversation ([protocol](../pontaj/references/automatic-task-log.md)); in orchestrator target mode the dispatcher's clock links it instead.
+
 For each plan, for each `fail` **or `blocked`** item:
 
 ### 3·triage — Is this a `fail` or a `blocked`? (do this first)

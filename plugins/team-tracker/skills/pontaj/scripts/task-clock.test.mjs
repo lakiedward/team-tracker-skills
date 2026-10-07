@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { activeDays, transcriptTimes, prepareRows, workLogSql, run } from './task-clock.mjs';
+import { activeDays, transcriptTimes, prepareRows, workLogSql, run, sourceFromTaskKey, explicitSources, taskSources } from './task-clock.mjs';
 import { workLogBasis } from './work-log-basis.mjs';
 const stamp = minutes => new Date(Date.parse('2026-09-16T08:00:00Z') + minutes * 60000).toISOString();
 test('short tasks retain minutes; idle gaps and explicit user waits are excluded', () => {
@@ -106,5 +106,108 @@ test('upgrading does not rewrite a pending receipt prepared by an older clock', 
       session: input.session, tasks: { [input.task]: { ...input, status: 'prepared', prepared: old } },
     }));
     assert.deepEqual(run('prepare', { ...input, transcripts: [] }, root, stamp(8)), old);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a task key that names a tracker item links the hours without an explicit source', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tt-derive-'));
+  try {
+    run('enable', {}, root);
+    const receipt = run('enter', { session: 's1', task: 'ui_surface:874:approve-spec', member: 'Edy', project_id: 7 }, root, stamp(0));
+    assert.deepEqual(receipt.sources, [{ type: 'ui_surface', id: 874 }]);
+    for (const [key, expected] of [['bug:640', { type: 'bug', id: 640 }], ['todo:12:retry-2', { type: 'todo', id: 12 }],
+      ['proiect:betora:2026-09-22', null], ['feature:culcush:care-library', null], ['bug:0', null], ['bugs:12', null]]) {
+      assert.deepEqual(sourceFromTaskKey(key), expected, key);
+    }
+    // An explicit source wins over the key.
+    const explicit = run('enter', { session: 's2', task: 'bug:1', member: 'Edy', project_id: 7, source: { type: 'feature', id: 9 } }, root, stamp(0));
+    assert.deepEqual(explicit.sources, [{ type: 'feature', id: 9 }]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a thread that works several items links each one before prepare, then the receipt is frozen', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tt-link-'));
+  const input = { session: 'thread', task: 'proiect:culcush:2026-10-07', member: 'Edy', project_id: 7 };
+  try {
+    run('enable', {}, root);
+    assert.deepEqual(run('enter', input, root, stamp(0)).sources, []);
+    assert.throws(() => run('link', input, root), /at least one tracker source/);
+    assert.throws(() => run('link', { ...input, source: { type: 'bug', id: '1;DROP' } }, root), /Invalid tracker source/);
+    run('link', { ...input, source: { type: 'bug', id: 1006, estimated_hours: 1.5 } }, root);
+    const linked = run('link', { ...input, sources: [{ type: 'bug', id: 1006 }, { type: 'feature', id: 275 }] }, root);
+    assert.deepEqual(linked.sources, [{ type: 'bug', id: 1006, estimated_hours: 1.5 }, { type: 'feature', id: 275 }], 'duplicates keep the first, verified estimate');
+    assert.throws(() => run('link', { ...input, project_id: 8, source: { type: 'bug', id: 2 } }, root), /identity mismatch/);
+    // A retry naming a source the checkpoint already has is not a swap.
+    assert.equal(run('enter', { ...input, source: { type: 'feature', id: 275 } }, root, stamp(1)).status, 'active');
+    assert.throws(() => run('enter', { ...input, source: { type: 'feature', id: 999 } }, root, stamp(1)), /source mismatch/);
+    run('pause', input, root, stamp(2));
+    run('link', { ...input, source: { type: 'todo', id: 177 } }, root);
+    run('resume', input, root, stamp(3));
+    const transcript = join(root, 'thread.jsonl');
+    writeFileSync(transcript, [{ type: 'session_meta', payload: { id: 'thread' } }, ...[0, 2, 4, 6].map(m => ({ type: 'response_item', timestamp: stamp(m) }))].map(JSON.stringify).join('\n'));
+    const prepared = run('prepare', { ...input, transcripts: [transcript], category: 'Development', description: 'Trei iteme Culcush' }, root, stamp(6));
+    const links = prepared.sql.split('\n').filter(line => line.startsWith('INSERT INTO public.tt_work_log_items'));
+    assert.equal(links.length, 3 * prepared.rows.length);
+    assert.match(prepared.sql, /'bug', 1006, 'explicit', 'high', [\d.]+, 'equal', 1\.5 WHERE EXISTS \(SELECT 1 FROM public\.tt_bugs WHERE id = 1006 AND project_id = 7\)/);
+    assert.match(prepared.sql, /'todo', 177, 'explicit', 'high'/);
+    assert.throws(() => run('link', { ...input, source: { type: 'bug', id: 5 } }, root), /a prepared receipt is immutable/);
+    assert.deepEqual(run('prepare', { ...input, transcripts: [] }, root, stamp(8)), prepared, 'retries replay the same SQL');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('several sources split the starting allocation evenly and stay injection-safe', () => {
+  const rows = [{ id: -5, member: 'Edy', project_id: 1, category: 'Development', description: 'x', hours: 0.9, work_date: '2026-10-07' }];
+  const sql = workLogSql(rows, [{ type: 'bug', id: 1 }, { type: 'feature', id: 2 }, { type: 'todo', id: 3 }]);
+  assert.equal((sql.match(/, 0\.3, 'equal'/g) || []).length, 3);
+  assert.equal(workLogSql(rows, { type: 'bug', id: 1 }).match(/INSERT INTO public\.tt_work_log_items/g).length, 1, 'the single-source form keeps working');
+  assert.throws(() => workLogSql(rows, [{ type: 'bug', id: 1 }, { type: 'x', id: 2 }]), /Invalid tracker source/);
+  assert.throws(() => explicitSources({ sources: Array.from({ length: 26 }, (_, i) => ({ type: 'bug', id: i + 1 })) }), /Too many/);
+  assert.deepEqual(taskSources({ source: { type: 'bug', id: 4 } }), [{ type: 'bug', id: 4 }], 'ledgers from before multi-source still prepare');
+});
+
+test('links survive every intermediate DB split and skip a sliver that could round to zero', () => {
+  const row = { id: -7, member: 'Edy', project_id: 1, category: 'Development', description: 'x', hours: 1, work_date: '2026-10-07' };
+  const weighted = workLogSql([row], [{ type: 'bug', id: 1, estimated_hours: 3 }, { type: 'feature', id: 2, estimated_hours: 1 }]);
+  // The starting value is the smallest share any step can produce; the trigger overwrites it.
+  assert.equal((weighted.match(/'explicit', 'high', 0\.25, 'equal'/g) || []).length, 2);
+  // The reviewer's case: [0.5, 8, none] — after the 2nd insert the DB splits by
+  // estimate (0.5/8.5 of a 2-second sliver rounds to 0), so the row stays unlinked.
+  const sliverRow = { ...row, id: -9, hours: 0.000556 };
+  const mixed = workLogSql([sliverRow], [{ type: 'bug', id: 1, estimated_hours: 0.5 }, { type: 'feature', id: 2, estimated_hours: 8 }, { type: 'todo', id: 3 }]);
+  assert.doesNotMatch(mixed, /INSERT INTO public\.tt_work_log_items/);
+  const tiny = workLogSql([{ ...row, id: -8, hours: 0.00004 }, row], [{ type: 'bug', id: 1 }]);
+  assert.match(tiny, /INSERT INTO public\.tt_work_logs .*-8,/, 'the sliver itself is still logged');
+  assert.doesNotMatch(tiny, /SELECT -8, 'bug'/, 'but not linked');
+  assert.match(tiny, /SELECT -7, 'bug', 1, 'explicit', 'high', 1, 'equal', NULL WHERE EXISTS \(SELECT 1 FROM public\.tt_bugs WHERE id = 1 AND project_id = 1\)/);
+});
+
+test('a link to an item deleted or moved before the clock closed is skipped, not fatal, and visible at ack', () => {
+  const row = { id: -3, member: 'Edy', project_id: 7, category: 'Development', description: 'x', hours: 0.5, work_date: '2026-10-07' };
+  const sql = workLogSql([row], [{ type: 'ui_surface', id: 874 }, { type: 'todo', id: 177 }]);
+  assert.match(sql, /WHERE EXISTS \(SELECT 1 FROM public\.tt_ui_surfaces WHERE id = 874 AND project_id = 7\)/);
+  assert.match(sql, /WHERE EXISTS \(SELECT 1 FROM public\.tt_todos WHERE id = 177 AND project_id = 7\)/);
+  assert.match(sql, /json_agg\(json_build_object\('source_type', link\.source_type, 'source_id', link\.source_id, 'allocated_hours', link\.allocated_hours\)/, 'the verification SELECT returns the links that landed');
+  assert.throws(() => workLogSql([{ ...row, project_id: '7; DROP' }], [{ type: 'bug', id: 1 }]), /Verified project/);
+});
+
+test('retries with an empty source, merged estimates, aliases and estimate precision', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tt-review-'));
+  try {
+    run('enable', {}, root);
+    const base = { session: 'r1', task: 'bug:640', member: 'Edy', project_id: 1 };
+    assert.deepEqual(run('enter', { ...base, sources: [] }, root, stamp(0)).sources, [{ type: 'bug', id: 640 }]);
+    for (const extra of [{ source: null }, { sources: [] }, { source: { type: 'bug', id: 640 } }]) {
+      assert.equal(run('enter', { ...base, ...extra }, root, stamp(1)).status, 'active', JSON.stringify(extra));
+      run('pause', { ...base, ...extra }, root, stamp(2)); run('resume', { ...base, ...extra }, root, stamp(3));
+    }
+    // A plan estimate can still reach a key-derived source through `link`.
+    assert.deepEqual(run('link', { ...base, source: { type: 'bug', id: 640, estimated_hours: 2 } }, root).sources, [{ type: 'bug', id: 640, estimated_hours: 2 }]);
+    assert.throws(() => run('link', { session: 'r1', task: 'bug:640', source: { type: 'bug', id: 1 } }, root), /member and project required/);
+    assert.deepEqual(explicitSources({ source: { type: 'bug', id: 1 }, sources: [{ type: 'bug', id: 1, estimated_hours: 2 }] }), [{ type: 'bug', id: 1, estimated_hours: 2 }]);
+    assert.deepEqual(explicitSources({ source: { type: 'bug', id: 1, estimated_hours: 1.23456 } }), [{ type: 'bug', id: 1, estimated_hours: 1.2346 }]);
+    assert.throws(() => explicitSources({ source: { type: 'bug', id: 1, estimated_hours: 1e-7 } }), /Invalid verified plan estimate/);
+    assert.deepEqual(sourceFromTaskKey('test:383'), { type: 'test_plan', id: 383 });
+    assert.deepEqual(sourceFromTaskKey('section:1243:spec'), { type: 'ui_surface', id: 1243 });
+    assert.equal(sourceFromTaskKey('plan:85'), null, 'a plan id is not an item id');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

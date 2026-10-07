@@ -11,6 +11,9 @@ Pentru „pontaj automat după fiecare task”, activare/dezactivare sau închid
 cu automatizarea activă, folosește [protocolul automat](references/automatic-task-log.md)
 și `scripts/task-clock.mjs`. Acest mod are prioritate față de regulile istorice de mai jos:
 numai intervalul taskului, fără minimum 0.5h, retry idempotent și date Europe/Bucharest.
+Checkpointul se leagă de itemul lucrat: cheia `<tip>:<id>` îl leagă singură, iar mai
+multe iteme sub același ceas se adaugă cu `sources` sau cu comanda `link`, înainte de
+`prepare`; altfel taskul terminat nu arată nicio durată în Team Tracker.
 Înainte de orice pontaj manual verifică `inspect` pentru conversația exactă. Dacă există
 checkpointuri, nu ponta întregul chat încă o dată. Regulile full-chat de mai jos se aplică
 numai unei conversații fără checkpointuri sau pontaj anterior verificat.
@@ -41,7 +44,7 @@ The Pontaj page in team-tracker reads `tt_work_logs` and groups by member / proj
 | Project source root (what we summarize) | the current working directory — **resolved in Step 0** |
 | Supabase project id (holds tt_* tables) | `ntjzghsbrzkvpkniotaj` |
 | Table | `public.tt_work_logs` |
-| Optional link table | `public.tt_work_log_items` — one high-confidence row per linked bug/feature/test plan/To-Do |
+| Optional link table | `public.tt_work_log_items` — one high-confidence row per linked bug/feature/test plan/To-Do/UI section |
 | Supabase MCP tool | a connected Supabase MCP pointed at project ref `ntjzghsbrzkvpkniotaj` (e.g. `mcp__supabase-mcp-server__execute_sql`, or whatever Supabase MCP server name is connected in this client). |
 | `project_id` to write | **resolved in Step 0** from the cwd — never hardcoded; a `NULL` project_id is invisible on the Pontaj page's per-project view |
 | Allowed `category` values | `Development`, `Testing`, `Content`, `Design`, `Research`, `Meeting`, `Other` — pick exactly one |
@@ -70,7 +73,7 @@ tt_work_logs (
 
 `member` is a free TEXT column (not a FK), so casing matters for grouping — always write the name **exactly** as it appears on the Pontaj page (e.g. `Edy`, not `edy`/`EDY`), or a casing variant splits one person's hours into a phantom second person. RLS is on with the standard permissive policy, so the anon MCP connection can insert.
 
-`tt_work_log_items` accepts `source_type IN ('bug', 'feature', 'test_plan', 'todo')`. Its DB trigger rejects missing sources and cross-project links. A Pontaj row does not require any link.
+`tt_work_log_items` accepts `source_type IN ('bug', 'feature', 'test_plan', 'todo', 'ui_surface')`. Its DB trigger rejects missing sources and cross-project links. A Pontaj row does not require any link, and may carry several: the triggers split its hours across them.
 
 ## Step 0 — Resolve which project this pontaj is for
 
@@ -162,14 +165,16 @@ If there is genuinely nothing to log — the conversation has no implementation/
 
 Build a candidate list only from evidence already present in this session:
 
-- an explicit typed reference such as `bug #123`, `feature #45`, `test plan #9`, or `todo #31`;
-- the exact `Sursă: Bug/Funcționalitate/Plan de test/To-Do #<id>` line from a copied Productivitate or Focus execution prompt;
+- an explicit typed reference such as `bug #123`, `feature #45`, `test plan #9`, `todo #31`, or `Secțiunea UI #874`;
+- the exact `Sursă: Bug/Funcționalitate/Plan de test/To-Do #<id>` line, or `Secțiunea UI #<id>`, from a copied Productivitate or Focus execution prompt;
 - an item ID returned by the tracker while this session directly read, updated, implemented, fixed, or tested that item;
 - an unambiguous source row already loaded in this session where both type and ID are known.
 
 When the session executes one or more copied daily-plan prompts, link every exact
 source that was actually worked on. Do not drop those links merely because the
-final human-facing summary omitted the numeric IDs.
+final human-facing summary omitted the numeric IDs. A session that worked several
+items links every verified candidate, one row each; Team Tracker shows the split as
+"pontat ~X" on each finished task.
 
 Do **not** link from title similarity alone, a broad topic, a file name, a project-level request, or a guessed numeric token. Do not ask a new question just to obtain links.
 
@@ -190,7 +195,11 @@ WHERE id IN (<candidate_test_plan_ids>)
 UNION ALL
 SELECT 'todo', id, project_id, title
 FROM public.tt_todos
-WHERE id IN (<candidate_todo_ids>);
+WHERE id IN (<candidate_todo_ids>)
+UNION ALL
+SELECT 'ui_surface', id, project_id, label
+FROM public.tt_ui_surfaces
+WHERE id IN (<candidate_ui_surface_ids>);
 ```
 
 Keep only rows whose `project_id = <project_id>` from Step 0. Assign:

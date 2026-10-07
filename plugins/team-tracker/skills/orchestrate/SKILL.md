@@ -648,7 +648,8 @@ Interpretează **codul de ieșire** (vezi `reference/worktrees.md`):
 - **Cod zero (merge reușit):**
   1. **Write-back DONE** — execută SQL-ul DONE din `reference/board-queries.md` (`tt_bugs.status='Fixed'`
      pentru bug, `tt_features.status='Gata'` pentru feature), interpolând `:id=item_id`, `:effort=effort`,
-     `:date=<azi>`, `:summary=summary`.
+     `:date=<azi>`, `:summary=summary`. Cu Pontajul automat activ, `link` itemul la ceasul unic al
+     dispecerului, la fel ca orice item parcat pe care runda l-a avansat; orele subagenților nu se pontează.
   2. **CLEANUP worktree** — **junction-first** (vezi `reference/worktrees.md` → CLEANUP). Scoate ÎNTÂI
      junction-ul `node_modules`, ABIA APOI worktree-ul:
      ```bash

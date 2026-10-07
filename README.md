@@ -87,6 +87,13 @@ Dacă te răzgândești: **Agenți AI → Revocă** oprește imediat accesul unu
 
 ---
 
+Din v1.45.0, Pontajul automat se leagă de taskurile lucrate, ca Team Tracker să arate
+„pontat ~X" pe fiecare task terminat. Cheia `<tip>:<id>` (de ex. `bug:640`,
+`ui_surface:874:approve-spec`) leagă singură checkpointul; un ceas care acoperă mai multe
+iteme — un thread `/proiect`, un sweep `resolving-*`, orchestratorul — le adaugă cu `link`
+pe măsură ce le lucrează efectiv, înainte de `prepare`. Orele se împart între iteme.
+Detalii: [legarea itemelor](plugins/team-tracker/skills/pontaj/references/automatic-task-log.md).
+
 Din v1.44.0, sesiunea de spec a unei secțiuni UI are **o singură rundă**: agentul parcurge
 singur stările pe viewporturi, face capturile și pregătește întrebările cu recomandări,
 lipsurile și draftul criteriilor (fiecare variantă își arată criteriul), apoi îți trimite
