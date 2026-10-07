@@ -1,6 +1,6 @@
 {
   "name": "team-tracker",
-  "version": "1.43.0",
+  "version": "1.44.0",
   "description": "Skill-uri team-tracker plus serverul MCP Team Tracker: agentul lucrează în Team Tracker cu tool-uri tipizate (bug-uri, features, To-Do, QA, Pontaj, ședințe, borne, UI Coverage), iar porțile umane se apasă doar la cererea explicită a omului.",
   "author": { "name": "Edy", "email": "lakiedward03@gmail.com" },
   "repository": "https://github.com/lakiedward/team-tracker-skills",

@@ -15,7 +15,7 @@ any hours as human effort. The live schema is checked first; no DDL is authorize
 - `tt_todos.origin`: `manual` or `deadline_skill`.
 - `tt_todos.planning_key`: stable UUID for idempotent generated gaps.
 - `tt_project_velocity`: fast RLS-invoker snapshot of rolling 90-day velocity.
-- `tt_ui_surfaces`: inventory plus manual UI authority. Audit writers must not update `manual_*` fields. `spec_approved_at` and `manual_verdict` are the two human gates; `verified_at` is derived by a trigger and must never be written by hand. The database enforces this: a trigger rejects agent-side SQL writes to `manual_verdict`, `verdict_fingerprint`, `spec_approved_at` and `shipped_at` — they pass only for the app's authenticated user. If the human asks in chat for a gate to be pressed for them, press it only through the `gate_*` tools of the `team-tracker` MCP when it is connected and the request is explicit in the current conversation ([MCP policy](../../references/mcp-tools.md)); otherwise refuse and point them to the button. Never press one unprompted.
+- `tt_ui_surfaces`: inventory plus manual UI authority. Audit writers must not update `manual_*` fields. `spec_approved_at` and `manual_verdict` are the two human gates; `verified_at` is derived by a trigger and must never be written by hand. The database enforces this: a trigger rejects agent-side SQL writes to `manual_verdict`, `verdict_fingerprint`, `spec_approved_at` and `shipped_at` — they pass only for the app's authenticated user. If the human asks in chat for a gate to be pressed for them, press it only through the `gate_*` tools of the `team-tracker` MCP when it is connected and the request is explicit in the current conversation ([MCP policy](../../references/mcp-tools.md)); otherwise refuse and point them to the button. Never press one unprompted. In a section's flow this means Gate 0 from the human's unconditional «aprob» in his reply to the spec round (see `needs_spec` below); Gate 1 and `shipped_at` are not pressed from a spec or build flow — the executor shows him the button.
 - `tt_ui_surface_criteria`: the per-section definition of done. One row per verifiable expectation, `required` rows must each be proven by a passing `tt_test_items` step through `criterion_id`.
 - `tt_section_pipeline`: read-only view that derives `next_action` per active surface. It is the only lifecycle input this skill needs; never recompute the lifecycle from the individual columns.
 - `tt_ui_audits` and `tt_ui_audit_items`: versioned AI/browser evidence and fingerprints.
@@ -258,34 +258,90 @@ verified or delivered until it has them.
 
 `next_action` is authoritative for a unit. Map it straight to the queued action:
 
-- `needs_spec` — no criteria, or the spec is not approved. Queue a guided spec
-  session: open the running section in the browser, walk the user through every
+- `needs_spec` — no criteria, or the spec is not approved. With no criteria
+  saved, queue a guided spec session: open the running section in the browser,
+  walk the user through every
   reachable state on the surface's platform viewport set (from
   `tt_ui_surfaces.platforms` — web: 1440×900, 768×1024 and 375×812;
   native-only: 375×812), ask targeted questions about the
   visible result, and write the criteria from the answers. Save those criteria
-  to `tt_ui_surface_criteria`; the human then approves them in Productivitate.
+  to `tt_ui_surface_criteria`; the human approves them with an unconditional
+  «aprob» in his reply to the round — the executor then presses Gate 0 through
+  MCP `gate_approve_spec`, quoting him — or with the button in Productivitate.
+  With criteria already saved, the unit is `spec_awaiting_approval` (below) and
+  is not queued.
 
   An older PR, commit, Markdown draft, plan item, `scope_reason`, or source-code
   note may be read as historic evidence, but can never replace the walkthrough,
-  become a copy/paste list, or define the current criteria. The loop is
-  per visible element: screenshots first, then a verdict question per element
-  ("like it? want it different?"), asked through the client's structured
-  question tool with selectable options (keep as is / proposed change / a real
-  alternative), with the executor's own observations turned into proposals with
-  options; each short round ends with a stop to wait for answers. No criterion is written before the user's first answer, every saved
-  criterion maps to an explicit answer, and a session without answers saves
-  nothing. The task does not
-  create a source diff, branch, commit, PR, merge, document, or human-gate
-  write. If browser/preview access is unavailable, report the session blocked
-  rather than composing criteria from code.
+  become a copy/paste list, or define the current criteria. The session has
+  **one round**. The executor prepares it alone: every reachable state on the
+  viewports, the screenshots, one question per visible element with its
+  precedent and recommendation, its own observations turned into proposals with
+  options, the 2–3 "what is missing" gaps. Then it sends one message: the
+  screenshots per viewport; the numbered questions, each with 2–4 lettered
+  variants including «Îmi place, păstrează așa» and «Propunerea mea: …»; the
+  gaps, numbered after them («Adaugă acum / Notează pentru mai târziu / Nu ne
+  trebuie»); every lettered variant, in questions and gaps alike, states briefly
+  the criterion it would save (`obligatoriu`/`opțional`) or that it creates a
+  feature; the draft criteria that are saved if he accepts every
+  recommendation, numbered, `obligatoriu`/`opțional`, each tied to its question;
+  and last «Aprob criteriile?». He can answer in one line: «ok, aprob» = every
+  recommendation plus approval; «3B, 7 nu, aprob» = his overrides plus approval;
+  without «aprob» the criteria are saved and the approval waits in Productivitate.
+  The client's structured question tool is used only if it carries every
+  question in one call; otherwise the numbered chat message is the round —
+  never rounds of 3–4. The executor waits once; a second question is allowed
+  only about an ambiguous answer, and only about that number. No criterion is
+  written before the user's answer, every saved criterion maps to an explicit
+  answer («ok» answers each question with its recommendation), and a session
+  without answers saves nothing: it is blocked, and the round stays in the
+  chat to be continued from his later answer without redoing the walkthrough.
+
+  Gate 0 is pressed from his answer only when it explicitly and unconditionally
+  contains the approval («aprob», «da, aprob criteriile»): save the criteria,
+  re-read the saved list, and press `gate_approve_spec` — only if every saved
+  criterion is, word for word, one shown in the message (from the draft or from
+  the variant he picked). `human_instruction` is his reply quoted exactly,
+  together with the question it answers — `La „Aprob criteriile?” a răspuns:
+  „ok, aprob”` — because the schema needs at least 8 characters and the context
+  makes the record verifiable; his own words are never paraphrased or padded.
+  «ok» alone accepts the recommendations and approves nothing. A conditional
+  answer — «nu aprob încă», «aprob după ce schimbi 3», «aprob, dar …» — is not
+  approval: apply the changes, show the final list and ask again. A free-text
+  answer, a reworded criterion or anything else the executor had to interpret
+  likewise means it shows the final list and asks «Aprob criteriile?» again.
+  Never through SQL; without «aprob», without the MCP connected, or when the
+  tool refuses, the list waits in Productivitate → UI Coverage → «Aprob
+  criteriile». Gate 1 and `shipped_at` are untouched by this: the executor never
+  presses them from a spec or build flow, and on «marchează tu» / «pune-o pe
+  livrat» it shows the human the button.
+
+  The task does not create a source diff, branch, commit, PR, merge, document,
+  or SQL write to a human gate. If browser/preview access is unavailable, report
+  the session blocked rather than composing criteria from code.
+- `spec_awaiting_approval` — not a `next_action` value but a status
+  Productivitate derives: the view returns `needs_spec` while `spec_approved_at
+  IS NULL`, whatever `criteria_total` says, and a `needs_spec` unit with
+  `criteria_total > 0` is served as `spec_awaiting_approval`, titled «Așteaptă
+  «Aprob criteriile» — <secțiune>». Saved-but-unapproved criteria are never
+  `blocked_on_you`, but they wait on the human the same way: not the agent's
+  next step, never queued, no planned hours; report them under «Așteaptă
+  approve-ul tău», labelled separately, with the saved-criteria count and save
+  date. Their copied prompt is approval-only: show the saved list with its save
+  date, ask «Aprob criteriile?», apply only the changes he asks for, and never
+  redo the walkthrough; Gate 0 follows the same rule as above. If the list
+  cannot be confirmed as coming from his answers in a guided session (for
+  example, an old audit wrote it), the executor treats the section as
+  unspecified and runs the full single round.
 - `build` — spec approved, no verdict pending. Build or continue the section,
   then iterate the UI live with the user on every platform viewport until they
   explicitly like it, and exercise the section's full functionality in the
   browser — cross-page flows to their end — fixing failures on the same branch.
 - `blocked_on_you` — the surface is awaiting a verdict, or an approval went stale
   because `inventory_fingerprint` no longer matches `verdict_fingerprint`. Report
-  it, do not queue work and do not consume planned hours.
+  it, do not queue work and do not consume planned hours. Criteria saved but not
+  yet approved are never this state — they are `needs_spec`, served as
+  `spec_awaiting_approval`.
 - `needs_work` — the human rejected it. Resolve exactly what `manual_note` and
   the current objective findings describe.
 - `needs_tests` — design approved but `criteria_uncovered > 0` or
@@ -550,7 +606,10 @@ follows from the passing steps.
 The prompt also carries the section's `next_action`, route and navigation hint, so
 it can describe the right step of the loop. A `needs_spec` prompt is the exception
 to the usual shape: it drops the branch and merge contract, because the session
-produces criteria rather than a diff, and it forbids touching source files.
+produces criteria rather than a diff, and it forbids touching source files. It
+asks everything in one round and presses Gate 0 only from the human's
+unconditional «aprob», through MCP `gate_approve_spec`. A section served as
+`spec_awaiting_approval` gets the short approval-only prompt instead.
 
 A `needs_spec` prompt on a section whose `inventory_state` is `planned` (created
 by `/proiect-nou`, in the site map only) is the exception to that exception: it
@@ -558,8 +617,8 @@ is a construction session. Productivitate reads `inventory_state` and `purpose`
 from the pipeline view and renders the construction playbook — read purpose,
 tokens, conventions and `CLAUDE.md`; propose the structure in 2–4 questions;
 build the draft on `ui/section-<id>-<slug>` (page skeleton included when it is
-the first section on its page); then the same walkthrough, criteria only from
-answers; finally write `code_refs`, the fingerprint and `inventory_state =
+the first section on its page); then the same single round on the draft,
+criteria only from answers and Gate 0 only from his «aprob»; finally write `code_refs`, the fingerprint and `inventory_state =
 'active'`, which are not human gates. That prompt keeps the full branch, PR and
 review contract. The plan item's `scope_reason` says `mode=construction`, but the
 switch is the surface state, so plans written before this contract still get
@@ -591,10 +650,14 @@ design proposals align with the house rule rather than with taste.
 
 For `ui_surface + needs_spec`, it is always `verification_mode=browser`, and its
 completion is: the guided walkthrough occurred with the user, every viewport of
-the platform's set and the reachable states were shown, and the resulting
+the platform's set and the reachable states were shown in a single round, and the resulting
 criteria were saved to `tt_ui_surface_criteria`. Prohibited phrases are `zero INSERT`, `fără scriere
 DB`, `draft gata`, and any instruction to copy/paste from an old document. The
-criteria approval is Gate 0; Gate 1 is the visual verdict after build and audit.
+criteria approval is Gate 0 — an unconditional «aprob» in the human's reply to
+the round, pressed through MCP `gate_approve_spec` with his words quoted together
+with the question they answer, or the button in Productivitate;
+Gate 1 is the visual verdict after build and audit, never pressed by the executor
+from a spec or build flow.
 
 Classify user-visible UI, responsive behavior, navigation, forms, auth, payments, browser state, and end-to-end web flows as `browser`; uncertainty defaults to `browser`. After implementation, browser-required work moves to Focus `În testare`. A failed, unavailable, or undocumented browser test leaves it there and forbids `Fixed`/`Gata`. Browser evidence must state the tested URL/scenario, viewports/devices, steps, observed result, and console-error state.
 
