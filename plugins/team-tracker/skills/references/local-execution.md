@@ -9,7 +9,9 @@ fără `/proiect` înainte.
   `enter` imediat după identificarea membrului/proiectului, înainte de primul pas de
   lucru (inclusiv inventarul repo-ului), cu verificarea rezultatului started/active.
   Un rezultat paused cere resume la reluarea efectivă; pending cere reconciliere, iar
-  recorded nu se repornește. O eroare nu înseamnă checkpoint creat. La închidere:
+  recorded nu se repornește. O eroare nu înseamnă checkpoint creat. Leagă checkpointul
+  de itemul din tracker — cheia `<tip>:<id>` sau `link` când un ceas acoperă mai multe
+  iteme —, altfel taskul nu arată nicio durată. La închidere:
   prepare → SQL → verificare → ack → summary, cu salvat/în așteptare în răspuns.
   Nu ponta subagenții sau automatizările nesupravegheate
   ca ore ale omului. Dacă nu există dovezi sau salvarea eșuează, raportează Pontaj pending.

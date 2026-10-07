@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { activeDays, transcriptTimes, prepareRows, workLogSql, run } from './task-clock.mjs';
+import { activeDays, transcriptTimes, prepareRows, workLogSql, run, sourceFromTaskKey, explicitSources, taskSources } from './task-clock.mjs';
 import { workLogBasis } from './work-log-basis.mjs';
 const stamp = minutes => new Date(Date.parse('2026-09-16T08:00:00Z') + minutes * 60000).toISOString();
 test('short tasks retain minutes; idle gaps and explicit user waits are excluded', () => {
@@ -107,4 +107,60 @@ test('upgrading does not rewrite a pending receipt prepared by an older clock', 
     }));
     assert.deepEqual(run('prepare', { ...input, transcripts: [] }, root, stamp(8)), old);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a task key that names a tracker item links the hours without an explicit source', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tt-derive-'));
+  try {
+    run('enable', {}, root);
+    const receipt = run('enter', { session: 's1', task: 'ui_surface:874:approve-spec', member: 'Edy', project_id: 7 }, root, stamp(0));
+    assert.deepEqual(receipt.sources, [{ type: 'ui_surface', id: 874 }]);
+    for (const [key, expected] of [['bug:640', { type: 'bug', id: 640 }], ['todo:12:retry-2', { type: 'todo', id: 12 }],
+      ['proiect:betora:2026-09-22', null], ['feature:culcush:care-library', null], ['bug:0', null], ['bugs:12', null]]) {
+      assert.deepEqual(sourceFromTaskKey(key), expected, key);
+    }
+    // An explicit source wins over the key.
+    const explicit = run('enter', { session: 's2', task: 'bug:1', member: 'Edy', project_id: 7, source: { type: 'feature', id: 9 } }, root, stamp(0));
+    assert.deepEqual(explicit.sources, [{ type: 'feature', id: 9 }]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a thread that works several items links each one before prepare, then the receipt is frozen', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tt-link-'));
+  const input = { session: 'thread', task: 'proiect:culcush:2026-10-07', member: 'Edy', project_id: 7 };
+  try {
+    run('enable', {}, root);
+    assert.deepEqual(run('enter', input, root, stamp(0)).sources, []);
+    assert.throws(() => run('link', input, root), /at least one tracker source/);
+    assert.throws(() => run('link', { ...input, source: { type: 'bug', id: '1;DROP' } }, root), /Invalid tracker source/);
+    run('link', { ...input, source: { type: 'bug', id: 1006, estimated_hours: 1.5 } }, root);
+    const linked = run('link', { ...input, sources: [{ type: 'bug', id: 1006 }, { type: 'feature', id: 275 }] }, root);
+    assert.deepEqual(linked.sources, [{ type: 'bug', id: 1006, estimated_hours: 1.5 }, { type: 'feature', id: 275 }], 'duplicates keep the first, verified estimate');
+    assert.throws(() => run('link', { ...input, project_id: 8, source: { type: 'bug', id: 2 } }, root), /identity mismatch/);
+    // A retry naming a source the checkpoint already has is not a swap.
+    assert.equal(run('enter', { ...input, source: { type: 'feature', id: 275 } }, root, stamp(1)).status, 'active');
+    assert.throws(() => run('enter', { ...input, source: { type: 'feature', id: 999 } }, root, stamp(1)), /source mismatch/);
+    run('pause', input, root, stamp(2));
+    run('link', { ...input, source: { type: 'todo', id: 177 } }, root);
+    run('resume', input, root, stamp(3));
+    const transcript = join(root, 'thread.jsonl');
+    writeFileSync(transcript, [{ type: 'session_meta', payload: { id: 'thread' } }, ...[0, 2, 4, 6].map(m => ({ type: 'response_item', timestamp: stamp(m) }))].map(JSON.stringify).join('\n'));
+    const prepared = run('prepare', { ...input, transcripts: [transcript], category: 'Development', description: 'Trei iteme Culcush' }, root, stamp(6));
+    const links = prepared.sql.split('\n').filter(line => line.startsWith('INSERT INTO public.tt_work_log_items'));
+    assert.equal(links.length, 3 * prepared.rows.length);
+    assert.match(prepared.sql, /'bug', 1006, 'explicit', 'high', [\d.]+, 'equal', 1\.5\)/);
+    assert.match(prepared.sql, /'todo', 177, 'explicit', 'high'/);
+    assert.throws(() => run('link', { ...input, source: { type: 'bug', id: 5 } }, root), /a prepared receipt is immutable/);
+    assert.deepEqual(run('prepare', { ...input, transcripts: [] }, root, stamp(8)), prepared, 'retries replay the same SQL');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('several sources split the starting allocation evenly and stay injection-safe', () => {
+  const rows = [{ id: -5, member: 'Edy', project_id: 1, category: 'Development', description: 'x', hours: 0.9, work_date: '2026-10-07' }];
+  const sql = workLogSql(rows, [{ type: 'bug', id: 1 }, { type: 'feature', id: 2 }, { type: 'todo', id: 3 }]);
+  assert.equal((sql.match(/, 0\.3, 'equal'/g) || []).length, 3);
+  assert.equal(workLogSql(rows, { type: 'bug', id: 1 }).match(/tt_work_log_items/g).length, 1, 'the single-source form keeps working');
+  assert.throws(() => workLogSql(rows, [{ type: 'bug', id: 1 }, { type: 'x', id: 2 }]), /Invalid tracker source/);
+  assert.throws(() => explicitSources({ sources: Array.from({ length: 26 }, (_, i) => ({ type: 'bug', id: i + 1 })) }), /Too many/);
+  assert.deepEqual(taskSources({ source: { type: 'bug', id: 4 } }), [{ type: 'bug', id: 4 }], 'ledgers from before multi-source still prepare');
 });

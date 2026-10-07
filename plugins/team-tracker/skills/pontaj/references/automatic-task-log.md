@@ -15,7 +15,8 @@ capacitatea umană și nu calibrează efortul uman al planurilor.
   `status` verifică opțiunea; `disable` o dezactivează. Nu e nevoie de o nouă aprobare per task.
 - La începutul fiecărui task de lucru, înainte de inventar, implementare sau testare, citește `status`.
   Dacă e activ, rezolvă membrul și proiectul live conform SKILL.md. Nu ghici identitatea.
-- Folosește ID-ul exact al conversației și un task key stabil, de exemplu `bug:640`.
+- Folosește ID-ul exact al conversației și un task key stabil, de exemplu `bug:640`;
+  cheia `<tip>:<id>` leagă singură checkpointul de item (vezi mai jos).
   Pentru un task fără item TT folosește cheia turnului cererii. Un nou ciclu de lucru pe
   același item după înregistrare primește un sufix cu ID-ul noii cereri; reluarea aceleiași
   execuții păstrează cheia. Orchestratorul deține un singur ceas, fără orele subagenților.
@@ -25,19 +26,54 @@ capacitatea umană și nu calibrează efortul uman al planurilor.
 {"session":"exact-client-session-id","task":"bug:640","member":"<membru verificat>","project_id":1,"source":{"type":"bug","id":640,"estimated_hours":2}}
 ```
 
-`source` este opțional. Verifică ID-ul, tipul și proiectul în DB. Estimarea vine din
-itemul planului curent, doar dacă există; altfel omite `estimated_hours`. Pentru
-secțiuni schema curentă acceptă `ui_surface`; verifică suportul în DB înainte de scriere.
-Un worktree se rezolvă la proiectul repo-ului de origine, nu după numele folderului nou.
+`source` este opțional; `sources: [...]` acceptă mai multe iteme deodată (deduplicate
+după tip:id, cel mult 25). Fără sursă explicită, o cheie care începe cu
+`<bug|feature|test_plan|todo|ui_surface>:<id>` devine sursa checkpointului, și cu sufix
+(`ui_surface:874:approve-spec` → secțiunea #874); o sursă explicită are prioritate.
+Receipt-ul întoarce `sources`: verifică fiecare item în DB — tip, ID, același proiect —
+înainte de lucru. O sursă care nu există sau e din alt proiect înseamnă cheie greșită:
+nu lucra pe ea, raportează Pontaj în așteptare și nu rescrie registrul. Estimarea vine din
+itemul planului curent, doar dacă există; altfel omite `estimated_hours`. Schema acceptă
+`ui_surface` pentru secțiuni. Un worktree se rezolvă la proiectul repo-ului de origine,
+nu după numele folderului nou.
 
 Verifică receipt-ul înainte de lucru: `started` confirmă checkpointul nou, `active`
 reluarea aceluiași checkpoint, `paused` cere `resume` la reluarea efectivă, `pending`
 înseamnă SQL pregătit de reconciliat, `recorded` înseamnă task deja închis. Nu reporni
 același task și nu schimba cheia ca să ocolești un conflict. `enabled:false` respectă
 opțiunea dezactivată. `start` rămâne compatibil, dar verifică și el identitatea la retry.
-Schimbarea membrului, proiectului sau sursei unui checkpoint este respinsă; corectează
-identitatea din context, fără să rescrii registrul. Dacă nu se poate crea checkpointul,
-continuă munca autorizată, raportând Pontaj în așteptare; nu recupera retrospectiv ore ghicite.
+Schimbarea membrului sau proiectului unui checkpoint este respinsă; un retry poate numi
+o sursă pe care checkpointul o are deja, iar o sursă nouă se adaugă numai prin `link`.
+Corectează identitatea din context, fără să rescrii registrul. Dacă nu se poate crea
+checkpointul, continuă munca autorizată, raportând Pontaj în așteptare; nu recupera
+retrospectiv ore ghicite.
+
+## Legarea itemelor de tracker
+
+Team Tracker arată „pontat ~X” pe taskurile terminate din suma `tt_work_log_items` a
+fiecărui item. Un checkpoint fără legătură nu apare la niciun task.
+
+**Iteme pe rând:** un checkpoint per item — `enter` cu cheia `<tip>:<id>` → lucru →
+`prepare` / SQL / `ack` → itemul următor. Ceasul ține un singur checkpoint deschis per
+conversație, deci îl închizi pe cel curent înainte să-l pornești pe următorul.
+
+**Iteme întrețesute sub un singur ceas** — un thread `/proiect` de tipul „terminăm planul
+de azi”, un sweep `resolving-*` rulat de un singur agent, orchestratorul: rulează `link`
+pentru fiecare item imediat ce lucrezi efectiv pe el (investigat, implementat, verificat,
+specificat), nu doar citit sau raportat. `link` primește același JSON ca `enter`, cu
+`source` sau `sources`, pe un checkpoint `active` sau `paused`; dublurile după tip:id se
+ignoră, iar limita e de 25 de iteme. Verifică fiecare item în DB înainte, ca la `enter`:
+
+```json
+{"session":"exact-client-session-id","task":"proiect:betora:2026-10-07","member":"<membru verificat>","project_id":1,"sources":[{"type":"bug","id":1006,"estimated_hours":1.5},{"type":"ui_surface","id":874}]}
+```
+
+Înainte de `prepare`, compară itemele terminate sau avansate în task cu `sources` și
+leagă-le pe cele lipsă. Un ceas fără nicio legătură e acceptabil numai pentru muncă fără
+item în tracker. `prepare` scrie o legătură per item pentru fiecare zi, iar triggerele DB
+reîmpart orele logului: după estimarea planului când toate legăturile o au, egal altfel.
+După `prepare` receipt-ul e imuabil și `link` e respins. Nu edita manual SQL-ul pregătit
+și nu adăuga legături la loguri deja înregistrate fără confirmarea explicită a omului.
 
 ## Pauze și închidere
 
@@ -61,8 +97,8 @@ continuă munca autorizată, raportând Pontaj în așteptare; nu recupera retro
   Execută SQL-ul returnat prin Supabase MCP, în baza TT. Inserarea folosește un ID negativ
   determinist, sigur pentru numerele JavaScript, din domeniul existent BIGSERIAL; secvența
   pozitivă rămâne intactă. PK previne duplicatele, iar un conflict cu date diferite oprește
-  tranzacția. Logul și legătura se salvează atomic. Nu necesită DDL.
-- Verifică rândurile returnate (membru, proiect, zi, ore, link), apoi `ack` cu
+  tranzacția. Logul și legăturile se salvează atomic. Nu necesită DDL.
+- Verifică rândurile returnate (membru, proiect, zi, ore, legături), apoi `ack` cu
   `verified_ids`. Un timeout nu înseamnă eșec sigur: repetă SQL-ul pregătit, nu genera alt ID.
   Nu șterge registrul și nu modifica manual payloadul pregătit ca să „repari” un conflict.
   O corecție făcută de om în Pontaj prevalează; raportează conflictul.

@@ -207,6 +207,8 @@ RETURNING id, status;
 
 If `RETURNING` comes back empty, the row changed under you (a human moved it in the team-tracker UI between the decision gate and this feature's turn in the queue) — re-read the row and skip it instead of forcing the flip.
 
+With automatic Pontaj on, give each feature its own checkpoint keyed `feature:<id>` (prepare/ack after 4e), or `link` it now when one clock already covers the sweep ([protocol](../pontaj/references/automatic-task-log.md)); in orchestrator target mode the dispatcher's clock links it instead.
+
 ### 4a. Design — dispatch `feature-dev:code-architect`
 
 Features are bigger than bug fixes; skipping design is how implementations sprawl. Dispatch the architect with: the feature title and verbatim description, the evaluator's report from Step 3a, `<source_root>`, and the project's conventions summary from its CLAUDE.md. For rows that skipped triage this run (pre-existing `Planificat`, reclaimed `În Focus`), substitute the `--- Evaluat ---` block from the row's description; if none exists, dispatch a fresh `Explore` evaluator (3a prompt) before the architect. Ask the architect for: 1) component/data-flow design that follows existing codebase patterns, 2) exact files to create/modify, 3) build sequence, 4) verification strategy (preview or SQL — pick one and motivate it), 5) under 400 words. If the feature touches tables or RLS, include the "do NOT trust migration grep alone — verify `pg_policy` and `pg_class.relrowsecurity` live via SQL" clause in the prompt.

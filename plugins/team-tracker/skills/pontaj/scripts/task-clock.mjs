@@ -73,9 +73,37 @@ export function prepareRows(task, input, times) {
   }));
 }
 
-export function workLogSql(rows, source) {
-  if (source && (!['bug', 'feature', 'test_plan', 'todo', 'ui_surface'].includes(source.type) || !Number.isSafeInteger(source.id) || source.id <= 0)) throw Error('Invalid tracker source');
-  if (source?.estimated_hours != null && (typeof source.estimated_hours !== 'number' || !Number.isFinite(source.estimated_hours) || !(source.estimated_hours > 0) || source.estimated_hours > 24)) throw Error('Invalid verified plan estimate');
+const SOURCE_TYPES = ['bug', 'feature', 'test_plan', 'todo', 'ui_surface'];
+const MAX_SOURCES = 25;
+
+function validSource(source) {
+  if (!source || !SOURCE_TYPES.includes(source.type) || !Number.isSafeInteger(source.id) || source.id <= 0) throw Error('Invalid tracker source');
+  if (source.estimated_hours != null && (typeof source.estimated_hours !== 'number' || !Number.isFinite(source.estimated_hours) || !(source.estimated_hours > 0) || source.estimated_hours > 24)) throw Error('Invalid verified plan estimate');
+  return { type: source.type, id: source.id, ...(source.estimated_hours != null ? { estimated_hours: source.estimated_hours } : {}) };
+}
+
+// Explicit sources from `source` and/or `sources`, deduplicated by type:id.
+export function explicitSources(input) {
+  const list = [...(input.source ? [input.source] : []), ...(Array.isArray(input.sources) ? input.sources : [])];
+  const seen = new Map();
+  for (const source of list.map(validSource)) seen.set(`${source.type}:${source.id}`, source);
+  if (seen.size > MAX_SOURCES) throw Error('Too many tracker sources for one checkpoint');
+  return [...seen.values()];
+}
+
+// A task key that names a tracker item — `bug:640`, `ui_surface:874:approve-spec` —
+// already says where the hours belong. Without this, 141 of 351 checkpoints were
+// saved with no link, so finished tasks showed no duration in Team Tracker.
+export function sourceFromTaskKey(key) {
+  const match = /^(bug|feature|test_plan|todo|ui_surface):(\d+)(?::|$)/.exec(key || '');
+  return match && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 0 ? { type: match[1], id: Number(match[2]) } : null;
+}
+
+// Ledgers written before multi-source support carry a single `source`.
+export const taskSources = task => task?.sources ?? (task?.source ? [task.source] : []);
+
+export function workLogSql(rows, sourceOrSources) {
+  const sources = (Array.isArray(sourceOrSources) ? sourceOrSources : sourceOrSources ? [sourceOrSources] : []).map(validSource);
   const statements = ['BEGIN;', 'SET LOCAL standard_conforming_strings = on;'];
   for (const row of rows) {
     const keys = ['id', 'member', 'project_id', 'category', 'description', 'hours', 'work_date'];
@@ -83,7 +111,10 @@ export function workLogSql(rows, source) {
     statements.push(`INSERT INTO public.tt_work_logs (${keys.join(', ')}) VALUES (${values.join(', ')}) ON CONFLICT (id) DO NOTHING;`);
     const match = keys.map((k, i) => `${k} = ${values[i]}`).join(' AND ');
     statements.push(`DO ${quote(`BEGIN IF NOT EXISTS (SELECT 1 FROM public.tt_work_logs WHERE ${match}) THEN RAISE EXCEPTION 'Pontaj retry conflict: existing row differs'; END IF; END`)};`);
-    if (source) statements.push(`INSERT INTO public.tt_work_log_items (work_log_id, source_type, source_id, link_method, confidence, allocated_hours, allocation_method, estimated_hours_snapshot) VALUES (${row.id}, ${quote(source.type)}, ${source.id}, 'explicit', 'high', ${row.hours}, 'equal', ${source.estimated_hours ?? 'NULL'}) ON CONFLICT (work_log_id, source_type, source_id) DO NOTHING;`);
+    // The DB triggers re-split a log's hours across all its links (by plan estimate
+    // when every link has one, equally otherwise); the even split here is only the start.
+    const share = sources.length ? Number((row.hours / sources.length).toFixed(6)) : 0;
+    for (const source of sources) statements.push(`INSERT INTO public.tt_work_log_items (work_log_id, source_type, source_id, link_method, confidence, allocated_hours, allocation_method, estimated_hours_snapshot) VALUES (${row.id}, ${quote(source.type)}, ${source.id}, 'explicit', 'high', ${share}, 'equal', ${source.estimated_hours ?? 'NULL'}) ON CONFLICT (work_log_id, source_type, source_id) DO NOTHING;`);
   }
   statements.push(`SELECT id, member, project_id, hours, work_date FROM public.tt_work_logs WHERE id IN (${rows.map(r => r.id).join(', ')});`, 'COMMIT;');
   return statements.join('\n');
@@ -114,22 +145,43 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
       for (const key of ['member', 'project_id']) {
         if (input[key] !== undefined && input[key] !== task[key]) throw Error(`Checkpoint identity mismatch: ${key}`);
       }
-      if (input.source !== undefined && (input.source?.type !== task.source?.type || input.source?.id !== task.source?.id)) throw Error('Checkpoint source mismatch');
+      // Outside `link`, a source named on a retry must already belong to the
+      // checkpoint: sources are added deliberately, never swapped on a retry.
+      if (command !== 'link' && (input.source !== undefined || input.sources !== undefined)) {
+        const known = new Set(taskSources(task).map(s => `${s.type}:${s.id}`));
+        const named = [...(input.source ? [input.source] : []), ...(Array.isArray(input.sources) ? input.sources : [])];
+        if (!named.length || named.some(s => !known.has(`${s?.type}:${s?.id}`))) throw Error('Checkpoint source mismatch');
+      }
     }
     const entering = command === 'enter';
     let created = false;
     if (command === 'start' || entering) {
       if (!read(configPath)?.enabled) return { enabled: false };
       if (!input.member?.trim() || !Number.isSafeInteger(input.project_id) || input.project_id <= 0) throw Error('Verified member and project required');
-      if (task) return entering ? { enabled: true, status: task.status === 'prepared' ? 'pending' : task.status, started_at: task.started_at, project_id: task.project_id, member: task.member } : task;
+      if (task) return entering ? { enabled: true, status: task.status === 'prepared' ? 'pending' : task.status, started_at: task.started_at, project_id: task.project_id, member: task.member, sources: taskSources(task) } : task;
       if (Object.values(ledger.tasks).some(t => !['prepared', 'recorded'].includes(t.status))) throw Error('Finish or pause scope reconciliation for the active task first');
-      // Validate the source before starting, not at the end of measured work.
-      if (input.source) workLogSql([], input.source);
-      task = { session: input.session, task: input.task, member: input.member, project_id: input.project_id, source: input.source || null, started_at: now, pauses: [], status: 'active' };
+      // Validate the sources before starting, not at the end of measured work.
+      let sources = explicitSources(input);
+      if (!sources.length && sourceFromTaskKey(input.task)) sources = [sourceFromTaskKey(input.task)];
+      task = { session: input.session, task: input.task, member: input.member, project_id: input.project_id, sources, started_at: now, pauses: [], status: 'active' };
       ledger.tasks[input.task] = task;
       created = true;
     } else {
       if (!task) throw Error('No start checkpoint; do not backfill guessed hours');
+      if (command === 'link') {
+        // A thread that works several tracker items under one clock names each
+        // item as it is actually worked on; the DB then splits the hours.
+        if (!['active', 'paused'].includes(task.status)) throw Error('Link sources before prepare; a prepared receipt is immutable');
+        const added = explicitSources(input);
+        if (!added.length) throw Error('Name at least one tracker source to link');
+        const merged = new Map(taskSources(task).map(s => [`${s.type}:${s.id}`, s]));
+        for (const source of added) if (!merged.has(`${source.type}:${source.id}`)) merged.set(`${source.type}:${source.id}`, source);
+        if (merged.size > MAX_SOURCES) throw Error('Too many tracker sources for one checkpoint');
+        task.sources = [...merged.values()];
+        delete task.source;
+        save(path, ledger);
+        return { status: task.status, sources: task.sources };
+      }
       if (command === 'pause' && task.status === 'active') { task.pauses.push([now, null]); task.status = 'paused'; }
       else if (command === 'resume' && task.status === 'paused') { task.pauses.at(-1)[1] = now; task.status = 'active'; }
       else if (command === 'prepare') {
@@ -138,7 +190,7 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
         const ended_at = now;
         const times = transcriptTimes(input.transcripts, input.session);
         const rows = prepareRows(task, { ...input, ended_at }, times);
-        task.prepared = { rows, sql: workLogSql(rows, task.source), ended_at };
+        task.prepared = { rows, sql: workLogSql(rows, taskSources(task)), ended_at };
         task.status = 'prepared';
       } else if (command === 'ack') {
         if (!task.prepared || JSON.stringify([...input.verified_ids || []].sort()) !== JSON.stringify(task.prepared.rows.map(r => r.id).sort())) throw Error('Acknowledge only IDs verified in the database');
@@ -146,7 +198,7 @@ export function run(command, input = {}, root = join(homedir(), '.claude', 'team
       } else throw Error('Unknown command or invalid task state');
     }
     save(path, ledger);
-    if (entering) return { enabled: true, status: created ? 'started' : task.status, started_at: task.started_at, project_id: task.project_id, member: task.member };
+    if (entering) return { enabled: true, status: created ? 'started' : task.status, started_at: task.started_at, project_id: task.project_id, member: task.member, sources: taskSources(task) };
     return command === 'prepare' ? task.prepared : task;
   } finally { rmdirSync(lock); }
 }
