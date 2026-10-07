@@ -12,7 +12,7 @@ face înrădăcinarea: primește slug-ul, aduce codebase-ul proiectului în sesi
 instrucțiunile, își trage starea vie din tracker și instalează **contractul sesiunii** — cine
 ce face de aici încolo. După el, chatul e **orchestratorul proiectului**: conduce sesiunile
 ghidate cu omul, implementează local, rezolvă blocajele, verifică tot și îi lasă omului
-exact două butoane.
+doar răspunsurile și porțile lui.
 
 ## Argument
 
@@ -59,8 +59,8 @@ Sincronizarea după integrare face parte din task, fără o nouă cerere de apro
 
 | Tip task | Omul | Chatul (orchestratorul) |
 |---|---|---|
-| **Sesiune ghidată (UI)** | conduce răspunsurile + 2 apăsări: „Aprob criteriile", „Producție" | conduce sesiunea în browser, întreabă la final și ce lipsește față de o secțiune de felul ei (cu recomandare: adaugă acum / mai târziu / nu), salvează criteriile în `tt_ui_surface_criteria` și lipsurile mari sau amânate ca `tt_features` legate de secțiune, apoi build → verificare → merge |
-| **Sesiune de construcție (secțiune `planned`, din `/proiect-nou`)** | răspunde la 2–4 întrebări de structură, apoi conduce verdictele + aceleași 2 apăsări | citește `purpose`, tokens, convențiile și `CLAUDE.md`, propune structura, construiește primul draft pe branch (și scheletul paginii dacă e prima secțiune de pe ea), apoi exact sesiunea ghidată pe draftul construit; păstrează delta draftului și sincronizează `code_refs`, amprenta și `inventory_state = 'active'` numai după integrare, conform contractului UI. Modul se alege singur din `inventory_state`, nu dintr-un buton |
+| **Sesiune ghidată (UI)** | răspunde o dată, la runda unică — și dintr-un rând: „ok, aprob" sau „3B, 7 nu, aprob"; „aprob" în răspuns e aprobarea criteriilor, altfel o dă din butonul „Aprob criteriile" — apoi, mai târziu, „Producție" | pregătește singur tot în browser (stările pe viewporturi, capturile, câte o întrebare pe element cu precedentul și recomandarea, 2–3 lipsuri față de o secțiune de felul ei cu recomandare: adaugă acum / mai târziu / nu, draftul criteriilor) și trimite un singur mesaj încheiat cu „Aprob criteriile?"; salvează criteriile în `tt_ui_surface_criteria` și lipsurile mari sau amânate ca `tt_features` legate de secțiune; la „aprob" explicit apasă Gate 0 prin MCP `gate_approve_spec`, cu cuvintele lui; apoi build → verificare → merge |
+| **Sesiune de construcție (secțiune `planned`, din `/proiect-nou`)** | răspunde la 2–4 întrebări de structură, apoi la runda unică pe draft, cu aceeași aprobare și „Producție" | citește `purpose`, tokens, convențiile și `CLAUDE.md`, propune structura, construiește primul draft pe branch (și scheletul paginii dacă e prima secțiune de pe ea), apoi exact sesiunea ghidată, într-o singură rundă, pe draftul construit; păstrează delta draftului și sincronizează `code_refs`, amprenta și `inventory_state = 'active'` numai după integrare, conform contractului UI. Modul se alege singur din `inventory_state`, nu dintr-un buton |
 | **Bug** | nimic | tot, cap-coadă |
 | **Feature non-UI** | nimic | tot, cap-coadă |
 | **Feature cu UI** | o privire la final: „merge cum vreau?" | tot, inclusiv verificarea completă, **înainte** de privirea omului |
@@ -68,7 +68,13 @@ Sincronizarea după integrare face parte din task, fără o nouă cerere de apro
 
 Escaladarea la om se face **în chat** (`AskUserQuestion`), **grupat** — nu picurat câte o
 întrebare. Doar design și scop ajung la el; „ce pattern folosește codebase-ul", „de ce pică
-testul", „cum deblochez mediul" sunt treaba orchestratorului.
+testul", „cum deblochez mediul" sunt treaba orchestratorului. În sesiunea de spec, grupat
+înseamnă o singură rundă: unealta de întrebări doar dacă le duce pe toate într-un apel,
+altfel un mesaj numerotat; niciodată runde de câte 3–4. Dacă omul nu răspunde, sesiunea e
+blocată și nu se salvează nimic; runda rămâne în chat și se continuă din răspunsul lui,
+fără reluarea plimbării. Criteriile salvate dar neaprobate lasă secțiunea pe `needs_spec`,
+nu pe `blocked_on_you`: spune-i că așteaptă doar „Aprob criteriile" și poți lua itemul
+următor; la reluare îi arăți lista salvată și întrebi doar „Aprob criteriile?".
 
 ### Reguli dure (nenegociabile în sesiune)
 
@@ -82,7 +88,12 @@ testul", „cum deblochez mediul" sunt treaba orchestratorului.
   e conectat și omul cere **explicit, în conversația curentă**, o anumită apăsare, o faci
   doar prin tool-urile `gate_*`, citându-i cuvintele în `human_instruction` — niciodată
   din proprie inițiativă, niciodată înlănțuită după munca ta
-  ([politica MCP](../references/mcp-tools.md)).
+  ([politica MCP](../references/mcp-tools.md)). Cazul tipic e Gate 0 în sesiunea de spec:
+  „aprob" în răspunsul lui la runda unică. Salvezi criteriile, recitești lista și apeși
+  `gate_approve_spec` doar dacă lista salvată e draftul plus exact schimbările scrise de el;
+  „ok" singur acceptă recomandările, nu aprobă, iar dacă ai interpretat ceva îi arăți lista
+  finală și întrebi din nou „Aprob criteriile?". Verdictul de design și „livrat" nu se apasă
+  dintr-un flux de spec sau build: la „marchează tu" / „pune-o pe livrat" îi arăți butonul.
 - **Niciun DDL pe tabelele `tt_`** fără acordul explicit al omului, în cuvintele lui.
 - **Disciplina git + review** din `../references/code-review-before-merge.md` rămâne
   valabilă pentru orice merge. Merge când CI e verde; nu rula și nu aștepta Bugbot.

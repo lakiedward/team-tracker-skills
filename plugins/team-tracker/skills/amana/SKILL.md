@@ -279,7 +279,7 @@ cannot show its proof does not hold, and saying so is the point of the skill.
 |---|---|---|
 | `deja_facut` | sursa e `Fixed` / `Gata`, sau toți pașii planului sunt trecuți | coada live îl ascunde deja; nu e nimic de amânat |
 | `in_lucru` | card Focus în `În testare`, sau ore pontate azi pe el | nu e amânare, e o verificare neterminată — ori o duci la capăt, ori o raportezi blocată cu ce a rămas |
-| `poarta_umana` | secțiune la `blocked_on_you` | poarta e a ta; itemul nu consumă ore oricum. Butonul e în Productivitate → UI Coverage |
+| `poarta_umana` | secțiune la `blocked_on_you`, sau la `needs_spec` cu criteriile deja salvate din răspunsurile tale, care așteaptă doar „Aprob criteriile” | poarta e a ta, nu muncă de amânat; un `blocked_on_you` nu consumă ore oricum. Butonul e în Productivitate → UI Coverage |
 | `nu_mai_e_nevoie` | scopul s-a schimbat | e **descope**, nu amânare — verdictul D, cu confirmare separată |
 
 ### Regula recidivei
