@@ -89,11 +89,12 @@ Dacă te răzgândești: **Agenți AI → Revocă** oprește imediat accesul unu
 
 Din v1.44.0, sesiunea de spec a unei secțiuni UI are **o singură rundă**: agentul parcurge
 singur stările pe viewporturi, face capturile și pregătește întrebările cu recomandări,
-lipsurile și draftul criteriilor, apoi îți trimite totul într-un mesaj care se încheie cu
-„Aprob criteriile?". Poți răspunde dintr-un rând („ok, aprob" sau „3B, 7 nu, aprob"). Cu
-„aprob" explicit, agentul salvează criteriile și apasă Gate 0 prin MCP (`gate_approve_spec`,
-cu cuvintele tale); „ok" singur nu aprobă, iar fără „aprob" lista te așteaptă în
-Productivitate. Verdictul de design și „livrat" rămân neschimbate.
+lipsurile și draftul criteriilor (fiecare variantă își arată criteriul), apoi îți trimite
+totul într-un mesaj care se încheie cu „Aprob criteriile?". Poți răspunde dintr-un rând („ok,
+aprob" sau „3B, 7 nu, aprob"). Cu „aprob" explicit și necondiționat, agentul salvează
+criteriile și apasă Gate 0 prin MCP (`gate_approve_spec`, cu cuvintele tale); „ok" singur sau
+„aprob, dar …" nu aprobă, iar fără aprobare secțiunea apare ca „Așteaptă «Aprob criteriile»"
+în Productivitate. Verdictul de design și „livrat" rămân neschimbate.
 
 Din v1.43.0, `review-video` produce clipurile de review din scenariile deja verificate:
 GPT Sol `low` implicit, `medium` pentru cazuri ambigue, câte un worker local per clip.

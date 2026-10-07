@@ -76,8 +76,10 @@ user asks otherwise.
    rejects agent writes to these anyway; the correct move is to point at the button
    in Productivitate (a gate is pressed from here only through the MCP `gate_*` tools
    on the human's explicit request, see `../references/mcp-tools.md` — never as part
-   of a deferral). A section sitting at `blocked_on_you` is not a deferral
-   candidate at all — it already consumes no planned hours.
+   of a deferral). A section sitting at `blocked_on_you`, or served by
+   Productivitate as `spec_awaiting_approval` (`needs_spec` with criteria saved,
+   waiting only on «Aprob criteriile»), is not a deferral candidate at all — it
+   already consumes no planned hours.
 6. **Never change a tracker status, priority or effort to express a deferral.** A
    postponed bug is not `Fixed`, a postponed feature is not `Gata`, and dropping a
    priority to make an item stop appearing is a lie told to `/triage`. Priority may
@@ -279,7 +281,7 @@ cannot show its proof does not hold, and saying so is the point of the skill.
 |---|---|---|
 | `deja_facut` | sursa e `Fixed` / `Gata`, sau toți pașii planului sunt trecuți | coada live îl ascunde deja; nu e nimic de amânat |
 | `in_lucru` | card Focus în `În testare`, sau ore pontate azi pe el | nu e amânare, e o verificare neterminată — ori o duci la capăt, ori o raportezi blocată cu ce a rămas |
-| `poarta_umana` | secțiune la `blocked_on_you`, sau la `needs_spec` cu criteriile deja salvate din răspunsurile tale, care așteaptă doar „Aprob criteriile” | poarta e a ta, nu muncă de amânat; un `blocked_on_you` nu consumă ore oricum. Butonul e în Productivitate → UI Coverage |
+| `poarta_umana` | secțiune la `blocked_on_you` sau `spec_awaiting_approval` („Așteaptă «Aprob criteriile»”: `needs_spec` cu criteriile deja salvate) | poarta e a ta, nu muncă de amânat; niciuna nu consumă ore. Butonul e în Productivitate → UI Coverage |
 | `nu_mai_e_nevoie` | scopul s-a schimbat | e **descope**, nu amânare — verdictul D, cu confirmare separată |
 
 ### Regula recidivei
@@ -331,7 +333,7 @@ stopping at the first that works:
 4. **Nothing.** Say it as a number — „rămân Xh neacoperite azi” — and recommend
    `/plan-deadlines <slug>` for a real re-pack. Never invent filler to reach the target.
 
-Never promote a `blocked_on_you` section, a `shipped` section, an archived source, or
+Never promote a `blocked_on_you` or `spec_awaiting_approval` section, a `shipped` section, an archived source, or
 an item whose own dependencies are open. Never create a codebase-gap To-Do — that is
 `/plan-deadlines`' job, and it needs the full scan to be honest.
 
@@ -472,7 +474,7 @@ scade orele deja consumate.`
 | Marchează sursa `Fixed`/`Gata` ca s-o scoată din listă | Pornește ceasul de auto-arhivare pe muncă nefăcută | Statusurile nu se ating niciodată pentru o amânare |
 | Coboară prioritatea ca itemul să nu mai apară | Minte `/triage` și tot rankingul global | Prioritatea se schimbă doar dacă omul o cere explicit, ca decizie separată |
 | Scrie marcajul la începutul descrierii | Rupe `Sursă: Productivitate › …` de pe primul rând și itemul dispare din secțiunea lui | Marcajul se adaugă întotdeauna la final |
-| Amână o secțiune care e de fapt `blocked_on_you` | Poarta e a omului; nu consumă oricum ore | Trimite la butonul din UI Coverage |
+| Amână o secțiune care e de fapt `blocked_on_you` sau `spec_awaiting_approval` | Poarta e a omului; nu consumă oricum ore | Trimite la butonul din UI Coverage |
 | Amână a treia oară același item | Confirmă că nimeni n-a înțeles taskul | Refuză A; rămân doar reparat sau scos |
 | Uită `velocity_snapshot` după mutare | Antetul paginii afișează ore și numere false | Recalculează committed/reserve/gap în aceeași rundă |
 | Inventează un task „ca să nu rămână gaura” | Umplutura arată ca muncă și consumă ziua | Gaura se raportează ca număr; re-packul e treaba `/plan-deadlines` |

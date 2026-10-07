@@ -19,8 +19,9 @@ Comanda: `/proiect-nou <slug>`. Fără slug, întreabă-l. Un slug care există 
 stabilă) și nu recrea nimic.
 
 Vorbește română. Fiecare întrebare merge prin unealta de întrebări cu opțiuni a clientului,
-cu 2–4 variante, una marcată „Propunerea mea: …" cu motivul în aceeași frază (regula 22 din
-`/plan-deadlines`). Runde de cel mult 3–4 întrebări, apoi te oprești și aștepți.
+cu 2–4 variante, una marcată „Propunerea mea: …" cu motivul în aceeași frază. Intake-ul
+site map-ului merge în runde de cel mult 3–4 întrebări, apoi te oprești și aștepți; asta nu
+se aplică sesiunii de spec a unei secțiuni, care are o singură rundă.
 
 ## Reguli dure
 
