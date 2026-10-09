@@ -44,10 +44,18 @@ function normalizeCandidate(candidate, index) {
   const low = positiveNumber(candidate.estimate_hours_low, `${stableKey}.estimate_hours_low`);
   const high = positiveNumber(candidate.estimate_hours_high, `${stableKey}.estimate_hours_high`);
   if (low > high) throw new Error(`${stableKey} low estimate cannot exceed high estimate`);
+  const hasTier = candidate.rank_tier !== undefined && candidate.rank_tier !== null;
+  const rankTier = hasTier ? Number(candidate.rank_tier) : null;
+  if (hasTier && !Number.isInteger(rankTier)) {
+    throw new Error(`${stableKey}.rank_tier must be an integer`);
+  }
 
   return {
     ...candidate,
     stable_key: stableKey,
+    group_key: String(candidate.group_key || '').trim(),
+    group_label: String(candidate.group_label || candidate.group_key || '').trim(),
+    rank_tier: rankTier,
     estimate_hours_low: round(low),
     estimate_hours_high: round(high),
     dependencies: Array.isArray(candidate.dependencies) ? candidate.dependencies : [],
@@ -117,6 +125,86 @@ function sum(items, field) {
   return round(items.reduce((total, item) => total + Number(item[field] || 0), 0));
 }
 
+// Ranking decides importance; a group (usually a page) decides what travels together.
+// Siblings are pulled up behind the first member of their group, but only from the same
+// rank_tier, so cohesion never lets a less important item overtake a more important one.
+function cohesiveOrder(candidates) {
+  let previousTier = null;
+  for (const candidate of candidates) {
+    if (candidate.rank_tier === null) continue;
+    if (previousTier !== null && candidate.rank_tier < previousTier) {
+      throw new Error(`candidates must be ranked by rank_tier (${candidate.stable_key})`);
+    }
+    previousTier = candidate.rank_tier;
+  }
+
+  const ordered = [];
+  const taken = new Set();
+  candidates.forEach((candidate, index) => {
+    if (taken.has(index)) return;
+    ordered.push(candidate);
+    taken.add(index);
+    if (!candidate.group_key || candidate.rank_tier === null) return;
+    candidates.forEach((sibling, siblingIndex) => {
+      if (
+        siblingIndex > index
+        && !taken.has(siblingIndex)
+        && sibling.group_key === candidate.group_key
+        && sibling.rank_tier === candidate.rank_tier
+      ) {
+        ordered.push(sibling);
+        taken.add(siblingIndex);
+      }
+    });
+  });
+  return ordered;
+}
+
+function groupIdentity(item) {
+  return item.group_key || `solo:${item.stable_key}`;
+}
+
+// Within one queue, members of a group sit next to each other, in the order the
+// group first appears, so the day reads as blocks of related work.
+function contiguousByGroup(items, sequenceStart) {
+  const order = [];
+  const members = new Map();
+  for (const item of items) {
+    const identity = groupIdentity(item);
+    if (!members.has(identity)) {
+      members.set(identity, []);
+      order.push(identity);
+    }
+    members.get(identity).push(item);
+  }
+  return order
+    .flatMap((identity) => members.get(identity))
+    .map((item, index) => ({ ...item, sequence: sequenceStart + index }));
+}
+
+function summarizeGroups(items) {
+  const groups = new Map();
+  for (const item of items) {
+    if (!item.group_key) continue;
+    if (!groups.has(item.group_key)) {
+      groups.set(item.group_key, {
+        group_key: item.group_key,
+        group_label: item.group_label,
+        count: 0,
+        hours_low: 0,
+        hours_high: 0,
+        stable_keys: [],
+      });
+    }
+    const group = groups.get(item.group_key);
+    group.count += 1;
+    group.hours_low = round(group.hours_low + item.estimate_hours_low);
+    group.hours_high = round(group.hours_high + item.estimate_hours_high);
+    group.stable_keys.push(item.stable_key);
+  }
+  return [...groups.values()];
+}
+
 export function packDailyQueues({
   grossHours,
   committedTargetHours,
@@ -138,12 +226,13 @@ export function packDailyQueues({
     keys.add(candidate.stable_key);
   }
 
-  const committedPack = packRole(normalized, committedTarget, 'committed', 1);
-  const committed = committedPack.selected;
+  const ordered = cohesiveOrder(normalized);
+  const committedPack = packRole(ordered, committedTarget, 'committed', 1);
+  const committed = contiguousByGroup(committedPack.selected, 1);
   const committedLow = sum(committed, 'estimate_hours_low');
   const committedHigh = sum(committed, 'estimate_hours_high');
   const reserveTarget = round(Math.max(0, gross - committedLow));
-  const remainingCandidates = normalized.filter(
+  const remainingCandidates = ordered.filter(
     (candidate) => !committedPack.usedKeys.has(candidate.stable_key),
   );
   const reservePack = packRole(
@@ -152,7 +241,7 @@ export function packDailyQueues({
     'reserve',
     committed.length + 1,
   );
-  const reserve = reservePack.selected;
+  const reserve = contiguousByGroup(reservePack.selected, committed.length + 1);
   const reserveLow = sum(reserve, 'estimate_hours_low');
   const reserveHigh = sum(reserve, 'estimate_hours_high');
 
@@ -172,6 +261,8 @@ export function packDailyQueues({
     queue_hours_total_high: round(committedHigh + reserveHigh),
     committed,
     reserve,
+    committed_groups: summarizeGroups(committed),
+    reserve_groups: summarizeGroups(reserve),
     skipped_blocked_keys: normalized
       .filter((candidate) => !candidate.dependency_ready)
       .map((candidate) => candidate.stable_key),

@@ -65,6 +65,8 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 
 29. **Clarify intent before the plan is written, in the human's own words.** A committed bug, feature or To-Do whose description is thin — no attachment and under ~40 words of the human's own text once markers are stripped — or whose completion criterion the planner had to guess rather than read, or whose title/description names a visual change (layout, spacing, colours, fonts, «mai aerisit», «ca pe pagina X», redesign) without a reference, is not ready for a prompt: the executor would fill the gaps with its own taste and the mismatch would surface after merge, on main. Phase 6b asks the human about those items — at most 2 questions per item, at most 5 items per run, each question with a marked recommendation and the precedent from the product (rule 22 applies here too), and always with the option «E clar așa cum e scris» — and records the answers on the plan item as `intent=`, `reference=`, `not_in_scope=`, `example=`, plus `change_kind=design|logic|data|mixed` on every selected item. Only the human's answers may fill `intent=`; the planner's own reading never does, except as a restatement the human explicitly confirmed. An item already clarified — its source description carries an `--- Intenție clarificată <YYYY-MM-DD> ---` block, or the current plan's item with the same stable key already carries `intent=` — is not asked again unless the human reopens it. Productivitate reads these fields: the copied prompt tells the executor to obey them over its own interpretation, and a `design`/`mixed` classification makes the human's verdict on a screenshot a merge condition.
 
+30. **A day is blocks of related work, not a list.** Every selected item belongs to a work group with a stated logic, or stands alone because nothing connects it. A UI section's group is its page (`group_key = page:<page stable_key>`); a bug, feature, To-Do or promoted finding attached to a section joins that section's page group; other items join a group only when they share a real connection the evidence shows — the same flow, the same code area, the same milestone, or a dependency between them — and otherwise stay alone. Never invent a theme to make the list look organized. Inside one rank tier, members of a group travel together and a group whose remaining required units all fit today goes before one that cannot close, because a page ships only when every required section on it does; cohesion never lets work from a lower tier overtake a higher one (Phase 6). Every group carries one sentence of logic in the human's terms — what closes or moves forward when the block is done and why these items belong in the same sitting (one walk of the page on its viewports, shared components, one review) — and the proposal, the Focus order and the copied prompt all show it.
+
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
 ## Phase 0 — Resolve scope
@@ -174,6 +176,7 @@ For each active tracker item:
 4. Record unfinished dependencies.
 5. Identify an observable completion criterion for the next work session.
 6. Classify verification as `browser` or `non_browser`. Browser verification is mandatory for user-visible UI, responsive behavior, navigation, forms, auth, payments, browser state, and end-to-end web flows; when uncertain, classify it as `browser`. Record the exact scenario and relevant viewports/devices.
+6a. Assign the work group (rule 30): `page:<page stable_key>` for a section and for anything attached to a section; otherwise a group key named after the shared flow, code area, milestone or dependency chain the evidence proves, or no group. Record the page's required units still open and how many would remain after today, so the group's logic can say whether the page closes.
 6b. Classify `change_kind`: `design` when what the user sees changes (layout, spacing, colour, type, component shape, copy), `logic` when behaviour changes (validation, calculation, flow, permissions), `data` when the schema, a migration or content changes, `mixed` when a visible change and a behaviour change travel together. Record whether the completion criterion from step 5 was read from evidence or guessed; a guessed criterion, a thin description or a visual change without a reference marks the item as a clarification candidate (rule 29).
 7. Inspect every attached screenshot when the item remains executable. Never select an attachment-bearing item from title/description alone.
 
@@ -353,6 +356,8 @@ shortens the launch queue fastest:
 A section marked `manual_importance = 'polish'` never outranks launch-required
 work and never blocks a release.
 
+Group cohesion (rule 30) works inside this order, not against it. Give every candidate a `rank_tier`, an integer that changes only where the order above changes importance — critical path, release blocker, milestone within 7 working days, definition of done, ordinary work, `polish` — and never between two UI steps of the same importance. Inside one tier, rank a page group that can close today ahead of one that cannot, and keep the cheapest-step preference only between groups. Pass `group_key`, `group_label` and `rank_tier` on each candidate; the script pulls same-tier members of a group up behind its first member, keeps each group contiguous in both queues and returns `committed_groups` / `reserve_groups`. It refuses a list whose tiers are not in ranked order.
+
 For every sliceable candidate, provide `slice_title`, `minimum_slice_hours`, and a verifiable `slice_completion_criterion`. Then pass the ranked candidates as JSON:
 
 ```bash
@@ -401,8 +406,8 @@ Use this order for every project:
 3. **Secțiuni de lansare — X/Y în producție** — the launch surfaces grouped by `next_action`, with the criteria coverage for each.
 4. **Așteaptă approve-ul tău — N secțiuni** — every `blocked_on_you` section, marking which ones expired because the code changed; then, labelled separately «Așteaptă «Aprob criteriile»», every `spec_awaiting_approval` section with its saved-criteria count and save date. State that these consume no planned hours and that the day cannot close them without the user.
 5. **Gata de producție — N secțiuni** — every `ready_for_production` section, so a deploy is never forgotten. On a `pre_launch` project state the launch gate explicitly: these ship only when every required unit reaches `ready_for_production` or `shipped`; show the remaining coverage count (rule 27).
-6. **Obligatoriu azi — N taskuri / Xh din Yh** — the committed queue and any uncovered committed gap.
-7. **Dacă termini mai devreme — N taskuri / până la Xh** — ordered reserve, reserve coverage/gap, and the gross-hour stop rule.
+6. **Obligatoriu azi — N taskuri / Xh din Yh** — the committed queue and any uncovered committed gap, printed as blocks: a heading per group, «<group_label> — N taskuri · Xh», the group's one-sentence logic under it (for a page: «Contact: 3 din 4 secțiuni obligatorii azi — după ele pagina mai are 1 până la livrare; le facem împreună pentru că le verifici într-o singură trecere pe 1440/768/375»), then its items in order. Ungrouped items come last under «Separat», each with why it stands alone in a few words.
+7. **Dacă termini mai devreme — N taskuri / până la Xh** — ordered reserve in the same blocks, reserve coverage/gap, and the gross-hour stop rule.
 8. For each selected action:
    - verb-led action;
    - tracker source/id, `secțiune <stable_key>`, or `gap propus`;
@@ -585,6 +590,7 @@ Every inserted plan item must:
 - use today's actionable estimate, which may be a slice of a larger item;
 - snapshot the complete tracker description in `description_snapshot`;
 - include in `scope_reason`: why now, the observable daily completion criterion, verified code starting points, `verification_mode=browser|non_browser`, and the required verification. For browser mode, include the scenario and viewports/devices;
+- take `sequence` from the packed output, so each group stays contiguous in Focus, and on every grouped item include `grup=<group_label> (N taskuri azi)` and `logica_grup=<the group's one sentence of logic>` — identical on every member of the group, so whichever card the human opens explains why its neighbours are there;
 - include `change_kind=design|logic|data|mixed` on every item, and the Phase 6b fields — `intent=`, `reference=`, `not_in_scope=`, `example=` — on every clarified item, verbatim from the human's answers. Productivitate renders them under «Ce vrea omul», «Referință din produs», «Nu se schimbă», «Exemplu concret» and puts them in the copied prompt above the executor's own reading;
 - for a `planned` section, include `mode=construction` and the branch name (Phase 3, 1b); the prompt's construction playbook comes from `inventory_state`, so the field is for the human reading the card and for the estimate, not a switch;
 - for UI-backed work, include surface stable key, page/section label, manual note, current audit id/fingerprint, objective evidence, private screenshot Storage paths and exact browser scenarios. Never let a subjective suggestion override the manual verdict;
@@ -649,6 +655,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Every selected action has an explicit verification mode; uncertain user-visible work defaults to `browser`.
 - [ ] Every selected attachment was inspected and its storage path remains on the source item.
 - [ ] Candidate and selected counts by source explain any single-source daily queue.
+- [ ] Both queues are printed and sequenced as groups: sections and the items attached to them under their page, other groups only where the evidence shows a real connection, each group with one sentence of logic (what closes, why together), and no lower-tier item moved ahead of a higher-tier one for cohesion.
 - [ ] Every selected item carries enough description, code evidence, and verification detail for Productivitate to build a complete execution prompt.
 - [ ] Every code-changing selected item includes in-session diff review, resolution of confirmed findings and reruns of affected checks; merge when CI is green and do not run or wait for Bugbot.
 - [ ] Browser-required work moves to Focus `În testare` after implementation and remains there until the recorded browser scenario passes. A failed, unavailable, or undocumented browser test can never become `Fixed`/`Gata`.

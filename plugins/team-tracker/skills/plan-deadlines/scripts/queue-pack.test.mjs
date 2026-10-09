@@ -116,4 +116,96 @@ assert.throws(
   /duplicate stable_key/,
 );
 
+const section = (key, page, tier, hours = 1) => ({
+  stable_key: key,
+  title: key,
+  estimate_hours_low: hours,
+  estimate_hours_high: hours,
+  group_key: page,
+  group_label: page,
+  rank_tier: tier,
+});
+
+const grouped = packDailyQueues({
+  grossHours: 6,
+  committedTargetHours: 5,
+  candidates: [
+    section('ui_surface:contact-map', 'page:contact', 1),
+    section('ui_surface:home-hero', 'page:home', 1),
+    section('ui_surface:contact-form', 'page:contact', 1),
+    section('ui_surface:home-footer', 'page:home', 1),
+    section('ui_surface:contact-hours', 'page:contact', 1),
+  ],
+});
+assert.deepEqual(
+  grouped.committed.map((item) => item.stable_key),
+  [
+    'ui_surface:contact-map',
+    'ui_surface:contact-form',
+    'ui_surface:contact-hours',
+    'ui_surface:home-hero',
+    'ui_surface:home-footer',
+  ],
+);
+assert.deepEqual(grouped.committed.map((item) => item.sequence), [1, 2, 3, 4, 5]);
+assert.deepEqual(
+  grouped.committed_groups.map((group) => [group.group_key, group.count, group.hours_high]),
+  [['page:contact', 3, 3], ['page:home', 2, 2]],
+);
+
+const tierGuard = packDailyQueues({
+  grossHours: 3,
+  committedTargetHours: 2,
+  candidates: [
+    section('ui_surface:contact-map', 'page:contact', 1),
+    { stable_key: 'bug:release', title: 'Blocant', estimate_hours_low: 1, estimate_hours_high: 1, rank_tier: 1 },
+    section('ui_surface:contact-polish', 'page:contact', 2),
+  ],
+});
+assert.deepEqual(
+  tierGuard.committed.map((item) => item.stable_key),
+  ['ui_surface:contact-map', 'bug:release'],
+);
+assert.equal(tierGuard.reserve[0].stable_key, 'ui_surface:contact-polish');
+
+const regrouped = packDailyQueues({
+  grossHours: 4,
+  committedTargetHours: 4,
+  candidates: [
+    section('ui_surface:contact-map', 'page:contact', 1),
+    section('ui_surface:home-hero', 'page:home', 2),
+    section('ui_surface:contact-polish', 'page:contact', 3),
+  ],
+});
+assert.deepEqual(
+  regrouped.committed.map((item) => item.stable_key),
+  ['ui_surface:contact-map', 'ui_surface:contact-polish', 'ui_surface:home-hero'],
+);
+
+const ungrouped = packDailyQueues({
+  grossHours: 3,
+  committedTargetHours: 2,
+  candidates: [
+    { stable_key: 'bug:1', estimate_hours_low: 1, estimate_hours_high: 1, group_key: 'page:a' },
+    { stable_key: 'bug:2', estimate_hours_low: 1, estimate_hours_high: 1 },
+    { stable_key: 'bug:3', estimate_hours_low: 1, estimate_hours_high: 1, group_key: 'page:a' },
+  ],
+});
+assert.deepEqual(
+  ungrouped.committed.map((item) => item.stable_key),
+  ['bug:1', 'bug:2'],
+);
+
+assert.throws(
+  () => packDailyQueues({
+    grossHours: 5,
+    committedTargetHours: 4,
+    candidates: [
+      section('ui_surface:a', 'page:a', 2),
+      section('ui_surface:b', 'page:a', 1),
+    ],
+  }),
+  /ranked by rank_tier/,
+);
+
 console.log('plan-deadlines queue packing tests passed');
