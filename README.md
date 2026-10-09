@@ -87,6 +87,14 @@ Dacă te răzgândești: **Agenți AI → Revocă** oprește imediat accesul unu
 
 ---
 
+Din v1.46.0, `/plan-deadlines` construiește ziua din **blocuri legate**, nu dintr-o listă:
+secțiunile aceleiași pagini (și bug-urile/funcționalitățile atașate lor) stau împreună, iar
+alte iteme se grupează doar când evidența arată o legătură reală (același flux, aceeași zonă
+de cod, aceeași bornă, o dependență). Fiecare grup are o propoziție de logică — ce se închide
+și de ce le faci în aceeași ședință — vizibilă în propunere și pe cardul din Productivitate
+(`grup=`, `logica_grup=`). Gruparea lucrează doar în interiorul aceluiași nivel de importanță:
+nu urcă niciodată ceva mai puțin important peste un blocant.
+
 Din v1.45.0, Pontajul automat se leagă de taskurile lucrate, ca Team Tracker să arate
 „pontat ~X" pe fiecare task terminat. Cheia `<tip>:<id>` (de ex. `bug:640`,
 `ui_surface:874:approve-spec`) leagă singură checkpointul; un ceas care acoperă mai multe
