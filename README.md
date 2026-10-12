@@ -290,6 +290,9 @@ următorul start de Claude (sau prin `/plugin marketplace update team-tracker`).
 `plugins/team-tracker/.cursor-plugin/plugin.json` și
 `plugins/team-tracker/.codex-plugin/plugin.json`, pentru un release controlat.
 
+Pașii exacți de actualizare pe Claude Code, Codex și Cursor, cu verificarea versiunii
+instalate: [actualizarea pluginului](docs/actualizare-plugin.md).
+
 ## Cursor
 
 Din v1.39.3, manifestele native Cursor folosesc același director `skills/`; nu există o
