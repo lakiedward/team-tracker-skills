@@ -35,6 +35,7 @@ pentru primul launch. Un PR merged, un build sau o captură locală nu dovedesc 
 
 `shipped_at`, `manual_verdict`, `spec_approved_at`, `launch_stage` rămân ale omului: agentul
 nu le apasă singur, iar dacă MCP-ul `team-tracker` e conectat le apasă doar prin `gate_*`, la
-cererea lui explicită din conversația curentă ([politica MCP](mcp-tools.md)).
+cererea lui explicită din conversația curentă, scrisă sau apăsată pe un card de decizie
+([politica MCP](mcp-tools.md)).
 Inserarea dovezii nu le modifică. Nu imita sesiunea umană și nu dezactiva trigger-ele.
 Planificarea citește aceste dovezi read-only; nu migrează și nu repară date ca efect secundar.

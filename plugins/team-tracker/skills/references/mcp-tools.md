@@ -48,11 +48,32 @@ vin din `projects_list`. Dacă tool-urile lipsesc sau serverul cere autentificar
      schimbările, arăți lista finală și întrebi din nou. Nu deduce aprobarea. Dacă ai
      interpretat ceva (un răspuns liber, un criteriu reformulat), nu apăsa: arată-i lista
      finală și întreabă din nou „Aprob criteriile?".
-   - Fiecare tool `gate_*` cere `human_instruction`: **cuvintele omului, citate**, din
-     conversația curentă. Nu parafraza, nu completa tu. Schema cere cel puțin 8 caractere, iar
-     un „aprob" are 5: citează-i răspunsul exact împreună cu întrebarea la care răspunde, de
-     ex. `La „Aprob criteriile?” a răspuns: „ok, aprob”` — tot cuvintele lui, plus contextul
-     care face înregistrarea verificabilă. Contextul nu umple și nu reformulează cuvintele lui.
+   - Fiecare tool `gate_*` cere dovada răspunsului omului, una din două:
+     - `human_instruction`: **cuvintele omului, citate**, din conversația curentă. Nu parafraza,
+       nu completa tu. Schema cere cel puțin 8 caractere, iar un „aprob" are 5: citează-i
+       răspunsul exact împreună cu întrebarea la care răspunde, de ex. `La „Aprob criteriile?”
+       a răspuns: „ok, aprob”` — tot cuvintele lui, plus contextul care face înregistrarea
+       verificabilă. Contextul nu umple și nu reformulează cuvintele lui.
+     - `human_decision`: **răspunsul omului pe un card de decizie** (ask mode), când el apasă o
+       opțiune în loc să scrie. Trimiți exact ce ai primit: `question` (întrebarea cardului),
+       `answer` (eticheta opțiunii apăsate, ex. „Îmi place”), `answered_at` (ora apăsării, ISO
+       8601), `decision_id` (id-ul cardului sau al mesajului care poartă răspunsul) și, dacă le
+       știi, `options` (opțiunile cardului). Un tap transmis de sesiunea coordonatoare, cu ora și
+       întrebarea cardului, e răspunsul omului; îl copiezi, nu îl reformulezi.
+       ```json
+       { "surface_id": 1242, "verdict": "liked",
+         "human_decision": { "question": "Îți place Antet echipă?", "answer": "Îmi place",
+           "answered_at": "2026-10-13T07:20:00Z", "decision_id": "cmsg_…",
+           "options": ["Îmi place", "Schimbă ceva"] } }
+       ```
+     - Opțiunea apăsată trebuie să spună chiar acțiunea pe care o apeși. Serverul refuză
+       `gate_set_verdict` când eticheta nu e verdictul trimis („Schimbă ceva” nu e `liked`,
+       „Îmi place” nu e `needs_work`), refuză un „nu” pe aprobări, reconfirmări și livrare, un
+       răspuns mai vechi de 7 zile sau din viitor și o opțiune care nu e printre `options`.
+       Dacă eticheta e ambiguă, nu o interpreta: cere un card nou cu opțiuni clare.
+     - Nu inventa un card, nu folosi un card la care omul nu a răspuns și nu folosi răspunsul
+       la o altă întrebare. Pagina „Agenți AI” arată fiecare apăsare din card ca „Răspunsul tău
+       pe card”.
    - Dacă `whoami` arată `gates_allowed=false` sau tool-ul refuză, nu căuta ocolișuri (nici SQL,
      nici `tt_write`): spune omului că poarta se apasă din aplicație și îi indici butonul.
    - Verifică precondițiile înainte (criterii existente, `ready_for_production`, dovadă curentă)

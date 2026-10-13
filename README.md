@@ -24,7 +24,9 @@ tipizate în loc de SQL scris de mână: bug-uri, features, To-Do, planuri de te
   conecta.
 - **Porțile umane** („Aprob criteriile", verdictul, „Marchează livrat", `launch_stage`,
   aprobarea postărilor) se apasă **doar** prin tool-urile `gate_*`, **doar** când le ceri
-  explicit în conversația curentă, iar agentul citează cuvintele tale în `human_instruction`.
+  explicit în conversația curentă, iar agentul citează cuvintele tale în `human_instruction`
+  sau, dacă ai răspuns apăsând o opțiune pe un card de decizie, transmite răspunsul tău de pe
+  card în `human_decision` (întrebarea, opțiunea apăsată, ora și id-ul cardului).
   Nu le apasă niciodată din proprie inițiativă. La conectare poți debifa „Permite agentului să
   apese porțile umane" — atunci tool-urile `gate_*` refuză.
 - **Skill-urile** folosesc tool-urile MCP când sunt conectate și cad pe Supabase SQL când nu
