@@ -92,7 +92,8 @@ secțiunea e nespecificată și rulezi runda completă.
   (`SET ROLE`, claims falsificate). Un refuz al DB-ului aici nu e un bug de rezolvat, e
   poarta funcționând: cere-i omului butonul. Singura excepție: dacă MCP-ul `team-tracker`
   e conectat și omul cere **explicit, în conversația curentă**, o anumită apăsare, o faci
-  doar prin tool-urile `gate_*`, citându-i cuvintele în `human_instruction` — niciodată
+  doar prin tool-urile `gate_*`, citându-i cuvintele în `human_instruction` (sau, dacă a
+  răspuns pe un card de decizie, cu răspunsul de pe card în `human_decision`) — niciodată
   din proprie inițiativă, niciodată înlănțuită după munca ta
   ([politica MCP](../references/mcp-tools.md)). Cazul tipic e Gate 0 în sesiunea de spec:
   „aprob" necondiționat în răspunsul lui la runda unică. Salvezi criteriile, recitești lista
