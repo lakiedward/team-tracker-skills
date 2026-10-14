@@ -18,6 +18,27 @@ multe iteme sub același ceas se adaugă cu `sources` sau cu comanda `link`, în
 checkpointuri, nu ponta întregul chat încă o dată. Regulile full-chat de mai jos se aplică
 numai unei conversații fără checkpointuri sau pontaj anterior verificat.
 
+## Fire paralele și pontaj prin MCP: interval măsurat, nu ore ghicite
+
+Când lucrul rulează în mai multe sesiuni deodată (fire din proiect, sesiuni cloud,
+orchestrator) și pontezi cu `work_log_create`, trimite `started_at`: momentul în care
+ai început efectiv taskul (primul mesaj de lucru al taskului; la un fir pornit pentru
+el, ora pornirii), în ISO 8601 cu fus orar. Lasă `hours` gol: serverul măsoară durata
+până la `ended_at` (implicit acum) și păstrează intervalul în rând. Nu alege numere
+rotunde (0,25 / 0,5 / 1 h) din impresie: fără interval, Team Tracker poate doar presupune
+că lucrul s-a încheiat la salvare. Dacă taskul a stat mult în așteptare (CI, cardul
+omului), pontează fiecare bucată activă separat, cu propriul `started_at`/`ended_at`;
+`hours` mai mic decât intervalul e acceptat doar când știi exact cât a fost activ.
+Un fir care preia munca după o pauză nu repornește de la începutul firului, ci de la
+reluare.
+
+Intervalul face posibil **timpul calendaristic**: pe pagina Pontaj și în
+`work_log_summary.calendar_hours` orele în care au lucrat mai multe fire deodată se
+numără o singură dată, pe zi și pe proiect. Pentru „cât a durat proiectul” și pentru
+estimarea proiectelor viitoare folosește timpul calendaristic pe proiect, nu suma
+orelor pontate: șase fire de câte o oră în aceeași oră înseamnă o oră de calendar.
+Timpul calendaristic nu este efort uman declarat; baza fiecărui rând rămâne cea de mai jos.
+
 Citește [proveniența orelor](references/time-basis.md) înainte de calcul sau scriere.
 Orele automate sunt estimări ale conversației, separate de orele umane declarate.
 Numai declarația explicită a omului permite `human_declared`; estimările nu consumă
