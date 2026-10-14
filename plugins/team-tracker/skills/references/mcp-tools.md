@@ -93,7 +93,7 @@ parțiale (se scriu doar câmpurile trimise).
 | **To-Do** | `todos_list`, `todo_get`, `todo_create`, `todo_update`, `todo_set_status`, `todo_archive`, `todo_delete` |
 | **Testare** | `test_plans_list`, `test_plan_get`, `test_plan_create` (plan + pași), `test_plan_update`, `test_plan_archive`, `test_plan_delete`, `test_plan_reset`, `test_item_add`, `test_item_update`, `test_item_delete`, `test_item_set_result` (pass/fail/blocked/pending + note + tested_by) |
 | **Focus** | `focus_board`, `focus_move` |
-| **Pontaj** | `work_logs_list`, `work_log_create`, `work_log_update`, `work_log_delete`, `work_log_summary` |
+| **Pontaj** | `work_logs_list`, `work_log_create` (cu `started_at` durata se măsoară și intervalul se păstrează), `work_log_update`, `work_log_delete`, `work_log_summary` (`calendar_hours`: fire paralele numărate o dată) |
 | **Ședințe** | `meetings_list`, `meeting_create`, `meeting_update`, `meeting_delete`, `meeting_log_hours`, `meeting_unlog_hours` |
 | **Borne** | `milestones_list`, `milestone_create`, `milestone_update`, `milestone_set_done`, `milestone_delete` |
 | **Productivitate** | `delivery_profile_get`, `delivery_profile_update` (fără câmpurile-poartă), `delivery_plan_current`, `delivery_task_prompt`, `delivery_item_override`, `delivery_item_clear_override`, `delivery_item_set_role` |

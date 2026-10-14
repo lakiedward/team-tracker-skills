@@ -5,6 +5,14 @@ lucrat de om. Două conversații paralele de câte 1h produc 2h de estimări ale
 conversațiilor; nu se prezintă drept 2h de muncă umană și nu se scad automat din
 capacitatea persoanei. Nici reuniunea intervalelor nu măsoară efortul uman.
 
+Reuniunea intervalelor măsoară însă **timpul calendaristic** al unui proiect: cât timp din
+ceas a fost cel puțin o sesiune la lucru pe el. Este măsura potrivită pentru durata unui
+proiect și pentru estimarea celor viitoare, unde suma estimărilor paralele umflă rezultatul
+(14.10.2026: 42 h pontate pe toate proiectele într-o zi cu ~7,2 h de calendar). Team Tracker
+o calculează din intervalul măsurat al rândului (`[pontaj:interval=<start>/<sfârșit>]`, scris
+de `work_log_create` când primește `started_at`) sau, fără el, din `[created_at − ore,
+created_at]`. Nu o raporta drept ore umane și nu o folosi ca bază `human_declared`.
+
 Schema existentă rămâne neschimbată. Rândurile noi păstrează proveniența în
 `description`, cu un singur marker la final:
 
