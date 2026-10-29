@@ -29,6 +29,9 @@ assert.deepEqual(
     required_daily_hours: 2,
     overload_hours_per_day: 0,
     overload_hours_per_week: 0,
+    parallelism: 1,
+    agent_daily_hours: 5,
+    agent_committed_target_hours: 4,
   },
 );
 
@@ -63,5 +66,28 @@ assert.equal(shortDay.gross_daily_hours, 0.8);
 assert.equal(shortDay.base_committed_hours, 0.8);
 assert.equal(shortDay.committed_target_hours, 0.8);
 assert.equal(shortDay.buffer_hours, 0);
+
+// 28.10.2026 on Motion: a 10h day, six threads, measured ~2.5 agent hours per
+// clock hour. The clock fields keep the human's 10h; the queue gets 25h of agent work.
+const parallel = calculateDailyBudget({
+  today: '2026-10-28',
+  deadline: '2026-11-20',
+  weeklyHours: 50,
+  remainingHours: 60,
+  parallelism: 2.5,
+});
+assert.equal(parallel.gross_daily_hours, 10);
+assert.equal(parallel.committed_target_hours, 9);
+assert.equal(parallel.agent_daily_hours, 25);
+assert.equal(parallel.agent_committed_target_hours, 22.5);
+assert.equal(parallel.required_daily_hours, 1.33);
+
+assert.throws(() => calculateDailyBudget({
+  today: '2026-10-28',
+  deadline: '2026-11-20',
+  weeklyHours: 50,
+  remainingHours: 60,
+  parallelism: 0.5,
+}), /parallelism/);
 
 console.log('plan-deadlines daily budget tests passed');

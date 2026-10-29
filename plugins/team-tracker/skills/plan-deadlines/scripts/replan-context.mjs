@@ -36,6 +36,8 @@ export function dailyBudget(input) {
   const baselineLimit = declaredAvailable === undefined ? day_limit_hours : spent_hours + declaredAvailable;
   const limit = mode === 'extra_budget' ? Math.max(baselineLimit, spent_hours) + extra_hours : baselineLimit;
   if (limit > 24 || spent_hours > 24) throw Error('Invalid daily hours');
+  const lanes = input.parallelism ?? 1;
+  if (typeof lanes !== 'number' || !Number.isFinite(lanes) || lanes < 1) throw Error('Parallelism must be a measured number of at least 1');
   const requires_reconciliation = time.requires_reconciliation && declaredAvailable === undefined;
   const remaining = mode === 'close_day' || requires_reconciliation ? 0
     : declaredAvailable !== undefined ? declaredAvailable + extra_hours : Math.max(0, limit - spent_hours);
@@ -49,6 +51,9 @@ export function dailyBudget(input) {
     day_stop_hours: limit, extra_authorized_hours: extra_hours,
     gross_daily_hours: remaining,
     committed_target_hours: remaining <= 1 ? remaining : remaining - 1,
+    parallelism: lanes,
+    agent_round_hours: remaining * lanes,
+    agent_committed_target_hours: (remaining <= 1 ? remaining : remaining - 1) * lanes,
     closed: mode === 'close_day',
   };
 }

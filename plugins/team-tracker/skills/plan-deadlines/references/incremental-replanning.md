@@ -55,7 +55,7 @@ La `close_day` poți raporta limitele dovezilor fără să ceri ore pentru tasku
 este pragul Pontajului cumulat de azi. Orele suplimentare se adaugă peste maximul dintre
 limita curentă (recalculată din disponibilitatea declarată, dacă există) și orele umane
 deja consumate, astfel încât „încă 2h” să ofere 2h și după
-o depășire a bugetului inițial. Folosește bugetul rundei la packing și pragul
+o depășire a bugetului inițial. Folosește bugetul rundei la packing, convertit în ore de agent: trimite în input `parallelism` măsurat de `scripts/agent-pace.mjs` ([calibrare pe agent](agent-calibration.md)) și împachetează cu `agent_round_hours` / `agent_committed_target_hours` și pragul
 cumulat **al orelor umane declarate/reconciliate** la oprirea execuției. Nu opri
 livrarea doar pentru că suma estimărilor conversațiilor a atins pragul.
 `committed_target_hours` păstrează bufferul de 1h când

@@ -69,6 +69,46 @@ function applySpentHours(low, high, spentHours, inFlight) {
   };
 }
 
+// The code-evidence estimate is sized like a developer's day. An agent session
+// measured in Pontaj does the same item in a fraction of that, browser checks
+// included, so its samples replace the human-sized floor instead of sitting under
+// a max() that can only raise the number.
+const AGENT_FACTOR_MIN = 0.1;
+const AGENT_FACTOR_MAX = 1.5;
+const AGENT_MIN_SAMPLES = 3;
+
+function agentEstimate({ low, high, samples, p50, p75, risk, spent, inFlight, factor }) {
+  const parsedFactor = factor === null || factor === undefined ? null : Number(factor);
+  const hasFactor = Number.isFinite(parsedFactor) && parsedFactor > 0;
+  const hasTypeSample = samples >= AGENT_MIN_SAMPLES && p50 !== null && p75 !== null;
+  if (!hasFactor && !hasTypeSample) {
+    throw new Error('agent_measured calibration needs a correction factor or at least 3 typed samples');
+  }
+  const clamped = hasFactor
+    ? Math.max(AGENT_FACTOR_MIN, Math.min(AGENT_FACTOR_MAX, parsedFactor))
+    : null;
+  const riskTail = Math.max(1, risk);
+  const scaledLow = clamped === null ? p50 * riskTail : low * clamped * riskTail;
+  const scaledHigh = clamped === null ? p75 * riskTail : high * clamped * riskTail;
+  const remaining = applySpentHours(scaledLow, scaledHigh, spent, inFlight);
+  const estimateHigh = Math.max(0.25, roundUpQuarter(remaining.high));
+  return {
+    estimate_low: Math.min(Math.max(0.25, roundUpQuarter(remaining.low)), estimateHigh),
+    estimate_high: estimateHigh,
+    calibration_used: true,
+    calibration_basis: 'agent_measured',
+    executor: 'agent',
+    sample_items: samples,
+    applied_correction_factor: clamped ?? 1,
+    complexity_multiplier: riskTail,
+    historical_p50_hours: p50,
+    historical_p75_hours: p75,
+    spent_hours: spent,
+    spent_hours_applied: remaining.applied,
+    remaining_floor_applied: remaining.floored,
+  };
+}
+
 export function calibrateEstimate({
   baseLow,
   baseHigh,
@@ -76,7 +116,7 @@ export function calibrateEstimate({
   calibrationBasis = 'unspecified',
   p50HoursPerItem = null,
   p75HoursPerItem = null,
-  appliedCorrectionFactor = 1,
+  appliedCorrectionFactor = null,
   browserRequired = false,
   riskMultiplier = 1,
   spentHours = 0,
@@ -106,6 +146,13 @@ export function calibrateEstimate({
     : positiveNumber(p75HoursPerItem, 'p75HoursPerItem');
   const hasCalibration = calibrationBasis === 'human_declared' && samples >= 2 && p50 !== null && p75 !== null;
 
+  if (calibrationBasis === 'agent_measured') {
+    return agentEstimate({
+      low, high, samples, p50, p75, risk, spent, inFlight,
+      factor: appliedCorrectionFactor,
+    });
+  }
+
   if (!hasCalibration) {
     const remaining = applySpentHours(low, high, spent, inFlight);
     const uncalibratedHigh = roundUpQuarter(remaining.high);
@@ -124,7 +171,7 @@ export function calibrateEstimate({
 
   const factor = Math.max(
     0.25,
-    Math.min(2, positiveNumber(appliedCorrectionFactor, 'appliedCorrectionFactor')),
+    Math.min(2, positiveNumber(appliedCorrectionFactor ?? 1, 'appliedCorrectionFactor')),
   );
   const calibratedLow = Math.max(
     low * factor,
@@ -168,7 +215,7 @@ function main() {
       'Usage: node calibrate-estimate.mjs --base-low N --base-high N '
       + '[--sample-items N --p50-hours N --p75-hours N --factor N '
       + '--browser true|false --risk-multiplier N '
-      + '--calibration-basis human_declared --spent-hours N '
+      + '--calibration-basis human_declared|agent_measured --spent-hours N '
       + '--spent-hours-basis human_declared --in-flight true|false]\n',
     );
     process.exitCode = 2;
@@ -184,7 +231,8 @@ function main() {
     calibrationBasis: readArgument('calibration-basis') ?? 'unspecified',
     p50HoursPerItem: readArgument('p50-hours'),
     p75HoursPerItem: readArgument('p75-hours'),
-    appliedCorrectionFactor: readArgument('factor') ?? 1,
+    appliedCorrectionFactor: readArgument('factor')
+      ?? (readArgument('calibration-basis') === 'agent_measured' ? null : 1),
     browserRequired: browser === 'true',
     riskMultiplier: readArgument('risk-multiplier') ?? 1,
     spentHours: readArgument('spent-hours') ?? 0,
