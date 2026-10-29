@@ -37,7 +37,7 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 3. Never invent the brief, definition of done, deadline, owner, or future capacity.
 4. Read every project bug, feature, test plan, and To-Do on every run. Do not reuse yesterday's candidate list without refreshing it.
 5. Verify every registered codebase on every run and look for necessary work missing from the tracker. Same-day unchanged clean codebases may reuse a complete inventory under [incremental replanning](references/incremental-replanning.md); changed or uncertain repositories require a full scan.
-6. Never derive future availability from historical Pontaj hours. Read work-log provenance before using history: only explicitly human-declared/reconciled hours may consume human capacity, calibrate human effort or reduce an in-flight item's remaining estimate. Conversation estimates and unspecified history stay separate. Never sum parallel chats as human work. A current availability declaration already authorized by the user wins without another question; neither history nor its reconciliation may create or reduce tomorrow's capacity.
+6. Never derive future availability from historical Pontaj hours. Read work-log provenance before using history: only explicitly human-declared/reconciled hours may consume human capacity, calibrate human effort or reduce an in-flight item's remaining estimate. Conversation estimates and unspecified history stay separate. Never sum parallel chats as human work. Measured agent sessions (`conversation_estimate` rows with a `[pontaj:interval=…]` marker) are still the only record of how long the agent takes: they calibrate agent execution time and parallelism under [agent calibration](references/agent-calibration.md), never human capacity or human spent time. A current availability declaration already authorized by the user wins without another question; neither history nor its reconciliation may create or reduce tomorrow's capacity.
 7. Never impose a fixed task count. Select as many executable actions as fit the daily hour target.
 8. Never exceed gross daily hours silently. Deadline pressure may consume the buffer, but not create imaginary hours.
 9. Do not assign dates to every candidate or persist the whole release roadmap. Persist only the approved daily queue.
@@ -218,8 +218,18 @@ The candidate pool must contain tracker work, UI sections, and newly discovered 
 
 ## Phase 4 — Calibrate work from Pontaj
 
-Derive a code-evidence low/high estimate before using history. Then calibrate it
-with the matching `tt_delivery_calibration.source_type`.
+Derive a code-evidence low/high estimate before using history.
+
+**Agent calibration first.** Queue items are executed by the agent, and a
+code-evidence estimate is sized like a developer's day: on Motion and Betora,
+26–28.10.2026, 10h queues were finished in 1–2 clock hours (estimates ~3× too
+high, times 2–3 parallel threads). Follow
+[agent calibration](references/agent-calibration.md): run `scripts/agent-pace.mjs`
+on the last 14 days of plans and Pontaj, then calibrate every agent-executed
+candidate with `--calibration-basis agent_measured`. Use the human calibration
+below only when no agent calibration is usable, or for work the human executes.
+
+Otherwise calibrate it with the matching `tt_delivery_calibration.source_type`.
 
 First verify the live view definition and sample provenance as described in
 `references/planning-contract.md`. Mixed-source or unspecified cached views do
@@ -313,8 +323,13 @@ node "<skill_dir>/scripts/daily-budget.mjs" \
   --today "<YYYY-MM-DD>" \
   --deadline "<deadline>" \
   --weekly-hours "<weekly_capacity_hours>" \
-  --remaining-hours "<aggregate_remaining_high_hours>"
+  --remaining-hours "<aggregate_remaining_high_hours>" \
+  --parallelism "<measured_parallelism_or_1>"
 ```
+
+`--parallelism` comes from `agent-pace.mjs` (1 when not measured). The clock fields
+stay the human's hours; `agent_daily_hours` and `agent_committed_target_hours` are
+what the agent-hour queue is packed against.
 
 The script enforces:
 
@@ -326,7 +341,8 @@ The script enforces:
 - if the required pace is higher, increase committed work only up to gross daily hours;
 - report overload separately when the required pace exceeds gross daily hours.
 
-Historical Pontaj hours do not change these available hours.
+Historical Pontaj hours do not change these available hours. Measured parallelism
+converts them into agent hours; it never adds human hours.
 
 ## Phase 6 — Rank and pack both daily queues
 
@@ -362,8 +378,8 @@ For every sliceable candidate, provide `slice_title`, `minimum_slice_hours`, and
 
 ```bash
 node "<skill_dir>/scripts/queue-pack.mjs" \
-  --gross-hours "<gross_daily_hours>" \
-  --committed-target-hours "<committed_target_hours>" \
+  --gross-hours "<agent_daily_hours>" \
+  --committed-target-hours "<agent_committed_target_hours>" \
   --candidates-file "<temporary_ranked_candidates_json>"
 ```
 
@@ -625,6 +641,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] No codebase file changed.
 - [ ] Pontaj calibrated estimates but did not define availability.
 - [ ] Only confirmed human hours consumed human capacity or calibrated effort; conversation estimates and unspecified history remained separate, and an existing availability declaration was reused without a redundant question.
+- [ ] Agent-executed items used the agent calibration (`agent-pace.mjs`, `--calibration-basis agent_measured`) when it was usable, the queue was packed in agent hours (`agent_daily_hours`) at the measured parallelism, and the proposal showed clock hours and agent hours side by side.
 - [ ] Each source type used its own calibration; feature/hour fallback was not applied to bugs, tests, or To-Dos.
 - [ ] A 2–9 item sample used the provisional factor from the view, never the lower raw factor.
 - [ ] Daily hours came from the profile.

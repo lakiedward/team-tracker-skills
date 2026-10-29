@@ -53,6 +53,7 @@ export function calculateDailyBudget({
   deadline,
   weeklyHours,
   remainingHours,
+  parallelism = 1,
 }) {
   const weekly = Number(weeklyHours);
   const remaining = Number(remainingHours);
@@ -62,6 +63,10 @@ export function calculateDailyBudget({
   if (!Number.isFinite(remaining) || remaining < 0) {
     throw new Error('remainingHours must be zero or positive');
   }
+  const lanes = Number(parallelism);
+  if (!Number.isFinite(lanes) || lanes < 1) {
+    throw new Error('parallelism must be at least 1');
+  }
 
   const planningDate = nextWorkingDay(today);
   const workingDaysLeft = workingDaysInclusive(planningDate, deadline);
@@ -70,7 +75,9 @@ export function calculateDailyBudget({
   const baseCommittedHours = grossDailyHours <= 1
     ? grossDailyHours
     : grossDailyHours - 1;
-  const requiredDailyHours = deadlinePassed ? null : remaining / workingDaysLeft;
+  // Remaining work is in agent hours; convert it to the human's clock before
+  // comparing it with the profile, since parallel threads overlap.
+  const requiredDailyHours = deadlinePassed ? null : remaining / lanes / workingDaysLeft;
   const committedTargetHours = deadlinePassed
     ? grossDailyHours
     : Math.min(grossDailyHours, Math.max(baseCommittedHours, requiredDailyHours));
@@ -98,6 +105,12 @@ export function calculateDailyBudget({
     overload_hours_per_week: overloadHoursPerDay === null
       ? null
       : round(overloadHoursPerDay * 5),
+    // Every field above is the human's clock. The queue is packed in agent
+    // hours, because estimates are calibrated on agent time and parallel
+    // threads deliver more than one agent hour per clock hour.
+    parallelism: round(lanes),
+    agent_daily_hours: round(grossDailyHours * lanes),
+    agent_committed_target_hours: round(committedTargetHours * lanes),
   };
 }
 
@@ -113,15 +126,16 @@ function main() {
     weeklyHours: readArgument('weekly-hours'),
     remainingHours: readArgument('remaining-hours'),
   };
+  const parallelism = readArgument('parallelism');
   if (Object.values(request).some((value) => value === null)) {
     process.stderr.write(
       'Usage: node daily-budget.mjs --today YYYY-MM-DD --deadline YYYY-MM-DD '
-      + '--weekly-hours N --remaining-hours N\n',
+      + '--weekly-hours N --remaining-hours N [--parallelism N]\n',
     );
     process.exitCode = 2;
     return;
   }
-  process.stdout.write(`${JSON.stringify(calculateDailyBudget(request), null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(calculateDailyBudget({ ...request, parallelism: parallelism ?? 1 }), null, 2)}\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
