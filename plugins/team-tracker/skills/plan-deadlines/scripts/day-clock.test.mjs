@@ -41,7 +41,8 @@ const queues = {
 
 // 12:25 local, the moment the coordinator stopped on 4.11: committed and reserve
 // are running or waiting on cards, so the conveyor reaches into the next days
-// and the approved reservoir instead of ending the day.
+// instead of ending the day. The reservoir does not start on the list alone:
+// its next concrete work goes on one card first (choice of 4.11.2026).
 const midday = conveyorNext({
   now: '2026-11-04T10:25:00Z',
   day_end_at: day.day_end_at,
@@ -54,13 +55,110 @@ assert.equal(midday.max_threads, 4);
 assert.equal(midday.slots_free, 3);
 assert.deepEqual(midday.start.map((item) => [item.stable_key, item.conveyor_source]), [
   ['todo:230', 'next_days'],
-  ['reservoir:ui-audit:/cluburi', 'reservoir'],
 ]);
+assert.deepEqual(midday.new_work_card, {
+  post: 'now',
+  question: 'Vrei să mă apuc de asta?',
+  items: [{
+    stable_key: 'reservoir:ui-audit:/cluburi',
+    title: 'reservoir:ui-audit:/cluburi',
+    estimate_hours_low: 0.5,
+    estimate_hours_high: 0.5,
+    approved_by: 'setările proiectului, 04.11',
+  }],
+});
 assert.deepEqual(midday.human_only_keys, ['section:4427']);
-assert.deepEqual(midday.unapproved_reservoir_keys, ['reservoir:inventat'], 'no invented filler');
+assert.deepEqual(midday.unapproved_reservoir_keys, ['reservoir:inventat'], 'no invented filler, not even on the card');
 assert.equal(midday.next_wake_in_minutes, 30);
 assert.equal(midday.next_card_batch.at_local, '2026-11-04 15:00');
 assert.equal(midday.send_day_end_report, false);
+
+// While the card waits, the item is neither started nor proposed again.
+const pending = conveyorNext({
+  now: '2026-11-04T10:40:00Z',
+  day_end_at: day.day_end_at,
+  running: ['feature:615', 'todo:230'],
+  waiting_on_human: ['feature:614', 'todo:248'],
+  proposed_keys: ['reservoir:ui-audit:/cluburi'],
+  queues,
+});
+assert.deepEqual(pending.start, []);
+assert.equal(pending.new_work_card, null);
+assert.deepEqual(pending.awaiting_card_keys, ['reservoir:ui-audit:/cluburi']);
+
+// After the tap the item carries confirmed_by and starts like any other.
+const tapped = {
+  ...queues,
+  reservoir: [{ ...queues.reservoir[0], confirmed_by: 'card 04.11 12:41 „Da, toate”' }, queues.reservoir[1]],
+};
+const afterTap = conveyorNext({
+  now: '2026-11-04T10:42:00Z',
+  day_end_at: day.day_end_at,
+  running: ['feature:615', 'todo:230'],
+  waiting_on_human: ['feature:614', 'todo:248'],
+  queues: tapped,
+});
+assert.deepEqual(afterTap.start.map((item) => [item.stable_key, item.conveyor_source]), [
+  ['reservoir:ui-audit:/cluburi', 'reservoir'],
+]);
+assert.equal(afterTap.new_work_card, null);
+
+// The card waits until nothing from the plan is left to start, and names at most four items.
+const reservoirOnly = Array.from({ length: 6 }, (_, index) => ({
+  stable_key: `reservoir:tests:${index}`, title: `Teste lipsă ${index}`, estimate_hours_low: 0.5, approved_by: 'setări',
+}));
+const planLeft = conveyorNext({
+  now: '2026-11-04T09:00:00Z',
+  day_end_at: day.day_end_at,
+  max_threads: 1,
+  queues: { committed: [{ stable_key: 'bug:1', estimate_hours_low: 0.5 }, { stable_key: 'bug:2', estimate_hours_low: 0.5 }], reservoir: reservoirOnly },
+});
+assert.deepEqual(planLeft.start.map((item) => item.stable_key), ['bug:1']);
+assert.equal(planLeft.new_work_card, null, 'bug:2 still waits for a thread');
+const lastPlanItem = conveyorNext({
+  now: '2026-11-04T09:30:00Z',
+  day_end_at: day.day_end_at,
+  max_threads: 1,
+  done_keys: ['bug:1'],
+  queues: { committed: [{ stable_key: 'bug:1', estimate_hours_low: 0.5 }, { stable_key: 'bug:2', estimate_hours_low: 0.5 }], reservoir: reservoirOnly },
+});
+assert.deepEqual(lastPlanItem.start.map((item) => item.stable_key), ['bug:2']);
+assert.deepEqual(
+  lastPlanItem.new_work_card.items.map((item) => [item.stable_key, item.title]),
+  [0, 1, 2, 3].map((index) => [`reservoir:tests:${index}`, `Teste lipsă ${index}`]),
+  'the card goes out while the last plan item runs',
+);
+
+// With the plan done and the card unanswered, the day does not end: the tap wakes
+// the coordinator, and the next wake is the next card batch or the end.
+const unanswered = conveyorNext({
+  now: '2026-11-04T10:30:00Z',
+  day_end_at: day.day_end_at,
+  proposed_keys: ['reservoir:tests:0'],
+  queues: { reservoir: reservoirOnly },
+});
+assert.equal(unanswered.continue, true);
+assert.equal(unanswered.reason, 'awaiting_new_work_card');
+assert.equal(unanswered.new_work_card, null, 'one card at a time');
+assert.equal(unanswered.send_day_end_report, false);
+assert.equal(unanswered.next_wake_in_minutes, 150, '12:30 local wakes at the 15:00 batch');
+
+// „Nu, nimic nou azi” and items the human left out are not proposed again.
+const noNewWork = conveyorNext({
+  now: '2026-11-04T10:30:00Z', day_end_at: day.day_end_at, no_new_work: true, queues: { reservoir: reservoirOnly },
+});
+assert.equal(noNewWork.continue, false);
+assert.equal(noNewWork.reason, 'no_executable_work');
+assert.equal(noNewWork.new_work_card, null);
+const declined = conveyorNext({
+  now: '2026-11-04T10:30:00Z',
+  day_end_at: day.day_end_at,
+  declined_keys: ['reservoir:tests:0', 'reservoir:tests:1'],
+  queues: { reservoir: reservoirOnly },
+});
+assert.deepEqual(declined.new_work_card.items.map((item) => item.stable_key), [
+  'reservoir:tests:2', 'reservoir:tests:3', 'reservoir:tests:4', 'reservoir:tests:5',
+]);
 
 // Slots are filled in conveyor order and never beyond max_threads.
 const morning = conveyorNext({ now: '2026-11-04T08:30:00Z', day_end_at: day.day_end_at, max_threads: 2, queues });
@@ -112,7 +210,8 @@ assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.
 
 // What the conveyor takes beyond the approved queue becomes a reserve row of
 // the current plan, so Focus shows it as „Luat de bandă” (choice of 4.11.2026).
-const [nextDay, reservoirEntry] = midday.start;
+const [nextDay] = midday.start;
+const [reservoirEntry] = afterTap.start;
 const nextDayRow = conveyorPlanRow({
   plan_id: 187,
   next_sequence: 13,
@@ -157,7 +256,12 @@ assert.equal(reservoirRow.values.stable_key, 'todo:251', 'the row is keyed by th
 assert.equal(reservoirRow.values.planned_due_date, '2026-11-05', 'the planned date is the Bucharest day of the start');
 assert.equal(
   reservoirRow.values.scope_reason,
-  'queue_role=reserve; conveyor_source=reservoir; approved_by=setările proiectului, 04.11',
+  'queue_role=reserve; conveyor_source=reservoir; approved_by=setările proiectului, 04.11 · card: card 04.11 12:41 „Da, toate”',
+);
+assert.throws(
+  () => conveyorPlanRow({ plan_id: 187, next_sequence: 15, now: '2026-11-04T10:25:00Z', item: { ...reservoirEntry, confirmed_by: '', source_type: 'todo', source_id: 3, title: 'x' } }),
+  /new-work card/,
+  'no reservoir row without the tap',
 );
 assert.throws(
   () => conveyorPlanRow({ plan_id: 187, next_sequence: 15, now: '2026-11-04T10:25:00Z', item: reservoirEntry }),

@@ -132,6 +132,20 @@ function keySet(list, label) {
   return new Set(list.map((entry) => (typeof entry === 'string' ? entry : itemKey(entry, label))));
 }
 
+const NEW_WORK_CARD_ITEMS = 4;
+const NEW_WORK_QUESTION = 'Vrei să mă apuc de asta?';
+
+function cardItem(item, key) {
+  const title = String(item.title ?? '').trim();
+  return {
+    stable_key: key,
+    title: title || key,
+    estimate_hours_low: Number(item.estimate_hours_low ?? DEFAULT_ITEM_HOURS),
+    estimate_hours_high: Number(item.estimate_hours_high ?? item.estimate_hours_low ?? DEFAULT_ITEM_HOURS),
+    approved_by: String(item.approved_by).trim(),
+  };
+}
+
 function idleReason(humanCount, tooLongCount) {
   if (humanCount) return 'only_human_work_left';
   if (tooLongCount) return 'remaining_items_exceed_clock';
@@ -152,6 +166,9 @@ export function conveyorNext({
   queues = {},
   stop_requested: stopRequested = false,
   card_batches: batches = DEFAULT_CARD_BATCHES,
+  proposed_keys: proposed = [],
+  declined_keys: declined = [],
+  no_new_work: noNewWork = false,
 }) {
   const nowMs = instant(now, 'now');
   const endMs = instant(dayEnd, 'day_end_at');
@@ -164,8 +181,10 @@ export function conveyorNext({
 
   const runningKeys = keySet(running, 'running');
   const waitingKeys = keySet(waiting, 'waiting_on_human');
+  const proposedKeys = keySet(proposed, 'proposed_keys');
   const excluded = new Set([
     ...runningKeys, ...waitingKeys, ...keySet(done, 'done_keys'), ...keySet(blocked, 'blocked_keys'),
+    ...keySet(declined, 'declined_keys'),
   ]);
   const remainingHours = Math.max(0, (endMs - nowMs) / HOUR_MS);
   const base = {
@@ -190,6 +209,9 @@ export function conveyorNext({
   const humanOnly = [];
   const tooLongForClock = [];
   const unapproved = [];
+  const cardCandidates = [];
+  const awaitingCard = [];
+  let backlog = 0;
   for (const role of CONVEYOR_ORDER) {
     for (const item of queues[role] ?? []) {
       const key = itemKey(item, `${role} item`);
@@ -200,8 +222,8 @@ export function conveyorNext({
         continue;
       }
       if (item.dependency_ready === false) continue;
-      // The planner never invents filler: a reservoir entry is executable only
-      // when it names the human approval it comes from.
+      // The planner never invents filler: a reservoir entry can reach the card
+      // only when it names the list approval it comes from.
       if (role === 'reservoir' && !String(item.approved_by ?? '').trim()) {
         unapproved.push(key);
         excluded.add(key);
@@ -212,28 +234,52 @@ export function conveyorNext({
         tooLongForClock.push(key);
         continue;
       }
+      // The list approves what may be proposed; the human's tap on the new-work
+      // card approves what starts (choice of 4.11.2026). Nothing from the
+      // reservoir runs on the list alone.
+      if (role === 'reservoir' && !String(item.confirmed_by ?? '').trim()) {
+        excluded.add(key);
+        if (noNewWork) continue;
+        if (proposedKeys.has(key)) awaitingCard.push(key);
+        else cardCandidates.push(cardItem(item, key));
+        continue;
+      }
       if (start.length < slots) {
         start.push({ ...item, stable_key: key, conveyor_source: role });
         excluded.add(key);
+      } else {
+        backlog += 1;
       }
     }
   }
 
+  // One card at a time, posted as soon as nothing is left waiting to start, so
+  // the human can answer while the last threads still run.
+  const newWorkCard = !awaitingCard.length && backlog === 0 && cardCandidates.length
+    ? { post: 'now', question: NEW_WORK_QUESTION, items: cardCandidates.slice(0, NEW_WORK_CARD_ITEMS) }
+    : null;
   const idle = runningKeys.size === 0 && start.length === 0;
-  const wakeMinutes = Math.max(1, Math.min(WAKE_MINUTES, Math.ceil(remainingHours * 60)));
+  const awaitingNewWork = idle && Boolean(newWorkCard || awaitingCard.length);
+  const batch = waitingKeys.size || awaitingNewWork ? nextCardBatch({ now, day_end_at: dayEnd, batches }) : null;
+  const wakeMinutes = awaitingNewWork
+    ? Math.max(1, Math.ceil((Date.parse(batch.at) - nowMs) / 60000))
+    : Math.max(1, Math.min(WAKE_MINUTES, Math.ceil(remainingHours * 60)));
   return {
     ...base,
-    continue: !idle,
-    reason: idle ? idleReason(waitingKeys.size + humanOnly.length, tooLongForClock.length)
-      : start.length ? 'slots_filled' : 'threads_busy',
+    continue: !idle || awaitingNewWork,
+    reason: awaitingNewWork ? 'awaiting_new_work_card'
+      : idle ? idleReason(waitingKeys.size + humanOnly.length, tooLongForClock.length)
+        : start.length ? 'slots_filled' : 'threads_busy',
     slots_free: slots,
     start,
+    new_work_card: newWorkCard,
+    awaiting_card_keys: awaitingCard,
     human_only_keys: humanOnly,
     too_long_for_clock_keys: tooLongForClock,
     unapproved_reservoir_keys: unapproved,
-    next_wake_in_minutes: idle ? null : wakeMinutes,
-    next_card_batch: waitingKeys.size ? nextCardBatch({ now, day_end_at: dayEnd, batches }) : null,
-    send_day_end_report: idle,
+    next_wake_in_minutes: idle && !awaitingNewWork ? null : wakeMinutes,
+    next_card_batch: waitingKeys.size ? batch : null,
+    send_day_end_report: idle && !awaitingNewWork,
   };
 }
 
@@ -260,7 +306,11 @@ export function conveyorPlanRow({ plan_id: planId, next_sequence: nextSequence, 
   const sequence = Number(nextSequence);
   if (!Number.isInteger(sequence) || sequence < 0) throw new Error('next_sequence must be a non-negative integer');
   const approvedBy = String(item.approved_by ?? '').trim();
+  const confirmedBy = String(item.confirmed_by ?? '').trim();
   if (source === 'reservoir' && !approvedBy) throw new Error('a reservoir entry needs approved_by');
+  if (source === 'reservoir' && !confirmedBy) {
+    throw new Error('a reservoir entry starts only after the human tapped it on the new-work card (confirmed_by)');
+  }
   if (!PLAN_SOURCE_TYPES.has(item.source_type) || item.source_id == null) {
     throw new Error(source === 'reservoir'
       ? 'create the tracker item for this reservoir entry first (todo_create), then pass its source_type and source_id'
@@ -288,7 +338,9 @@ export function conveyorPlanRow({ plan_id: planId, next_sequence: nextSequence, 
     scope,
     'queue_role=reserve',
     `conveyor_source=${source}`,
-    ...(source === 'reservoir' ? [`approved_by=${approvedBy.replace(/;/g, ',')}`] : []),
+    // Focus labels approved_by „Aprobat prin”; the tap goes in the same field so
+    // the row shows both approvals without a new key.
+    ...(source === 'reservoir' ? [`approved_by=${`${approvedBy} · card: ${confirmedBy}`.replace(/;/g, ',')}`] : []),
   ].filter(Boolean).join('; ');
   return {
     table: 'tt_delivery_plan_items',

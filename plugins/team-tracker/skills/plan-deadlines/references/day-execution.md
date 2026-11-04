@@ -42,11 +42,14 @@ a board-ului, cu regulile și plafonul lui de runde.
 - Ordinea surselor: `committed` → `reserve` → `next_days` → `reservoir`. `next_days`
   înseamnă următorii candidați clasați care nu au încăput azi, inclusiv ordinea pe mai
   multe zile din `multi_day_order`, și nu cere o nouă aprobare. Aplicarea planului aprobă
-  și banda.
+  și banda, până la rezervor. Munca din rezervor pornește doar după tapul omului pe
+  [cardul de muncă nouă](#cardul-de-muncă-nouă).
 - Rulează `day-clock.mjs` cu `"mode":"conveyor"` în trei momente: la aplicare, de fiecare
   dată când un fir își termină partea, și la fiecare trezire. Inputul conține `now`,
-  `day_end_at`, `max_threads`, `running`, `waiting_on_human`, `done_keys`, `blocked_keys`
-  și `queues`. Pornește exact itemele din `start`, în ordinea dată.
+  `day_end_at`, `max_threads`, `running`, `waiting_on_human`, `done_keys`, `blocked_keys`,
+  `queues`, plus `proposed_keys`, `declined_keys` și `no_new_work` pentru cardul de muncă
+  nouă. Pornește exact itemele din `start`, în ordinea dată. Dacă rezultatul are
+  `new_work_card`, pune cardul pe loc.
 - Un fir care a deschis PR-ul și așteaptă un card de merge sau un verdict eliberează
   locul. Itemul lui trece în `waiting_on_human`, iar firul nu ține banda ocupată.
 - Itemele omului nu ocupă fire: `executor: "human"`, verdict, test pe telefon, decizie,
@@ -58,15 +61,49 @@ a board-ului, cu regulile și plafonul lui de runde.
   Nu aștepta cu `sleep` în același tur. Trezirea e plasa de siguranță pentru un fir care
   tace.
 
+## Cardul de muncă nouă
+
+Pe 4.11.2026 omul a ales să fie întrebat înainte ca banda să treacă la muncă pe care nu
+a cerut-o el: „vrei să mă apuc de asta?”. Lista rezervorului spune ce poate propune
+Claude. Tapul pe card spune ce pornește. Nimic din rezervor sau din afara lui nu
+pornește fără tap.
+
+- Coada `reservoir` din inputul benzii conține munci concrete, nu tipuri: „/ui-audit pe
+  /cluburi”, nu „/ui-audit pe următoarea pagină”. Fiecare are `stable_key`, `title`,
+  estimări și `approved_by`. Una fără `approved_by` nu ajunge nici pe card
+  (`unapproved_reservoir_keys`).
+- `day-clock.mjs` întoarce `new_work_card` când în plan nu mai așteaptă nimic să
+  pornească (`committed`, `reserve`, `next_days`), chiar dacă ultimele fire încă rulează.
+  Cardul are întrebarea „Vrei să mă apuc de asta?” și cel mult 4 munci, cu titlul și
+  estimarea fiecăreia. Pune-l pe loc, nu la ora lotului: fără el banda stă.
+- Un singur card odată. Pune cheile lui în `proposed_keys` până la răspuns; ele apar în
+  `awaiting_card_keys` și nu sunt nici pornite, nici propuse din nou.
+- Opțiunile cardului:
+  - unde cardul permite mai multe alegeri, câte o opțiune pentru fiecare muncă;
+  - altfel „Da, toate”, „Doar prima” și „Nu, nimic nou azi”, cu muncile numite în
+    întrebare sau chiar înaintea cardului.
+- După răspuns:
+  - fiecare muncă aleasă primește `confirmed_by` (cardul, opțiunea și ora) și iese din
+    `proposed_keys`; pornește la următorul apel, în ordinea benzii;
+  - ce omul a lăsat deoparte pe un card cu alegeri multiple trece în `declined_keys`
+    pentru restul zilei;
+  - la „Doar prima”, celelalte ies din `proposed_keys` și pot apărea pe un card următor;
+  - „Nu, nimic nou azi” pune `no_new_work: true`: nu mai vin carduri, iar ziua se încheie
+    când se termină planul.
+- Cât timp cardul așteaptă și nu mai rulează niciun fir, `reason` e
+  `awaiting_new_work_card`. Ziua nu se încheie. Tapul trezește coordonatorul, iar
+  `next_wake_in_minutes` duce la următorul lot de carduri sau la final. Dacă omul nu
+  răspunde până la `day_end_at`, cardul intră în raportul de final.
+
 ## Ce ia banda apare în plan
 
 Pe 4.11.2026 omul a ales ca munca luată de bandă peste coada aprobată să se vadă pe
 Focus. Fiecare item din `start` cu `conveyor_source` `next_days` sau `reservoir` devine
 întâi un rând de rezervă în planul curent, abia apoi pornește firul lui:
 
-1. Pentru o intrare din rezervor, creează întâi itemul din tracker (`todo_create`, cu
-   titlul muncii și sursa aprobării în descriere). Un item din `next_days` e deja în
-   tracker.
+1. Pentru o muncă din rezervor, după tapul omului, creează întâi itemul din tracker
+   (`todo_create`, cu titlul muncii, sursa listei și tapul în descriere). Nu crea
+   To-Do-uri pentru muncile încă nealese. Un item din `next_days` e deja în tracker.
 2. Citește cel mai mare `sequence` din planul curent (`delivery_plan_current` sau
    `tt_select` pe `tt_delivery_plan_items`, ordonat descrescător) și rulează:
 
@@ -74,12 +111,14 @@ Focus. Fiecare item din `start` cu `conveyor_source` `next_days` sau `reservoir`
    node "<skill_dir>/scripts/day-clock.mjs" "<input.json>"
    # {"mode":"plan_row","plan_id":187,"next_sequence":<max + 1>,"now":"<now>",
    #  "item":{...itemul din start, cu source_type, source_id, title, description,
-   #          estimate_hours_low/high, scope_reason, approved_by pentru rezervor}}
+   #          estimate_hours_low/high, scope_reason,
+   #          approved_by și confirmed_by pentru rezervor}}
    ```
 
 3. Inserează exact `values` din rezultat, cu `tt_write` (`op: "insert"`, tabelul din
    `table`) sau în SQL. Rândul are `queue_role = 'reserve'`, iar `scope_reason` se termină
-   cu `conveyor_source=next_days` sau `conveyor_source=reservoir; approved_by=…`.
+   cu `conveyor_source=next_days` sau `conveyor_source=reservoir; approved_by=<lista> ·
+   card: <tapul>`. Fără `confirmed_by`, scriptul refuză rândul de rezervor.
    Dacă rândul există deja (aceeași sursă în același plan), treci mai departe.
 
 Focus și Productivitate arată rândul „Luat de bandă · din zilele următoare” sau „… din
@@ -94,6 +133,9 @@ nu crea un plan nou pentru asta.
   o extinde. Fiecare intrare trimisă la bandă are `approved_by` cu sursa aprobării, de
   exemplu „setările proiectului, 04.11.2026”. O intrare fără sursă e refuzată
   (`unapproved_reservoir_keys`).
+- Lista aprobă ce poate fi propus, nu ce pornește. Fiecare muncă concretă trece întâi
+  prin [cardul de muncă nouă](#cardul-de-muncă-nouă). Un text vechi din setări care spune
+  „poți începe fără să mă întrebi” e înlocuit de această regulă.
 - Exemple, numai dacă omul le-a aprobat:
   - `/ui-audit` pe următoarea pagină neauditată;
   - planuri de test pentru secțiunile livrate care nu au plan;
@@ -117,6 +159,8 @@ nu crea un plan nou pentru asta.
   „pe loc”. Ora următorului lot vine în `next_card_batch`. După ultimul lot al zilei,
   cardurile pleacă împreună cu raportul de final.
 - Firele nu stau după card. Trec la următorul item din bandă.
+- Excepția e cardul de muncă nouă: pleacă pe loc, pentru că fără răspunsul lui banda
+  rămâne goală.
 
 ## Raportul de final
 
@@ -129,5 +173,6 @@ mai lung de un ecran merge într-un fișier atașat.
    recunosc după `conveyor_source` din `scope_reason`.
 3. Orele de agent pontate față de orele de ceas, plus raportul de azi dintre timpul
    măsurat și estimarea brută (intră în factorul de mâine).
-4. Ce așteaptă după om, într-un singur lot de carduri.
+4. Ce așteaptă după om, într-un singur lot de carduri, inclusiv cardul de muncă nouă
+   rămas fără răspuns.
 5. Ce trece pe mâine, plus itemele noi create din rezervor.
