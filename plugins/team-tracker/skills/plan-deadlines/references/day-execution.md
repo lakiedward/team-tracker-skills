@@ -1,0 +1,103 @@
+# Execuția zilei: contract de ceas și bandă continuă
+
+Un plan aplicat nu se termină când se golește coada. Pe 4.11.2026, Motion (planul 187)
+avea 20,5h estimate; agentul a pontat 5,2h. Cele 6 fire au pornit toate la 10:42, au
+ajuns pe master la 12:20, iar coordonatorul s-a oprit la 12:25 cu 5 iteme de rezervă
+neatinse. Între 12:25 și 13:20 nu s-a întâmplat nimic. Omul ceruse 10 ore de lucru.
+
+Regulile de mai jos se aplică oricui execută un plan zilnic: coordonatorul unui proiect
+cloud, un fir pornit de el sau o sesiune locală. `/orchestrate` rămâne o curățare locală
+a board-ului, cu regulile și plafonul lui de runde.
+
+## Contractul de ceas
+
+- „Plan de N ore” înseamnă lucru de agent până la `day_end_at` = momentul aplicării + N
+  ore. La aplicare rulează:
+
+  ```bash
+  node "<skill_dir>/scripts/day-clock.mjs" "<input.json>"
+  # {"mode":"day_end","applied_at":"2026-11-04T08:22:05Z","hours":10}
+  ```
+
+  Salvează în `velocity_snapshot`: `day_end_at`, `day_end_local`, `clock_hours`,
+  `max_threads` și `card_batches`. Dacă `crosses_midnight` e adevărat, spune-o în
+  propunere înainte de aplicare.
+- Ziua se oprește doar în trei cazuri: la `day_end_at`; când omul spune „stop”; sau când
+  tot ce a rămas așteaptă după om (`only_human_work_left`). În ultimul caz trimite un
+  singur raport, cu un singur lot de carduri.
+- O coadă goală nu e o oprire. Nici suma Pontajului de agent nu e un prag: orele agentului
+  nu consumă orele omului (regula 6). `day_stop_hours` rămâne pragul orelor umane
+  declarate, pentru munca pe care o face omul însuși.
+- La replanificare în aceeași zi, trimite `day_end_at` și `now` în inputul
+  `replan-context.mjs`. Bugetul rundei devine ceasul rămas. „Încă 2h” mută ora de final cu
+  două ore. Contractul de ceas e chiar declarația omului, deci un Pontaj uman gol nu mai
+  blochează runda.
+
+## Banda
+
+- Coordonatorul ține cel mult `max_threads` fire pornite în același timp. Implicit sunt 4;
+  instrucțiunile proiectului pot alege între 1 și 8. Nu porni toate itemele deodată:
+  capacitatea planului e calculată pe numărul acesta de fire (`conveyor_parallelism` din
+  [calibrare](agent-calibration.md)).
+- Ordinea surselor: `committed` → `reserve` → `next_days` → `reservoir`. `next_days`
+  înseamnă următorii candidați clasați care nu au încăput azi, inclusiv ordinea pe mai
+  multe zile din `multi_day_order`, și nu cere o nouă aprobare. Aplicarea planului aprobă
+  și banda.
+- Rulează `day-clock.mjs` cu `"mode":"conveyor"` în trei momente: la aplicare, de fiecare
+  dată când un fir își termină partea, și la fiecare trezire. Inputul conține `now`,
+  `day_end_at`, `max_threads`, `running`, `waiting_on_human`, `done_keys`, `blocked_keys`
+  și `queues`. Pornește exact itemele din `start`, în ordinea dată.
+- Un fir care a deschis PR-ul și așteaptă un card de merge sau un verdict eliberează
+  locul. Itemul lui trece în `waiting_on_human`, iar firul nu ține banda ocupată.
+- Itemele omului nu ocupă fire: `executor: "human"`, verdict, test pe telefon, decizie,
+  domeniu. Merg în lotul de carduri.
+- Spre final, pornește doar ce încape: un item cu `estimate_hours_low` mai mare decât
+  ceasul rămas e sărit pentru unul mai mic (`too_long_for_clock_keys`).
+- Programează o trezire după `next_wake_in_minutes` (30 de minute, sau exact la final).
+  Folosește mecanismul sesiunii (`send_later`, o trezire programată sau ceva echivalent).
+  Nu aștepta cu `sleep` în același tur. Trezirea e plasa de siguranță pentru un fir care
+  tace.
+
+## Rezervorul de umplere
+
+- Rezervorul e o listă de tipuri de muncă, aprobată de om o singură dată și scrisă în
+  instrucțiunile proiectului sau dată în conversație. Planificatorul nu o inventează și nu
+  o extinde. Fiecare intrare trimisă la bandă are `approved_by` cu sursa aprobării, de
+  exemplu „setările proiectului, 04.11.2026”. O intrare fără sursă e refuzată
+  (`unapproved_reservoir_keys`).
+- Exemple, numai dacă omul le-a aprobat:
+  - `/ui-audit` pe următoarea pagină neauditată;
+  - planuri de test pentru secțiunile livrate care nu au plan;
+  - `/triage` pe bug-urile noi;
+  - review de securitate pe RLS și funcții;
+  - fișierele de peste limita de linii din instrucțiunile repo-ului;
+  - teste lipsă;
+  - performanță.
+- Fiecare rezultat devine întâi item în tracker, prin skillul potrivit. Codul trece prin
+  PR și cardul de merge. Nicio poartă umană nu e atinsă. Ce găsește rezervorul azi e
+  muncă reală pentru planul de mâine.
+- Rezervorul nu intră în `queue-pack.mjs` și nu apare ca ore committed sau reserve. Este
+  sursa benzii după ce candidații reali s-au terminat. Regula 14 rămâne: golurile de
+  acoperire se raportează în propunere, nu se umplu.
+
+## Cardurile, în loturi
+
+- Merge-ul, deploy-ul și orice pas ireversibil rămân fiecare pe cardul lui, după regulile
+  proiectului. Diferența e momentul: le pui împreună la orele lotului (`card_batches`;
+  implicit 12:00, 15:00 și 18:00, ora României). Instrucțiunile proiectului pot cere
+  „pe loc”. Ora următorului lot vine în `next_card_batch`. După ultimul lot al zilei,
+  cardurile pleacă împreună cu raportul de final.
+- Firele nu stau după card. Trec la următorul item din bandă.
+
+## Raportul de final
+
+La `day_end_at`, la „stop” sau la `only_human_work_left`, trimite un singur mesaj. Ce e
+mai lung de un ecran merge într-un fișier atașat.
+
+1. Ora de final, câte fire au rulat și câte ore de ceas au trecut.
+2. Ce s-a terminat, pe surse (`committed`, `reserve`, `next_days`, `reservoir`), cu starea
+   fiecărui item: pe master, PR deschis sau așteaptă card.
+3. Orele de agent pontate față de orele de ceas, plus raportul de azi dintre timpul
+   măsurat și estimarea brută (intră în factorul de mâine).
+4. Ce așteaptă după om, într-un singur lot de carduri.
+5. Ce trece pe mâine, plus itemele noi create din rezervor.

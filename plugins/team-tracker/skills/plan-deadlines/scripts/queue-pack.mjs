@@ -205,12 +205,25 @@ function summarizeGroups(items) {
   return [...groups.values()];
 }
 
+// The prepared queue is larger than the day's capacity so the conveyor does not
+// run dry before the clock end: estimates are a forecast, the end time is not.
+const MAX_QUEUE_FACTOR = 3;
+
 export function packDailyQueues({
   grossHours,
   committedTargetHours,
   candidates,
+  queueFactor = 1,
+  dayEndAt = null,
 }) {
   const gross = positiveNumber(grossHours, 'grossHours');
+  const factor = positiveNumber(queueFactor, 'queueFactor');
+  if (factor < 1 || factor > MAX_QUEUE_FACTOR) {
+    throw new Error(`queueFactor must be between 1 and ${MAX_QUEUE_FACTOR}`);
+  }
+  if (dayEndAt !== null && !Number.isFinite(Date.parse(dayEndAt))) {
+    throw new Error('dayEndAt must be an ISO timestamp');
+  }
   const committedTarget = nonNegativeNumber(committedTargetHours, 'committedTargetHours');
   if (committedTarget > gross + EPSILON) {
     throw new Error('committedTargetHours cannot exceed grossHours');
@@ -231,7 +244,8 @@ export function packDailyQueues({
   const committed = contiguousByGroup(committedPack.selected, 1);
   const committedLow = sum(committed, 'estimate_hours_low');
   const committedHigh = sum(committed, 'estimate_hours_high');
-  const reserveTarget = round(Math.max(0, gross - committedLow));
+  const queueTarget = round(gross * factor);
+  const reserveTarget = round(Math.max(0, queueTarget - committedLow));
   const remainingCandidates = ordered.filter(
     (candidate) => !committedPack.usedKeys.has(candidate.stable_key),
   );
@@ -248,6 +262,8 @@ export function packDailyQueues({
   return {
     planning_contract_version: 2,
     gross_daily_hours: round(gross),
+    queue_factor: factor,
+    queue_target_hours: queueTarget,
     committed_target_hours: round(committedTarget),
     committed_hours_low: committedLow,
     committed_hours_high: committedHigh,
@@ -266,7 +282,9 @@ export function packDailyQueues({
     skipped_blocked_keys: normalized
       .filter((candidate) => !candidate.dependency_ready)
       .map((candidate) => candidate.stable_key),
-    stop_rule: `Stop when actual logged work reaches ${round(gross)}h for the planning day.`,
+    stop_rule: dayEndAt
+      ? `Run the conveyor until ${new Date(Date.parse(dayEndAt)).toISOString()}; an empty queue is refilled, not a stop.`
+      : `Stop when actual logged work reaches ${round(gross)}h for the planning day.`,
   };
 }
 
@@ -287,6 +305,8 @@ function main() {
     committedTargetHours: readArgument('committed-target-hours')
       ?? payload.committed_target_hours,
     candidates,
+    queueFactor: readArgument('queue-factor') ?? payload.queue_factor ?? 1,
+    dayEndAt: readArgument('day-end-at') ?? payload.day_end_at ?? null,
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

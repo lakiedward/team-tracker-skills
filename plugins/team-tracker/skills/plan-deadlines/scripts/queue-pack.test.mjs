@@ -208,4 +208,30 @@ assert.throws(
   /ranked by rank_tier/,
 );
 
+// A 1.5x queue: the reserve keeps going to 1.5 x gross minus committed low, so
+// the conveyor still has ranked work when estimates turn out high again. The
+// stop rule names the clock end, not an hour total.
+const conveyorDay = packDailyQueues({
+  grossHours: 5,
+  committedTargetHours: 4,
+  queueFactor: 1.5,
+  dayEndAt: '2026-11-04T18:22:05Z',
+  candidates: [
+    { stable_key: 'bug:1', estimate_hours_low: 2.5, estimate_hours_high: 4 },
+    { stable_key: 'feature:2', estimate_hours_low: 1, estimate_hours_high: 1.5 },
+    { stable_key: 'todo:3', estimate_hours_low: 0.5, estimate_hours_high: 1 },
+    { stable_key: 'todo:4', estimate_hours_low: 1, estimate_hours_high: 2 },
+    { stable_key: 'todo:5', estimate_hours_low: 1, estimate_hours_high: 1 },
+  ],
+});
+assert.equal(conveyorDay.queue_factor, 1.5);
+assert.equal(conveyorDay.queue_target_hours, 7.5);
+assert.equal(conveyorDay.reserve_target_hours, 5);
+assert.deepEqual(conveyorDay.reserve.map((item) => item.stable_key), ['feature:2', 'todo:3', 'todo:4']);
+assert.equal(fullDay.queue_factor, 1, 'the default keeps the 1.49 packing');
+assert.match(conveyorDay.stop_rule, /2026-11-04T18:22:05.000Z/);
+assert.doesNotMatch(conveyorDay.stop_rule, /logged work/);
+assert.throws(() => packDailyQueues({ grossHours: 5, committedTargetHours: 4, candidates: [], queueFactor: 0.5 }), /queueFactor/);
+assert.throws(() => packDailyQueues({ grossHours: 5, committedTargetHours: 4, candidates: [], dayEndAt: 'diseară' }), /dayEndAt/);
+
 console.log('plan-deadlines queue packing tests passed');
