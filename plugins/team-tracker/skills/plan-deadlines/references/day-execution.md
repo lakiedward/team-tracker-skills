@@ -58,6 +58,35 @@ a board-ului, cu regulile și plafonul lui de runde.
   Nu aștepta cu `sleep` în același tur. Trezirea e plasa de siguranță pentru un fir care
   tace.
 
+## Ce ia banda apare în plan
+
+Pe 4.11.2026 omul a ales ca munca luată de bandă peste coada aprobată să se vadă pe
+Focus. Fiecare item din `start` cu `conveyor_source` `next_days` sau `reservoir` devine
+întâi un rând de rezervă în planul curent, abia apoi pornește firul lui:
+
+1. Pentru o intrare din rezervor, creează întâi itemul din tracker (`todo_create`, cu
+   titlul muncii și sursa aprobării în descriere). Un item din `next_days` e deja în
+   tracker.
+2. Citește cel mai mare `sequence` din planul curent (`delivery_plan_current` sau
+   `tt_select` pe `tt_delivery_plan_items`, ordonat descrescător) și rulează:
+
+   ```bash
+   node "<skill_dir>/scripts/day-clock.mjs" "<input.json>"
+   # {"mode":"plan_row","plan_id":187,"next_sequence":<max + 1>,"now":"<now>",
+   #  "item":{...itemul din start, cu source_type, source_id, title, description,
+   #          estimate_hours_low/high, scope_reason, approved_by pentru rezervor}}
+   ```
+
+3. Inserează exact `values` din rezultat, cu `tt_write` (`op: "insert"`, tabelul din
+   `table`) sau în SQL. Rândul are `queue_role = 'reserve'`, iar `scope_reason` se termină
+   cu `conveyor_source=next_days` sau `conveyor_source=reservoir; approved_by=…`.
+   Dacă rândul există deja (aceeași sursă în același plan), treci mai departe.
+
+Focus și Productivitate arată rândul „Luat de bandă · din zilele următoare” sau „… din
+rezervor”, iar promptul copiat îi spune firului de unde vine. Nu adăuga niciodată
+itemele `committed` sau `reserve`: sunt deja rânduri. Nu schimba `velocity_snapshot` și
+nu crea un plan nou pentru asta.
+
 ## Rezervorul de umplere
 
 - Rezervorul e o listă de tipuri de muncă, aprobată de om o singură dată și scrisă în
@@ -96,7 +125,8 @@ mai lung de un ecran merge într-un fișier atașat.
 
 1. Ora de final, câte fire au rulat și câte ore de ceas au trecut.
 2. Ce s-a terminat, pe surse (`committed`, `reserve`, `next_days`, `reservoir`), cu starea
-   fiecărui item: pe master, PR deschis sau așteaptă card.
+   fiecărui item: pe master, PR deschis sau așteaptă card. Rândurile adăugate de bandă se
+   recunosc după `conveyor_source` din `scope_reason`.
 3. Orele de agent pontate față de orele de ceas, plus raportul de azi dintre timpul
    măsurat și estimarea brută (intră în factorul de mâine).
 4. Ce așteaptă după om, într-un singur lot de carduri.
