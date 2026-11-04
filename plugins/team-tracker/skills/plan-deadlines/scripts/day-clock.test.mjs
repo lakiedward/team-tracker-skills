@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { conveyorNext, dayEndAt, nextCardBatch } from './day-clock.mjs';
+import { conveyorNext, conveyorPlanRow, dayEndAt, nextCardBatch } from './day-clock.mjs';
 
 // Motion, 4.11.2026: plan v41 applied at 10:22 local for 10 hours.
 const day = dayEndAt({ applied_at: '2026-11-04T08:22:05Z', hours: 10 });
@@ -109,5 +109,72 @@ assert.equal(dry.reason, 'no_executable_work');
 assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, max_threads: 9 }));
 assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { filler: [] } }));
 assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { committed: [{}] } }));
+
+// What the conveyor takes beyond the approved queue becomes a reserve row of
+// the current plan, so Focus shows it as „Luat de bandă” (choice of 4.11.2026).
+const [nextDay, reservoirEntry] = midday.start;
+const nextDayRow = conveyorPlanRow({
+  plan_id: 187,
+  next_sequence: 13,
+  now: '2026-11-04T10:25:00Z',
+  item: {
+    ...nextDay,
+    source_type: 'todo',
+    source_id: 230,
+    title: 'Pregătește fișa Google Play',
+    description: 'Din planul de joi.',
+    estimate_hours_high: 1.5,
+    scope_reason: 'why_now=Următorul în clasament; queue_role=committed; change_kind=data',
+  },
+});
+assert.equal(nextDayRow.table, 'tt_delivery_plan_items');
+assert.deepEqual(nextDayRow.values, {
+  plan_id: 187,
+  stable_key: 'todo:230',
+  source_type: 'todo',
+  source_id: 230,
+  title_snapshot: 'Pregătește fișa Google Play',
+  description_snapshot: 'Din planul de joi.',
+  phase: 'Livrare',
+  sequence: 13,
+  planned_due_date: '2026-11-04',
+  estimate_hours_low: 1,
+  estimate_hours_high: 1.5,
+  confidence: 'medium',
+  dependencies: [],
+  required_for_deadline: false,
+  queue_role: 'reserve',
+  scope_reason: 'why_now=Următorul în clasament; change_kind=data; queue_role=reserve; conveyor_source=next_days',
+  launch_outcome_keys: [],
+});
+const reservoirRow = conveyorPlanRow({
+  plan_id: 187,
+  next_sequence: 14,
+  now: '2026-11-04T22:30:00Z',
+  item: { ...reservoirEntry, source_type: 'todo', source_id: 251, title: 'Audit UI pe /cluburi' },
+});
+assert.equal(reservoirRow.values.stable_key, 'todo:251', 'the row is keyed by the To-Do, not by the reservoir entry');
+assert.equal(reservoirRow.values.planned_due_date, '2026-11-05', 'the planned date is the Bucharest day of the start');
+assert.equal(
+  reservoirRow.values.scope_reason,
+  'queue_role=reserve; conveyor_source=reservoir; approved_by=setările proiectului, 04.11',
+);
+assert.throws(
+  () => conveyorPlanRow({ plan_id: 187, next_sequence: 15, now: '2026-11-04T10:25:00Z', item: reservoirEntry }),
+  /create the tracker item/,
+  'a reservoir entry is a tracker item before it is a plan row',
+);
+assert.throws(
+  () => conveyorPlanRow({ plan_id: 187, next_sequence: 15, now: '2026-11-04T10:25:00Z', item: { ...reservoirEntry, approved_by: '', source_type: 'todo', source_id: 3, title: 'x' } }),
+  /approved_by/,
+);
+assert.throws(
+  () => conveyorPlanRow({ plan_id: 187, next_sequence: 15, now: '2026-11-04T10:25:00Z', item: { stable_key: 'todo:248', conveyor_source: 'reserve', source_type: 'todo', source_id: 248, title: 'x' } }),
+  /already plan rows/,
+);
+assert.throws(
+  () => conveyorPlanRow({ plan_id: 187, next_sequence: 15, now: '2026-11-04T10:25:00Z', item: { ...nextDay, source_type: 'todo', source_id: 230, title: 'x', estimate_hours_low: 2, estimate_hours_high: 1 } }),
+  /estimates/,
+);
 
 console.log('day-clock tests passed');

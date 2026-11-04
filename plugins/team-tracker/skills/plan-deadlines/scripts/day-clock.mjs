@@ -237,11 +237,88 @@ export function conveyorNext({
   };
 }
 
+const APPENDED_SOURCES = new Set(['next_days', 'reservoir']);
+const PLAN_SOURCE_TYPES = new Set(['bug', 'feature', 'test_plan', 'todo', 'ui_surface']);
+const CONFIDENCE = new Set(['high', 'medium', 'low']);
+
+function positiveInteger(value, label) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${label} must be a positive integer`);
+  return parsed;
+}
+
+// Work the conveyor takes beyond the approved queue is appended to the current
+// plan as a reserve row marked conveyor_source=, so Focus and Productivitate
+// show it as „Luat de bandă” and its copied prompt says where it came from.
+// Committed and reserve items are already rows of the plan; they are refused.
+export function conveyorPlanRow({ plan_id: planId, next_sequence: nextSequence, now, item }) {
+  const source = item?.conveyor_source;
+  if (!APPENDED_SOURCES.has(source)) {
+    throw new Error('only next_days and reservoir items are appended; committed and reserve are already plan rows');
+  }
+  const nowMs = instant(now, 'now');
+  const sequence = Number(nextSequence);
+  if (!Number.isInteger(sequence) || sequence < 0) throw new Error('next_sequence must be a non-negative integer');
+  const approvedBy = String(item.approved_by ?? '').trim();
+  if (source === 'reservoir' && !approvedBy) throw new Error('a reservoir entry needs approved_by');
+  if (!PLAN_SOURCE_TYPES.has(item.source_type) || item.source_id == null) {
+    throw new Error(source === 'reservoir'
+      ? 'create the tracker item for this reservoir entry first (todo_create), then pass its source_type and source_id'
+      : 'source_type and source_id are required');
+  }
+  const sourceId = positiveInteger(item.source_id, 'source_id');
+  // A reservoir entry is keyed by its work type until the To-Do exists; the row
+  // is keyed by the tracker item, like every other plan row.
+  const stableKey = source === 'reservoir'
+    ? `${item.source_type}:${sourceId}`
+    : itemKey(item, 'next_days item');
+  const title = String(item.title ?? '').trim();
+  if (!title) throw new Error('title is required');
+  const low = Number(item.estimate_hours_low ?? DEFAULT_ITEM_HOURS);
+  const high = Number(item.estimate_hours_high ?? low);
+  if (!Number.isFinite(low) || low <= 0 || !Number.isFinite(high) || high < low) {
+    throw new Error('estimates must satisfy 0 < estimate_hours_low <= estimate_hours_high');
+  }
+  const confidence = CONFIDENCE.has(item.confidence) ? item.confidence : 'medium';
+  const scope = String(item.scope_reason ?? '')
+    .replace(/(?:^|;)\s*(?:queue_role|conveyor_source|approved_by)=[^;]*/g, '')
+    .trim()
+    .replace(/^;\s*|;\s*$/g, '');
+  const scopeReason = [
+    scope,
+    'queue_role=reserve',
+    `conveyor_source=${source}`,
+    ...(source === 'reservoir' ? [`approved_by=${approvedBy.replace(/;/g, ',')}`] : []),
+  ].filter(Boolean).join('; ');
+  return {
+    table: 'tt_delivery_plan_items',
+    values: {
+      plan_id: positiveInteger(planId, 'plan_id'),
+      stable_key: stableKey,
+      source_type: item.source_type,
+      source_id: sourceId,
+      title_snapshot: title,
+      description_snapshot: String(item.description ?? ''),
+      phase: String(item.phase ?? '').trim() || 'Livrare',
+      sequence,
+      planned_due_date: zonedParts(nowMs).date,
+      estimate_hours_low: low,
+      estimate_hours_high: high,
+      confidence,
+      dependencies: Array.isArray(item.dependencies) ? item.dependencies.map(String) : [],
+      required_for_deadline: false,
+      queue_role: 'reserve',
+      scope_reason: scopeReason,
+      launch_outcome_keys: Array.isArray(item.launch_outcome_keys) ? item.launch_outcome_keys.map(String) : [],
+    },
+  };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   try {
     const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-    const modes = { day_end: dayEndAt, conveyor: conveyorNext, card_batch: nextCardBatch };
-    if (!modes[input.mode]) throw new Error('mode must be day_end, conveyor or card_batch');
+    const modes = { day_end: dayEndAt, conveyor: conveyorNext, card_batch: nextCardBatch, plan_row: conveyorPlanRow };
+    if (!modes[input.mode]) throw new Error('mode must be day_end, conveyor, card_batch or plan_row');
     const result = modes[input.mode](input);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
