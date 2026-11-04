@@ -45,7 +45,7 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 11. Update a generated To-Do only when `origin = 'deadline_skill'` and `planning_key` matches.
 12. Preserve locked manual overrides for any stable key reused in a later daily queue.
 13. The primary agent is the only writer. Any analyzer remains read-only.
-14. Never add filler to hit an hour target. Report any uncovered committed or reserve capacity explicitly.
+14. Never add filler to hit an hour target in the proposal. Report any uncovered committed or reserve capacity explicitly. During execution the only filler is the human-approved reservoir of [day execution](references/day-execution.md): every entry names the approval it comes from, its results enter the tracker before any code, and it never counts as committed or reserve hours.
 15. Treat the previous launch-readiness snapshot only as diff context. Revalidate every outcome from current tracker and codebase evidence.
 16. Read current UI Coverage, but never turn an unpromoted AI finding into work. Proposed AI findings are risks only; dismissed findings are not scope.
 17. A UI surface is a first-class delivery source (`source_type = 'ui_surface'`). Queue the section itself; a promoted UI finding still travels as its standard Bug, Feature or To-Do and is attached to the section it unblocks. Never persist section work as a generated To-Do — not even "so Focus can map it". A section deliberately has no Focus card; its tracker is `tt_section_pipeline`, and a To-Do wrapper strips the copied prompt of the section playbook, the platform viewports and the human gates.
@@ -66,6 +66,8 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 29. **Clarify intent before the plan is written, in the human's own words.** A committed bug, feature or To-Do whose description is thin — no attachment and under ~40 words of the human's own text once markers are stripped — or whose completion criterion the planner had to guess rather than read, or whose title/description names a visual change (layout, spacing, colours, fonts, «mai aerisit», «ca pe pagina X», redesign) without a reference, is not ready for a prompt: the executor would fill the gaps with its own taste and the mismatch would surface after merge, on main. Phase 6b asks the human about those items — at most 2 questions per item, at most 5 items per run, each question with a marked recommendation and the precedent from the product (rule 22 applies here too), and always with the option «E clar așa cum e scris» — and records the answers on the plan item as `intent=`, `reference=`, `not_in_scope=`, `example=`, plus `change_kind=design|logic|data|mixed` on every selected item. Only the human's answers may fill `intent=`; the planner's own reading never does, except as a restatement the human explicitly confirmed. An item already clarified — its source description carries an `--- Intenție clarificată <YYYY-MM-DD> ---` block, or the current plan's item with the same stable key already carries `intent=` — is not asked again unless the human reopens it. Productivitate reads these fields: the copied prompt tells the executor to obey them over its own interpretation, and a `design`/`mixed` classification makes the human's verdict on a screenshot a merge condition.
 
 30. **A day is blocks of related work, not a list.** Every selected item belongs to a work group with a stated logic, or stands alone because nothing connects it. A UI section's group is its page (`group_key = page:<page stable_key>`); a bug, feature, To-Do or promoted finding attached to a section joins that section's page group; other items join a group only when they share a real connection the evidence shows — the same flow, the same code area, the same milestone, or a dependency between them — and otherwise stay alone. Never invent a theme to make the list look organized. Inside one rank tier, members of a group travel together and a group whose remaining required units all fit today goes before one that cannot close, because a page ships only when every required section on it does; cohesion never lets work from a lower tier overtake a higher one (Phase 6). Every group carries one sentence of logic in the human's terms — what closes or moves forward when the block is done and why these items belong in the same sitting (one walk of the page on its viewports, shared components, one review) — and the proposal, the Focus order and the copied prompt all show it.
+
+31. **A plan of N hours is a clock contract, run by a conveyor.** The human means N hours of agent work, so applying the plan sets `day_end_at` = apply time + N (`scripts/day-clock.mjs`), and the day ends only at that moment, when the human says stop, or when everything left waits on the human. An empty queue is refilled, never a stop: a conveyor of at most `max_threads` threads (default 4) pulls committed → reserve → the next days' ranked candidates → the approved reservoir, frees a thread's slot as soon as its work waits on a card, batches merge and publish cards at fixed times, and wakes itself every 30 minutes. Follow [day execution](references/day-execution.md); never launch every item at once.
 
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
@@ -228,6 +230,11 @@ high, times 2–3 parallel threads). Follow
 on the last 14 days of plans and Pontaj, then calibrate every agent-executed
 candidate with `--calibration-basis agent_measured`. Use the human calibration
 below only when no agent calibration is usable, or for work the human executes.
+Recompute it on every plan: never copy `agent_correction_factor` from an earlier
+snapshot (a `reused_from_plan` calibration is invalid), pass the plans' snapshots so
+the factor compares measured time with the raw code-evidence estimate, and keep
+each candidate's raw estimate for `velocity_snapshot.raw_estimates`. A source type
+with at least 3 measured items uses its measured median; the factor covers the rest.
 
 Otherwise calibrate it with the matching `tt_delivery_calibration.source_type`.
 
@@ -324,12 +331,16 @@ node "<skill_dir>/scripts/daily-budget.mjs" \
   --deadline "<deadline>" \
   --weekly-hours "<weekly_capacity_hours>" \
   --remaining-hours "<aggregate_remaining_high_hours>" \
-  --parallelism "<measured_parallelism_or_1>"
+  --parallelism "<conveyor_parallelism>"
 ```
 
-`--parallelism` comes from `agent-pace.mjs` (1 when not measured). The clock fields
-stay the human's hours; `agent_daily_hours` and `agent_committed_target_hours` are
-what the agent-hour queue is packed against.
+`--parallelism` is `conveyor_parallelism` from `agent-pace.mjs`: the conveyor's
+`max_threads` times the measured thread utilization (the historical parallelism
+when utilization is not measured). It describes the threads the coordinator will
+actually run, not the days as they happened to run. The clock fields stay the
+human's hours; `agent_daily_hours` and `agent_committed_target_hours` are what the
+agent-hour queue is packed against. For a plan of N hours, the gross daily hours
+are those N clock hours (rule 31).
 
 The script enforces:
 
@@ -380,13 +391,15 @@ For every sliceable candidate, provide `slice_title`, `minimum_slice_hours`, and
 node "<skill_dir>/scripts/queue-pack.mjs" \
   --gross-hours "<agent_daily_hours>" \
   --committed-target-hours "<agent_committed_target_hours>" \
+  --queue-factor 1.5 \
+  --day-end-at "<now + N hours; recomputed at apply time>" \
   --candidates-file "<temporary_ranked_candidates_json>"
 ```
 
 The script creates:
 
 - `committed` — pack high estimates up to the committed target;
-- `reserve` — continue through remaining ranked candidates until reserve high coverage reaches `gross_daily_hours - committed_hours_low`;
+- `reserve` — continue through remaining ranked candidates until reserve high coverage reaches `1.5 × gross_daily_hours - committed_hours_low`, so the conveyor still has ranked work if the estimates prove high again;
 - 0.25h slices only when a concrete slice completion criterion is supplied;
 - explicit `committed_gap_hours` and `reserve_gap_hours` when real candidates cannot cover the target.
 
@@ -396,7 +409,7 @@ The script creates:
 - A queue containing only bugs, only features, or only tests is valid when the ranked candidates and available hours justify it. Show the cross-source candidate counts and state why the homogeneous queue won; never force artificial source diversity.
 - If the strongest item is larger than the committed budget, select a concrete daily slice with an observable checkpoint. Keep the same source key and report the full remaining estimate separately.
 - Reserve is optional execution capacity, not deadline commitment or mandatory progress.
-- Start reserve only after committed work is complete or documented as blocked. Stop execution when actual Pontaj for the planning day reaches `day_stop_hours` (legacy plans: `gross_daily_hours`). For incremental plans, `gross_daily_hours` is only the remaining budget of this round; never use it as the cumulative stop threshold.
+- The conveyor starts reserve as soon as a thread is free and no committed item is left to start (running, waiting on a card, done or blocked), then the next days' candidates, then the approved reservoir. Execution stops at `day_end_at`, on the human's stop, or when only human work remains (rule 31). `day_stop_hours` stays the threshold for human-declared hours (legacy plans without `day_end_at`: the previous Pontaj stop rule). For incremental plans, `gross_daily_hours` is only the remaining budget of this round; never use it as the cumulative stop threshold.
 - Never treat the sum of all high estimates as mandatory hours; reserve rows are possibilities up to the real stop rule.
 - Set every selected item's `planned_due_date` to the planning date.
 
@@ -423,7 +436,7 @@ Use this order for every project:
 4. **Așteaptă approve-ul tău — N secțiuni** — every `blocked_on_you` section, marking which ones expired because the code changed; then, labelled separately «Așteaptă «Aprob criteriile»», every `spec_awaiting_approval` section with its saved-criteria count and save date. State that these consume no planned hours and that the day cannot close them without the user.
 5. **Gata de producție — N secțiuni** — every `ready_for_production` section, so a deploy is never forgotten. On a `pre_launch` project state the launch gate explicitly: these ship only when every required unit reaches `ready_for_production` or `shipped`; show the remaining coverage count (rule 27).
 6. **Obligatoriu azi — N taskuri / Xh din Yh** — the committed queue and any uncovered committed gap, printed as blocks: a heading per group, «<group_label> — N taskuri · Xh», the group's one-sentence logic under it (for a page: «Contact: 3 din 4 secțiuni obligatorii azi — după ele pagina mai are 1 până la livrare; le facem împreună pentru că le verifici într-o singură trecere pe 1440/768/375»), then its items in order. Ungrouped items come last under «Separat», each with why it stands alone in a few words.
-7. **Dacă termini mai devreme — N taskuri / până la Xh** — ordered reserve in the same blocks, reserve coverage/gap, and the gross-hour stop rule.
+7. **Dacă termini mai devreme — N taskuri / până la Xh** — ordered reserve in the same blocks and reserve coverage/gap. Then the clock contract in one line: «Ceas: N h → până la HH:MM dacă aplici acum · bandă de max_threads fire · după rezervă: zilele următoare, apoi rezervorul (<intrările aprobate> / „neaprobat — banda se oprește când se termină candidații”) · cardurile la <orele lotului>».
 8. For each selected action:
    - verb-led action;
    - tracker source/id, `secțiune <stable_key>`, or `gap propus`;
@@ -441,7 +454,7 @@ Use this order for every project:
 9. **Ce a fost verificat** — complete tracker counts and exclusions by source, sections included. List separately every item held back by an active deferral marker, with its reason, return date and deferral count, so a postponed task stays visible instead of vanishing from the day.
 10. **Ce lipsește din tracker** — codebase gaps, including unselected gaps.
 11. **UI Coverage** — separate manual coverage, current AI coverage and required pages launch-ready; list stale/blocked/native surfaces, current objective blockers, promoted sources and sections without criteria. Never print a blended percentage.
-12. **Ritm din Pontaj** — chosen per-source P50/P75, applied correction factor, sample, provisional/direct state, and feature fallback when used. Sections have no calibration yet; say so instead of borrowing another type's rate.
+12. **Ritm din Pontaj** — chosen per-source P50/P75, applied correction factor, sample, provisional/direct state, and feature fallback when used. For agent calibration: today's recomputed factor, how many pairs compared against raw, derived or stored estimates, which types used their measured median, thread utilization and the conveyor parallelism. Sections have no calibration yet; say so instead of borrowing another type's rate.
 13. **Diff față de planul zilnic curent** — kept, added, removed, sliced, completed, blocked, role changes, section stage changes, and generated To-Dos.
 14. Repo HEADs, dirty flags, risks, assumptions, coverage, and proposal hash.
 
@@ -470,7 +483,7 @@ Apply one project in one SQL transaction:
 3. create or update only generated gap To-Dos selected for this workday;
 4. preserve human-updated To-Do status;
 5. supersede the previous current plan;
-6. insert the next current plan as a daily execution snapshot;
+6. insert the next current plan as a daily execution snapshot, with the clock contract computed from this apply moment: `day-clock.mjs` with `{"mode":"day_end","applied_at":"<now>","hours":<N>}` (rule 31);
 7. insert only today's committed and reserve queues, not the complete candidate pool;
 7b. for every bug or feature clarified in Phase 6b, append to the source `description` — before a trailing `/amana` deferral marker when one exists (rule 28 reads the marker at the end), otherwise at the very end — the block below, keeping only the lines that have content. Never on a To-Do (rule 10): there the `intent=` on the plan item is the only record and the only re-ask guard. Never edit or remove an existing block; a re-clarification appends a new one, so the history of what the human asked for stays readable on the source page.
 
@@ -510,6 +523,31 @@ Store these keys inside `velocity_snapshot` alongside the selected velocity row:
   "reserve_count": 2,
   "reserve_gap_hours": 0,
   "queue_hours_total_high": 6.5,
+  "queue_factor": 1.5,
+  "day_end_at": "2026-11-04T18:22:05.000Z",
+  "day_end_local": "2026-11-04 20:22",
+  "clock_hours": 10,
+  "max_threads": 4,
+  "card_batches": ["12:00", "15:00", "18:00"],
+  "agent_calibration": {
+    "planning_date": "2026-11-04",
+    "agent_correction_factor": 0.14,
+    "agent_correction_pairs": 21,
+    "agent_correction_pair_bases": { "raw": 6, "derived_from_applied_factor": 15 },
+    "thread_utilization": 0.8,
+    "max_threads": 4,
+    "conveyor_parallelism": 3.2
+  },
+  "raw_estimates": [
+    {
+      "stable_key": "feature:614",
+      "source_type": "feature",
+      "source_id": 614,
+      "raw_estimate_hours_low": 6,
+      "raw_estimate_hours_high": 8,
+      "estimate_source": "type_median"
+    }
+  ],
   "candidate_count": 78,
   "candidate_counts": {
     "bug": 26,
@@ -631,7 +669,7 @@ Gate 1 is the visual verdict after build and audit.
 
 Do not persist signed URLs or a raw execution prompt. Productivitate constructs the copy-ready prompt at read time from the immutable plan snapshot, current tracker source, repository snapshot, and freshly signed attachment paths.
 
-After commit, query the new plan and both queue counts. Report version, planning date, committed and reserve hours/counts, gaps, generated To-Dos, preserved overrides, feasibility, and that Focus/Productivitate refresh through Realtime.
+After commit, query the new plan and both queue counts. Report version, planning date, committed and reserve hours/counts, gaps, generated To-Dos, preserved overrides, feasibility, the end time and thread count, and that Focus/Productivitate refresh through Realtime. Then start the conveyor (`day-clock.mjs`, `"mode":"conveyor"`) instead of launching every item: [day execution](references/day-execution.md).
 
 ## Quality checklist
 
@@ -641,7 +679,8 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] No codebase file changed.
 - [ ] Pontaj calibrated estimates but did not define availability.
 - [ ] Only confirmed human hours consumed human capacity or calibrated effort; conversation estimates and unspecified history remained separate, and an existing availability declaration was reused without a redundant question.
-- [ ] Agent-executed items used the agent calibration (`agent-pace.mjs`, `--calibration-basis agent_measured`) when it was usable, the queue was packed in agent hours (`agent_daily_hours`) at the measured parallelism, and the proposal showed clock hours and agent hours side by side.
+- [ ] Agent-executed items used the agent calibration (`agent-pace.mjs`, `--calibration-basis agent_measured`) when it was usable, recomputed for this plan against raw estimates and never reused from an earlier snapshot; the queue was packed in agent hours (`agent_daily_hours`) at the conveyor parallelism with a 1.5× queue, raw estimates were stored in `velocity_snapshot.raw_estimates`, and the proposal showed clock hours and agent hours side by side.
+- [ ] The clock contract is explicit: the proposal shows the end time and thread count, and the applied plan stores `day_end_at`, `max_threads` and `card_batches` (rule 31).
 - [ ] Each source type used its own calibration; feature/hour fallback was not applied to bugs, tests, or To-Dos.
 - [ ] A 2–9 item sample used the provisional factor from the view, never the lower raw factor.
 - [ ] Daily hours came from the profile.
@@ -650,7 +689,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Deadline pressure raised committed work only within gross capacity.
 - [ ] `tt_milestones` was read; every open milestone appears under Deadline health with the items it names, a missed one is labelled as missed and left for the human, and no candidate named by a milestone due within 7 working days was outranked by unnamed work of equal or lower priority without a stated reason.
 - [ ] Committed work was packed by high estimate; reserve coverage was calculated from gross hours minus committed low estimates.
-- [ ] Reserve work is visible, ordered, optional, and carries the gross-hour Pontaj stop rule.
+- [ ] Reserve work is visible, ordered and optional; the stop rule is the clock end (`day_end_at`), not an empty queue.
 - [ ] Any uncovered committed or reserve hours are explicit; no filler was invented.
 - [ ] Launch-readiness outcomes were rebuilt from current evidence and diffed against, not copied from, the previous snapshot.
 - [ ] Current UI Coverage was read, stale fingerprints were identified, and its three metrics stayed separate.

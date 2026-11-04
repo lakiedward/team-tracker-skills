@@ -63,6 +63,14 @@ rămâne mai mult de o oră; până la o oră, tot bugetul este committed;
 urgența poate folosi bufferul conform regulilor existente, fără să depășească bugetul rundei.
 La zero ore rămase, nu inventa taskuri pentru a umple coada.
 
+**Contractul de ceas (1.50.0).** Dacă planul aplicat are `day_end_at`, trimite în input
+`day_end_at` și `now`. Bugetul rundei devine ceasul rămas până la final
+(`clock_hours_left`). Un Pontaj uman gol nu mai cere reconciliere, pentru că ora de
+final este chiar declarația omului. `extra_budget` mută ora de final cu orele autorizate,
+pornind de la momentul mai târziu dintre final și acum. Salvează noul `day_end_at` în
+snapshot. Coada nouă se pune pe aceeași bandă ([execuția zilei](day-execution.md)).
+Planurile fără `day_end_at` păstrează regula de mai sus.
+
 ## Refolosirea inventarului
 
 Pentru fiecare codebase înregistrat, verifică rapid `git status` și HEAD. Nu rula mai întâi

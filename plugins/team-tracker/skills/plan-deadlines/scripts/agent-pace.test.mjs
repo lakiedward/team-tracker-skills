@@ -131,4 +131,71 @@ assert.throws(() => calibrateEstimate({
   calibrationBasis: 'agent_measured',
 }), /agent_measured/);
 
+// Thread utilization: what one conveyor thread delivers per hour of its window.
+// Motion 26–28.10: 0.54, 0.80, 0.82 -> median 0.80, so a 4-thread conveyor is
+// about 3.2 lanes, and the planner states the thread count it will run.
+assert.equal(pace.thread_utilization, 0.8);
+assert.equal(pace.thread_utilization_measured, true);
+assert.equal(pace.max_threads, 4);
+assert.equal(pace.conveyor_parallelism, 3.2);
+assert.equal(effectiveParallelism(logs, { maxThreads: 2 }).conveyor_parallelism, 1.6);
+const unmeasured = effectiveParallelism(logs.slice(0, 4));
+assert.equal(unmeasured.thread_utilization, null);
+assert.equal(unmeasured.conveyor_parallelism, 1, 'without measurement the historical value stands');
+assert.throws(() => effectiveParallelism(logs, { maxThreads: 0 }));
+
+// 1.49.0 plans stored the calibrated estimate. Compared as is, 0.75h measured
+// against a stored 0.75h reads "estimates are right" while the code-evidence
+// estimate was 1.75h. The factor must be measured against the raw estimate.
+const rawCalibration = agentCalibration({
+  work_logs: logs,
+  links,
+  completed_sources: completed,
+  planned_items: [
+    { plan_id: 187, source_type: 'feature', source_id: 554, estimate_hours_high: 0.75 },
+    { plan_id: 187, source_type: 'todo', source_id: 212, estimate_hours_high: 0.75 },
+    { plan_id: 190, source_type: 'todo', source_id: 211, estimate_hours_high: 0.5 },
+    { plan_id: 190, source_type: 'feature', source_id: 443, estimate_hours_high: 0.5, raw_estimate_hours_high: 4 },
+    { plan_id: 175, source_type: 'bug', source_id: 1283, estimate_hours_high: 3 },
+  ],
+  plans: [
+    { id: 187, velocity_snapshot: { agent_calibration: { agent_correction_factor: 0.43, reused_from_plan: 185 } } },
+    { id: 190, velocity_snapshot: JSON.stringify({
+      agent_calibration: { agent_correction_factor: 0.2 },
+      raw_estimates: [{ stable_key: 'todo:211', source_type: 'todo', source_id: 211, raw_estimate_hours_high: 2.5 }],
+    }) },
+  ],
+  planning_date: '2026-11-05',
+});
+const pairOf = (key) => rawCalibration.agent_correction_sample.find((pair) => pair.stable_key === key);
+assert.equal(pairOf('feature:554').planned_basis, 'derived_from_applied_factor');
+assert.equal(pairOf('feature:554').planned_high, 1.74);
+assert.equal(pairOf('todo:211').planned_basis, 'raw', 'the stored raw estimate beats the factor');
+assert.equal(pairOf('todo:211').planned_high, 2.5);
+assert.equal(pairOf('feature:443').planned_high, 4, 'an explicit raw estimate on the row wins');
+assert.equal(pairOf('bug:1283').planned_basis, 'stored', 'pre-1.49 plans stored the raw estimate');
+assert.deepEqual(rawCalibration.agent_correction_pair_bases, { derived_from_applied_factor: 2, raw: 2, stored: 1 });
+assert.ok(rawCalibration.agent_correction_factor < 0.45, `raw factor ${rawCalibration.agent_correction_factor}`);
+assert.equal(rawCalibration.planning_date, '2026-11-05');
+assert.equal(rawCalibration.conveyor_parallelism, 3.2);
+
+// With three measured items of the type, their median is the estimate and the
+// factor stays out; the raw estimate travels with the result for the snapshot.
+const typedWins = calibrateEstimate({
+  baseLow: 4,
+  baseHigh: 6,
+  calibrationBasis: 'agent_measured',
+  appliedCorrectionFactor: 0.43,
+  sampleItems: 3,
+  p50HoursPerItem: 0.75,
+  p75HoursPerItem: 0.85,
+});
+assert.equal(typedWins.estimate_source, 'type_median');
+assert.equal(typedWins.estimate_low, 0.75);
+assert.equal(typedWins.estimate_high, 1);
+assert.equal(typedWins.applied_correction_factor, 1);
+assert.equal(typedWins.raw_estimate_low, 4);
+assert.equal(typedWins.raw_estimate_high, 6);
+assert.equal(agent.estimate_source, 'correction_factor');
+
 console.log('plan-deadlines agent pace tests passed');

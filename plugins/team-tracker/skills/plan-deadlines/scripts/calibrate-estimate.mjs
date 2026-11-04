@@ -73,6 +73,12 @@ function applySpentHours(low, high, spentHours, inFlight) {
 // measured in Pontaj does the same item in a fraction of that, browser checks
 // included, so its samples replace the human-sized floor instead of sitting under
 // a max() that can only raise the number.
+//
+// When at least three items of the same type were finished and measured, their
+// median is the estimate: it is measured on this project's agent, not derived
+// from a human-sized guess. The correction factor covers the types without such
+// a sample. An item visibly larger than its type's usual one says so through
+// the risk multiplier, with the reason in the proposal.
 const AGENT_FACTOR_MIN = 0.1;
 const AGENT_FACTOR_MAX = 1.5;
 const AGENT_MIN_SAMPLES = 3;
@@ -88,18 +94,21 @@ function agentEstimate({ low, high, samples, p50, p75, risk, spent, inFlight, fa
     ? Math.max(AGENT_FACTOR_MIN, Math.min(AGENT_FACTOR_MAX, parsedFactor))
     : null;
   const riskTail = Math.max(1, risk);
-  const scaledLow = clamped === null ? p50 * riskTail : low * clamped * riskTail;
-  const scaledHigh = clamped === null ? p75 * riskTail : high * clamped * riskTail;
+  const scaledLow = hasTypeSample ? p50 * riskTail : low * clamped * riskTail;
+  const scaledHigh = hasTypeSample ? p75 * riskTail : high * clamped * riskTail;
   const remaining = applySpentHours(scaledLow, scaledHigh, spent, inFlight);
   const estimateHigh = Math.max(0.25, roundUpQuarter(remaining.high));
   return {
     estimate_low: Math.min(Math.max(0.25, roundUpQuarter(remaining.low)), estimateHigh),
     estimate_high: estimateHigh,
+    raw_estimate_low: low,
+    raw_estimate_high: high,
+    estimate_source: hasTypeSample ? 'type_median' : 'correction_factor',
     calibration_used: true,
     calibration_basis: 'agent_measured',
     executor: 'agent',
     sample_items: samples,
-    applied_correction_factor: clamped ?? 1,
+    applied_correction_factor: hasTypeSample ? 1 : clamped,
     complexity_multiplier: riskTail,
     historical_p50_hours: p50,
     historical_p75_hours: p75,

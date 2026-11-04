@@ -89,3 +89,27 @@ test('reuse requires complete unchanged clean repository and instruction evidenc
   assert.equal(inventoryDecision({ ...repo, complete: false }, repo, input.planning_date).scan, 'full');
   assert.equal(inventoryDecision(repo, repo, '2026-09-17').scan, 'full');
 });
+test('under the clock contract a same-day round gets the clock that is left', () => {
+  const { spent_hours, spent_hours_basis, ...base } = input;
+  const agentLogs = [1, 2, 3].map(id => ({ id, member: 'Edy', work_date: input.planning_date, hours: 1.5,
+    description: '[pontaj:basis=conversation_estimate]' }));
+  const clock = { day_end_at: '2026-09-16T17:22:00Z', now: '2026-09-16T10:22:00Z', parallelism: 3.2 };
+  const round = dailyBudget({ ...base, member: 'Edy', work_logs: agentLogs, ...clock });
+  assert.equal(round.clock_contract, true);
+  assert.equal(round.requires_reconciliation, false, 'the clock contract is the declaration; agent rows stay agent rows');
+  assert.equal(round.spent_hours_at_planning, 0);
+  assert.equal(round.gross_daily_hours, 7);
+  assert.equal(round.agent_round_hours, 22.4);
+  assert.equal(round.day_end_at, '2026-09-16T17:22:00.000Z');
+  const extra = dailyBudget({ ...base, member: 'Edy', work_logs: agentLogs, ...clock, mode: 'extra_budget', extra_hours: 2, extra_authorized: true });
+  assert.equal(extra.day_end_at, '2026-09-16T19:22:00.000Z', '"încă 2h" moves the end');
+  assert.equal(extra.gross_daily_hours, 9);
+  const late = dailyBudget({ ...input, day_end_at: clock.day_end_at, now: '2026-09-16T18:00:00Z' });
+  assert.equal(late.gross_daily_hours, 0);
+  const afterEnd = dailyBudget({ ...input, ...clock, now: '2026-09-16T18:00:00Z', mode: 'extra_budget', extra_hours: 1, extra_authorized: true });
+  assert.equal(afterEnd.day_end_at, '2026-09-16T19:00:00.000Z', 'extra time starts now when the day already ended');
+  assert.equal(dailyBudget({ ...input, ...clock, mode: 'close_day' }).gross_daily_hours, 0);
+  assert.throws(() => dailyBudget({ ...input, day_end_at: clock.day_end_at }), /now/);
+  assert.throws(() => dailyBudget({ ...input, ...clock, mode: 'new_day', previous_date: null }), /apply time/);
+  assert.equal(dailyBudget(input).clock_contract, false);
+});

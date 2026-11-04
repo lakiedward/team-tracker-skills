@@ -4,6 +4,27 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { summarizeWorkLogs } from '../../pontaj/scripts/work-log-basis.mjs';
 
+const HOUR_MS = 60 * 60 * 1000;
+const roundHours = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+// Under the clock contract (1.50.0) an applied plan carries day_end_at: the
+// human asked for agent work until that moment. Same-day rounds take their
+// budget from the clock that is left, not from human hours, which the agent's
+// work never consumes. "Încă 2h" moves the end by two hours.
+function clockContract(input, mode) {
+  if (input.day_end_at === undefined || input.day_end_at === null) return null;
+  if (mode === 'new_day') throw Error('day_end_at belongs to an applied plan; a new day sets it at apply time');
+  const end = Date.parse(input.day_end_at);
+  const now = Date.parse(input.now);
+  if (!Number.isFinite(end)) throw Error('day_end_at must be an ISO timestamp');
+  if (!Number.isFinite(now)) throw Error('now is required with day_end_at');
+  const extended = mode === 'extra_budget' ? Math.max(end, now) + (input.extra_hours || 0) * HOUR_MS : end;
+  return {
+    day_end_at: new Date(extended).toISOString(),
+    hours_left: Math.max(0, roundHours((extended - now) / HOUR_MS)),
+  };
+}
+
 // Values come from fresh tracker reads, never from estimates of completed work.
 export function dailyBudget(input) {
   const { mode, planning_date, previous_date, day_limit_hours,
@@ -38,9 +59,11 @@ export function dailyBudget(input) {
   if (limit > 24 || spent_hours > 24) throw Error('Invalid daily hours');
   const lanes = input.parallelism ?? 1;
   if (typeof lanes !== 'number' || !Number.isFinite(lanes) || lanes < 1) throw Error('Parallelism must be a measured number of at least 1');
-  const requires_reconciliation = time.requires_reconciliation && declaredAvailable === undefined;
+  const clock = clockContract(input, mode);
+  const requires_reconciliation = time.requires_reconciliation && declaredAvailable === undefined && !clock;
   const remaining = mode === 'close_day' || requires_reconciliation ? 0
-    : declaredAvailable !== undefined ? declaredAvailable + extra_hours : Math.max(0, limit - spent_hours);
+    : clock ? clock.hours_left
+      : declaredAvailable !== undefined ? declaredAvailable + extra_hours : Math.max(0, limit - spent_hours);
   return {
     replan_mode: mode, planning_date, spent_hours_at_planning: spent_hours,
     spent_hours_basis: 'human_declared',
@@ -52,9 +75,12 @@ export function dailyBudget(input) {
     gross_daily_hours: remaining,
     committed_target_hours: remaining <= 1 ? remaining : remaining - 1,
     parallelism: lanes,
-    agent_round_hours: remaining * lanes,
-    agent_committed_target_hours: (remaining <= 1 ? remaining : remaining - 1) * lanes,
+    agent_round_hours: roundHours(remaining * lanes),
+    agent_committed_target_hours: roundHours((remaining <= 1 ? remaining : remaining - 1) * lanes),
     closed: mode === 'close_day',
+    clock_contract: !!clock,
+    day_end_at: clock?.day_end_at ?? null,
+    clock_hours_left: clock ? (mode === 'close_day' ? 0 : clock.hours_left) : null,
   };
 }
 

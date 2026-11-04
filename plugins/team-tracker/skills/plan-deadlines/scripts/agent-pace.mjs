@@ -10,6 +10,7 @@ const MIN_PACE_DAYS = 3;
 const MIN_FACTOR_PAIRS = 3;
 const MIN_TYPE_SAMPLES = 3;
 const MAX_PARALLELISM = 4;
+const DEFAULT_MAX_THREADS = 4;
 
 function round(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -67,7 +68,14 @@ function agentRows(workLogs) {
 // How many agent-hours one hour of the human's clock delivers. Parallel threads
 // overlap and each excludes its own waits, so the sum of their hours divided by
 // the union of their intervals is the conversion the daily budget needs.
-export function effectiveParallelism(workLogs, { maxParallelism = MAX_PARALLELISM } = {}) {
+//
+// That ratio describes the days as they were run. Under the conveyor the number
+// of threads is chosen, so the planner needs what one thread delivers per hour
+// of its own window: thread utilization, the agent hours over the summed
+// interval lengths. Lanes for the conveyor are max_threads times that.
+export function effectiveParallelism(workLogs, { maxParallelism = MAX_PARALLELISM, maxThreads = DEFAULT_MAX_THREADS } = {}) {
+  const threads = Number(maxThreads);
+  if (!Number.isInteger(threads) || threads < 1 || threads > 8) throw new Error('max_threads must be an integer between 1 and 8');
   const byDay = new Map();
   for (const log of agentRows(workLogs)) {
     const interval = measuredInterval(log.description);
@@ -78,21 +86,38 @@ export function effectiveParallelism(workLogs, { maxParallelism = MAX_PARALLELIS
     day.hours += log.hours;
     day.intervals.push(interval);
   }
-  const days = [...byDay.entries()]
-    .map(([key, day]) => ({
-      day: key.split('|')[1],
-      agent_hours: round(day.hours),
-      clock_hours: round(unionHours(day.intervals)),
-      rows: day.intervals.length,
-    }))
+  const measuredDays = [...byDay.entries()].map(([key, day]) => ({
+    day: key.split('|')[1],
+    agent_hours: round(day.hours),
+    clock_hours: round(unionHours(day.intervals)),
+    window_hours: round(day.intervals.reduce((total, interval) => total + (interval.end - interval.start), 0) / HOUR_MS),
+    rows: day.intervals.length,
+  }));
+  const days = measuredDays
     .filter((day) => day.rows >= 2 && day.clock_hours >= 0.25)
-    .map((day) => ({ ...day, ratio: round(day.agent_hours / day.clock_hours) }));
+    .map(({ window_hours: _window, ...day }) => ({ ...day, ratio: round(day.agent_hours / day.clock_hours) }));
   const median = quantile(days.map((day) => day.ratio), 0.5);
   const usable = days.length >= MIN_PACE_DAYS && median !== null;
+  const parallelism = usable ? round(Math.min(maxParallelism, Math.max(1, median))) : 1;
+
+  const utilizationDays = measuredDays
+    .filter((day) => day.window_hours >= 0.25)
+    .map((day) => ({ day: day.day, agent_hours: day.agent_hours, window_hours: day.window_hours,
+      utilization: round(Math.min(1, day.agent_hours / day.window_hours)) }));
+  const utilization = quantile(utilizationDays.map((day) => day.utilization), 0.5);
+  const utilizationUsable = utilizationDays.length >= MIN_PACE_DAYS && utilization !== null;
   return {
-    parallelism: usable ? round(Math.min(maxParallelism, Math.max(1, median))) : 1,
+    parallelism,
     parallelism_measured: usable,
     parallelism_days: days,
+    max_threads: threads,
+    thread_utilization: utilizationUsable ? round(utilization) : null,
+    thread_utilization_measured: utilizationUsable,
+    // Without a measured utilization the historical parallelism is the only
+    // honest number; the conveyor and the 1.5x queue absorb the difference.
+    conveyor_parallelism: utilizationUsable
+      ? round(Math.max(1, Math.min(threads, threads * utilization)))
+      : parallelism,
   };
 }
 
@@ -123,9 +148,55 @@ export function agentHoursBySource(workLogs, links) {
   return totals;
 }
 
-export function agentCalibration({ work_logs: workLogs, links, completed_sources: completed = [], planned_items: planned = [] }) {
+function snapshotOf(plan) {
+  const snapshot = plan?.velocity_snapshot;
+  if (typeof snapshot === 'string') {
+    try { return JSON.parse(snapshot); } catch { return {}; }
+  }
+  return snapshot && typeof snapshot === 'object' ? snapshot : {};
+}
+
+function positive(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+// The factor must compare measured time with the code-evidence estimate it will
+// be applied to. Plans since 1.49.0 store the calibrated estimate, so comparing
+// against it measures only the leftover error and can never converge. From
+// 1.50.0 the plan keeps the raw estimate in velocity_snapshot.raw_estimates; a
+// 1.49.0 plan is undone through the factor it recorded; older plans stored raw.
+function rawPlannedHigh(item, plans) {
+  const direct = positive(item.raw_estimate_hours_high);
+  if (direct) return { high: direct, basis: 'raw' };
+  const stored = positive(item.estimate_hours_high);
+  const snapshot = snapshotOf(plans.get(Number(item.plan_id)));
+  const key = sourceKey(item.source_type, item.source_id);
+  const raw = Array.isArray(snapshot.raw_estimates)
+    ? snapshot.raw_estimates.find((entry) => entry?.stable_key === (item.stable_key ?? key)
+      || sourceKey(entry?.source_type, entry?.source_id) === key)
+    : null;
+  const rawHigh = positive(raw?.raw_estimate_hours_high);
+  if (rawHigh) return { high: rawHigh, basis: 'raw' };
+  if (!stored) return null;
+  const applied = positive(snapshot.agent_calibration?.agent_correction_factor);
+  if (applied) return { high: stored / applied, basis: 'derived_from_applied_factor' };
+  return { high: stored, basis: 'stored' };
+}
+
+export function agentCalibration({
+  work_logs: workLogs,
+  links,
+  completed_sources: completed = [],
+  planned_items: planned = [],
+  plans: planRows = [],
+  max_threads: maxThreads = DEFAULT_MAX_THREADS,
+  planning_date: planningDate = null,
+}) {
   const totals = agentHoursBySource(workLogs, links);
   const completedKeys = new Set(completed.map((source) => sourceKey(source.source_type, source.source_id)));
+  if (!Array.isArray(planRows)) throw new Error('plans must be an array');
+  const plans = new Map(planRows.map((plan) => [Number(plan.id), plan]));
 
   const byType = {};
   for (const entry of totals.values()) {
@@ -139,32 +210,43 @@ export function agentCalibration({ work_logs: workLogs, links, completed_sources
     p75_hours_per_item: round(quantile(hours, 0.75)),
   }]));
 
-  // Planned estimate versus measured agent time on the same completed source.
-  // The latest plan's estimate wins, so a re-estimated item is compared once.
+  // Raw planned estimate versus measured agent time on the same completed
+  // source. The latest plan's estimate wins, so a re-estimated item is compared once.
   const latestPlanned = new Map();
   for (const item of planned) {
     const key = sourceKey(item.source_type, item.source_id);
-    const high = Number(item.estimate_hours_high);
-    if (!Number.isFinite(high) || high <= 0) continue;
+    const raw = rawPlannedHigh(item, plans);
+    if (!raw) continue;
     const previous = latestPlanned.get(key);
-    if (!previous || Number(item.plan_id) > Number(previous.plan_id)) latestPlanned.set(key, { ...item, high });
+    if (!previous || Number(item.plan_id) > Number(previous.plan_id)) {
+      latestPlanned.set(key, { ...item, high: raw.high, basis: raw.basis });
+    }
   }
   const pairs = [];
   for (const [key, item] of latestPlanned) {
     const actual = totals.get(key);
     if (!actual || !completedKeys.has(key)) continue;
-    pairs.push({ stable_key: key, planned_high: item.high, agent_hours: round(actual.hours), ratio: actual.hours / item.high });
+    pairs.push({
+      stable_key: key,
+      planned_high: round(item.high),
+      planned_basis: item.basis,
+      agent_hours: round(actual.hours),
+      ratio: actual.hours / item.high,
+    });
   }
   const factor = quantile(pairs.map((pair) => pair.ratio), 0.5);
   const factorUsable = pairs.length >= MIN_FACTOR_PAIRS && factor !== null;
+  const basisCounts = pairs.reduce((counts, pair) => ({ ...counts, [pair.planned_basis]: (counts[pair.planned_basis] ?? 0) + 1 }), {});
 
   return {
     calibration_basis: 'agent_measured',
+    planning_date: planningDate,
     source_types: sourceTypes,
     agent_correction_factor: factorUsable ? round(factor) : null,
     agent_correction_pairs: pairs.length,
+    agent_correction_pair_bases: basisCounts,
     agent_correction_sample: pairs.map((pair) => ({ ...pair, ratio: round(pair.ratio) })),
-    ...effectiveParallelism(workLogs),
+    ...effectiveParallelism(workLogs, { maxThreads }),
   };
 }
 
