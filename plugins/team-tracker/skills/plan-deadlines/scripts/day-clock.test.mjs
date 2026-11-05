@@ -204,6 +204,41 @@ assert.equal(stopped.reason, 'stop_requested');
 const dry = conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: {} });
 assert.equal(dry.reason, 'no_executable_work');
 
+// Betora, 5.11.2026: the day the human chose ran out at 15:50 local with 2h on
+// the clock. A plan made after the day conversation asks what comes next
+// instead of ending the day or reaching for the reservoir (choice of 5.11.2026).
+const betoraDay = { day_end_at: '2026-11-05T16:02:00Z', direction: 'Bug-urile de securitate 1348–1352' };
+const directionDone = conveyorNext({
+  now: '2026-11-05T13:50:00Z', ...betoraDay, done_keys: ['bug:1348'], queues: { committed: [{ stable_key: 'bug:1348' }] },
+});
+assert.equal(directionDone.continue, true);
+assert.equal(directionDone.reason, 'awaiting_direction_card');
+assert.deepEqual(directionDone.direction_card, {
+  post: 'now', question: 'Am terminat ce ai ales. Pe ce mai lucrăm până la 18:02?',
+});
+assert.equal(directionDone.send_day_end_report, false);
+assert.equal(directionDone.next_wake_in_minutes, 130, '15:50 local wakes at the 18:00 batch; the tap wakes it sooner');
+const directionWaiting = conveyorNext({
+  now: '2026-11-05T14:00:00Z', ...betoraDay, direction_card_pending: true, waiting_on_human: ['bug:1348'], queues: {},
+});
+assert.equal(directionWaiting.reason, 'awaiting_direction_card', 'merge cards waiting do not end a directed day');
+assert.equal(directionWaiting.direction_card, null, 'one direction card at a time');
+const directionDeclined = conveyorNext({ now: '2026-11-05T14:00:00Z', ...betoraDay, no_new_work: true, queues: {} });
+assert.equal(directionDeclined.continue, false);
+assert.equal(directionDeclined.reason, 'no_executable_work');
+assert.equal(directionDeclined.send_day_end_report, true);
+const directionLate = conveyorNext({ now: '2026-11-05T15:50:00Z', ...betoraDay, queues: {} });
+assert.equal(directionLate.reason, 'no_executable_work', 'under 15 minutes left the day closes');
+assert.equal(directionLate.direction_card, null);
+const directionTapped = conveyorNext({
+  now: '2026-11-05T14:00:00Z',
+  ...betoraDay,
+  queues: { reservoir: [{ stable_key: 'reservoir:tests:0', estimate_hours_low: 0.25, approved_by: 'setările proiectului' }] },
+});
+assert.equal(directionTapped.reason, 'awaiting_new_work_card', 'a reservoir the human allowed still goes on its own card');
+assert.equal(directionTapped.direction_card, null);
+assert.equal(dry.direction_card, null, 'a plan without a direction keeps the old ending');
+
 assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, max_threads: 9 }));
 assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { filler: [] } }));
 assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { committed: [{}] } }));

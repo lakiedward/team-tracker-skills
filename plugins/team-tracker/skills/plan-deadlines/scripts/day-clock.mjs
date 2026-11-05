@@ -134,6 +134,10 @@ function keySet(list, label) {
 
 const NEW_WORK_CARD_ITEMS = 4;
 const NEW_WORK_QUESTION = 'Vrei să mă apuc de asta?';
+// A plan made after the day conversation (choice of 5.11.2026) does not end
+// when the work the human chose runs out: with time left, it asks again.
+const DIRECTION_MIN_HOURS = 0.25;
+const directionQuestion = (endLocal) => `Am terminat ce ai ales. Pe ce mai lucrăm până la ${endLocal.slice(11)}?`;
 
 function cardItem(item, key) {
   const title = String(item.title ?? '').trim();
@@ -169,6 +173,8 @@ export function conveyorNext({
   proposed_keys: proposed = [],
   declined_keys: declined = [],
   no_new_work: noNewWork = false,
+  direction = null,
+  direction_card_pending: directionPending = false,
 }) {
   const nowMs = instant(now, 'now');
   const endMs = instant(dayEnd, 'day_end_at');
@@ -260,6 +266,30 @@ export function conveyorNext({
     : null;
   const idle = runningKeys.size === 0 && start.length === 0;
   const awaitingNewWork = idle && Boolean(newWorkCard || awaitingCard.length);
+  const idleWhy = idleReason(waitingKeys.size + humanOnly.length, tooLongForClock.length);
+  const askDirection = idle && !awaitingNewWork && !noNewWork
+    && Boolean(String(direction ?? '').trim())
+    && idleWhy !== 'remaining_items_exceed_clock'
+    && remainingHours >= DIRECTION_MIN_HOURS;
+  if (askDirection) {
+    const directionBatch = nextCardBatch({ now, day_end_at: dayEnd, batches });
+    return {
+      ...base,
+      continue: true,
+      reason: 'awaiting_direction_card',
+      slots_free: slots,
+      start,
+      new_work_card: null,
+      direction_card: directionPending ? null : { post: 'now', question: directionQuestion(base.day_end_local) },
+      awaiting_card_keys: awaitingCard,
+      human_only_keys: humanOnly,
+      too_long_for_clock_keys: tooLongForClock,
+      unapproved_reservoir_keys: unapproved,
+      next_wake_in_minutes: Math.max(1, Math.ceil((Date.parse(directionBatch.at) - nowMs) / 60000)),
+      next_card_batch: waitingKeys.size ? directionBatch : null,
+      send_day_end_report: false,
+    };
+  }
   const batch = waitingKeys.size || awaitingNewWork ? nextCardBatch({ now, day_end_at: dayEnd, batches }) : null;
   const wakeMinutes = awaitingNewWork
     ? Math.max(1, Math.ceil((Date.parse(batch.at) - nowMs) / 60000))
@@ -268,11 +298,12 @@ export function conveyorNext({
     ...base,
     continue: !idle || awaitingNewWork,
     reason: awaitingNewWork ? 'awaiting_new_work_card'
-      : idle ? idleReason(waitingKeys.size + humanOnly.length, tooLongForClock.length)
+      : idle ? idleWhy
         : start.length ? 'slots_filled' : 'threads_busy',
     slots_free: slots,
     start,
     new_work_card: newWorkCard,
+    direction_card: null,
     awaiting_card_keys: awaitingCard,
     human_only_keys: humanOnly,
     too_long_for_clock_keys: tooLongForClock,
