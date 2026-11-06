@@ -24,7 +24,8 @@ a board-ului, cu regulile și plafonul lui de runde.
   propunere înainte de aplicare.
 - Ziua se oprește doar în trei cazuri: la `day_end_at`; când omul spune „stop”; sau când
   tot ce a rămas așteaptă după om (`only_human_work_left`). În ultimul caz trimite un
-  singur raport, cu un singur lot de carduri.
+  singur raport, cu un singur lot de carduri. Pe un plan cu direcție, înainte de raport
+  banda întreabă o dată pe ce se mai lucrează ([direcția zilei](#direcția-zilei)).
 - O coadă goală nu e o oprire. Nici suma Pontajului de agent nu e un prag: orele agentului
   nu consumă orele omului (regula 6). `day_stop_hours` rămâne pragul orelor umane
   declarate, pentru munca pe care o face omul însuși.
@@ -48,8 +49,9 @@ a board-ului, cu regulile și plafonul lui de runde.
   dată când un fir își termină partea, și la fiecare trezire. Inputul conține `now`,
   `day_end_at`, `max_threads`, `running`, `waiting_on_human`, `done_keys`, `blocked_keys`,
   `queues`, plus `proposed_keys`, `declined_keys` și `no_new_work` pentru cardul de muncă
-  nouă. Pornește exact itemele din `start`, în ordinea dată. Dacă rezultatul are
-  `new_work_card`, pune cardul pe loc.
+  nouă, iar pe un plan cu direcție `direction` și `direction_card_pending`. Pornește exact
+  itemele din `start`, în ordinea dată. Dacă rezultatul are `new_work_card` sau
+  `direction_card`, pune cardul pe loc.
 - Un fir care a deschis PR-ul și așteaptă un card de merge sau un verdict eliberează
   locul. Itemul lui trece în `waiting_on_human`, iar firul nu ține banda ocupată.
 - Itemele omului nu ocupă fire: `executor: "human"`, verdict, test pe telefon, decizie,
@@ -60,6 +62,31 @@ a board-ului, cu regulile și plafonul lui de runde.
   Folosește mecanismul sesiunii (`send_later`, o trezire programată sau ceva echivalent).
   Nu aștepta cu `sleep` în același tur. Trezirea e plasa de siguranță pentru un fir care
   tace.
+
+## Direcția zilei
+
+Pe 5.11.2026 omul a ales să spună el pe ce se lucrează înainte să se facă planul. În
+ziua aceea Betora a umplut 2 ore cu teste și fișiere sparte, iar 8 bug-uri reale găsite
+tot atunci au rămas deschise. De atunci ziua începe cu o discuție, nu cu clasamentul.
+
+- Pe o zi nouă, `/plan-deadlines` pune întâi cardul „Pe ce lucrăm azi?” (faza 0b): cel
+  mult 4 direcții din trackerul citit acum, fiecare cu mărimea ei și cu cele mai mari
+  iteme, cea recomandată marcată. Omul poate scrie și altă direcție. Pe același mesaj, un
+  rând cu ce așteaptă după om și nu poate închide ziua.
+- Răspunsul omului, citat exact, devine `direction` în `velocity_snapshot` și în
+  `assumptions`. Coada obligatorie vine doar din direcție. Alte munci intră în rezervă
+  doar dacă răspunsul o permite („și restul”, „tu alegi”).
+- Rezervorul ajunge în `queues.reservoir` doar dacă direcția îl numește. Altfel trimite
+  coada `reservoir` goală.
+- Trimite `direction` în inputul benzii. Când munca direcției se termină și mai sunt cel
+  puțin 15 minute, `day-clock.mjs` întoarce `awaiting_direction_card` și `direction_card`
+  („Am terminat ce ai ales. Pe ce mai lucrăm până la HH:MM?”). Pune cardul pe loc, cu
+  aceleași direcții refăcute din trackerul de acum, și trimite `direction_card_pending:
+  true` până la răspuns. Ziua nu se încheie cât așteaptă cardul.
+- Răspunsul nou se adaugă la `direction` (nu îl înlocuiește), iar munca aleasă intră în
+  plan ca rânduri de rezervă cu `conveyor_source=next_days`, ca orice item din tracker.
+  „Nimic, ajunge pe azi” pune `no_new_work: true` și ziua se încheie cu raportul de final.
+- Un plan fără `direction` (făcut înainte de 1.53.0) păstrează vechiul final.
 
 ## Cardul de muncă nouă
 

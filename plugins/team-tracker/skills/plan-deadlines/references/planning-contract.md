@@ -9,7 +9,7 @@ any hours as human effort. The live schema is checked first; no DDL is authorize
 
 - `tt_delivery_profiles`: human-owned outcome, definition of done, deadline, owner, future weekly capacity, and `launch_stage` (`pre_launch` / `in_production`) with the `launched_at` the database stamps. `launch_stage` is a human gate like the section ones: a trigger rejects agent-side SQL writes to it, so this skill only reads it. Whether the project is already live is never re-derived from release outcomes or a reachable URL — that column is the answer.
 - `tt_delivery_plans`: approved immutable daily snapshots, except `status` when superseded.
-- `tt_delivery_plan_items`: only the approved committed and reserve queues for one workday, plus the reserve rows the conveyor appends during that day (`conveyor_source=next_days|reservoir` in `scope_reason`, [day execution](day-execution.md)). `queue_role` is independent from phase and deadline necessity; manual override columns remain human-owned.
+- `tt_delivery_plan_items`: only the approved committed and reserve queues for one workday, plus the reserve rows the conveyor appends during that day (`conveyor_source=next_days|reservoir` in `scope_reason`, [day execution](day-execution.md)). The plan's `velocity_snapshot.direction` and one `assumptions` line carry the human's answer to «Pe ce lucrăm azi?» (SKILL rule 32); the committed rows come only from it. `queue_role` is independent from phase and deadline necessity; manual override columns remain human-owned.
 - `tt_work_log_items`: high-confidence Pontaj links used to improve velocity.
 - `tt_delivery_calibration`: rolling item-level P50/P75 and correction factors, separated by source type.
 - `tt_todos.origin`: `manual` or `deadline_skill`.

@@ -1,6 +1,6 @@
 ---
 name: plan-deadlines
-description: Scan one configured Team Tracker project or the active portfolio to decide what should be worked on today. Use when the user invokes "/plan-deadlines", asks what to do today, asks whether a deadline is safe, or wants the daily queue refreshed. On every run, rebuild launch readiness from all bugs, features, test plans, To-Dos, and registered codebases, read the project's open milestones (tt_milestones, set with /borne) so the queue leads to the nearest threshold and not only to the deadline, calibrate estimates from Pontaj, then propose a committed queue plus visible reserve work up to the project's gross daily hours. Show a read-only proposal and diff first; write only after explicit confirmation.
+description: Scan one configured Team Tracker project or the active portfolio to decide what should be worked on today. Use when the user invokes "/plan-deadlines", asks what to do today, asks whether a deadline is safe, or wants the daily queue refreshed. On a new day, first ask the human on one card what the day is for («Pe ce lucrăm azi?», built from the largest open work) and plan only from that answer. On every run, rebuild launch readiness from all bugs, features, test plans, To-Dos, and registered codebases, read the project's open milestones (tt_milestones, set with /borne) so the queue leads to the nearest threshold and not only to the deadline, calibrate estimates from Pontaj, then propose a committed queue plus visible reserve work up to the project's gross daily hours. Show a read-only proposal and diff first; write only after explicit confirmation.
 ---
 
 # Plan Deadlines
@@ -68,6 +68,7 @@ Treat natural-language equivalents as the same command. Use Romanian unless the 
 30. **A day is blocks of related work, not a list.** Every selected item belongs to a work group with a stated logic, or stands alone because nothing connects it. A UI section's group is its page (`group_key = page:<page stable_key>`); a bug, feature, To-Do or promoted finding attached to a section joins that section's page group; other items join a group only when they share a real connection the evidence shows — the same flow, the same code area, the same milestone, or a dependency between them — and otherwise stay alone. Never invent a theme to make the list look organized. Inside one rank tier, members of a group travel together and a group whose remaining required units all fit today goes before one that cannot close, because a page ships only when every required section on it does; cohesion never lets work from a lower tier overtake a higher one (Phase 6). Every group carries one sentence of logic in the human's terms — what closes or moves forward when the block is done and why these items belong in the same sitting (one walk of the page on its viewports, shared components, one review) — and the proposal, the Focus order and the copied prompt all show it.
 
 31. **A plan of N hours is a clock contract, run by a conveyor.** The human means N hours of agent work, so applying the plan sets `day_end_at` = apply time + N (`scripts/day-clock.mjs`), and the day ends only at that moment, when the human says stop, or when everything left waits on the human. An empty queue is refilled, never a stop: a conveyor of at most `max_threads` threads (default 4) pulls committed → reserve → the next days' ranked candidates → the approved reservoir, asks before any reservoir work with one card naming the next 3–4 concrete items („Vrei să mă apuc de asta?”, posted at once, never batched; nothing from the reservoir or outside it starts without the tap), frees a thread's slot as soon as its work waits on a card, batches merge and publish cards at fixed times, and wakes itself every 30 minutes. Every item it takes from the next days or the reservoir is first appended to the current plan as a reserve row marked `conveyor_source` (`day-clock.mjs` `plan_row`), so Focus shows it as „Luat de bandă”; reservoir work gets its tracker item only after the tap. Follow [day execution](references/day-execution.md); never launch every item at once.
+32. **The day starts with the human's direction.** On 5.11.2026 the human chose to say what the day is for before the plan is made, after a Betora day in which the conveyor filled 2 hours with unit tests and file splits while 8 real bugs, found that same day, stayed open. On a new day, before ranking, ask one card «Pe ce lucrăm azi?» built from a live read of the tracker (Phase 0b): at most 4 directions, each named in the human's terms with its size and its biggest items, the recommended one marked, and the human always free to write another direction instead. The answer, cited verbatim, is the day's `direction`. The committed queue comes only from it; other executable work enters reserve only when the answer allows it («și restul», «tu alegi»), and the reservoir reaches the conveyor only when the answer names it. A direction is never a reservoir type (tests, file splits, audits) unless nothing else is open, and work that only the human can do (a phone test, an accountant, a product decision) is reported next to the card, never offered as the agent's direction. When the work of the direction runs out with time left, the conveyor asks again (`awaiting_direction_card`) instead of ending the day or reaching for the reservoir.
 
 Use Supabase project ref `ntjzghsbrzkvpkniotaj`. Read `references/planning-contract.md` before querying, calculating, or applying.
 
@@ -89,6 +90,16 @@ below for repeated planning on the same day. Always refresh live tracker and mil
    - `planning_enabled = true`.
 4. For a missing field, point to Productivitate and stop only for that project.
 5. Never ask again for hours already stored in the profile.
+
+## Phase 0b — Ask what the day is for (rule 32)
+
+Run on a new day (incremental replanning `new_day`) and whenever the human asks to change course. A same-day continuation whose current plan already carries `direction=` keeps it.
+
+1. Read the live tracker before any ranking: open bugs (not `Fixed`/`Closed`, not archived) by priority, naming those created since the previous plan; units from `tt_section_pipeline` (`is_unit = true`) by `next_action`, without `shipped`; open features and To-Dos with the exclusion reasons of the previous plan (`velocity_snapshot.excluded`); open milestones. Nothing is written in this phase.
+2. Group the open work into directions in the human's terms, with sizes: «Bug-urile de securitate (5, două Medium)», «Corectitudinea biletelor: 1358–1360», «Admin · Settings: testele rămase», «Țintă nouă: îți propun una». A direction is real tracker work, a page or an open milestone; a reservoir type is a direction only when nothing else is open.
+3. Post one card «Pe ce lucrăm azi?» with at most 4 directions and the recommended one marked, its reason in one line (rule 22: precedent, size, what it closes). In the same message, one line lists what waits on the human and the day cannot close (phone tests, gates, outside people). The human may answer with a tap or in words; both count.
+4. Record the answer as `direction=<the human's words> · card: <question, option, time, card id>`. It goes into the proposal's first line and, at apply time, into `assumptions` and `velocity_snapshot.direction`. Then continue with Phase 1.
+5. Without an answer, do not plan. Repeat the card once at the next card batch and otherwise wait; never pick the direction yourself.
 
 ## Phase 1 — Refresh tracker and repo evidence
 
@@ -359,6 +370,8 @@ converts them into agent hours; it never adds human hours.
 
 Exclude completed, archived, duplicate, unrelated, and dependency-blocked candidates. A blocking dependency becomes a candidate. Exclude `shipped` sections only with current publication evidence; sections without it need publication verification, not another build. Exclude `blocked_on_you` and `spec_awaiting_approval` sections waiting on the human. Exclude every source carrying an active `/amana` deferral marker whose return date has not arrived (rule 28), and keep it visible as deferred rather than silently dropped.
 
+The day's direction (Phase 0b) filters before the ranking: only candidates inside it may enter `committed`. Candidates outside it go to `reserve` only when the answer allowed it, otherwise they are reported under «În afara direcției de azi» with zero hours. Inside the direction, rank by the order below.
+
 Rank executable candidates by:
 
 1. unblocks the largest critical path;
@@ -409,7 +422,7 @@ The script creates:
 - A queue containing only bugs, only features, or only tests is valid when the ranked candidates and available hours justify it. Show the cross-source candidate counts and state why the homogeneous queue won; never force artificial source diversity.
 - If the strongest item is larger than the committed budget, select a concrete daily slice with an observable checkpoint. Keep the same source key and report the full remaining estimate separately.
 - Reserve is optional execution capacity, not deadline commitment or mandatory progress.
-- The conveyor starts reserve as soon as a thread is free and no committed item is left to start (running, waiting on a card, done or blocked), then the next days' candidates, then the approved reservoir items the human tapped on the new-work card. Execution stops at `day_end_at`, on the human's stop, or when only human work remains (rule 31). `day_stop_hours` stays the threshold for human-declared hours (legacy plans without `day_end_at`: the previous Pontaj stop rule). For incremental plans, `gross_daily_hours` is only the remaining budget of this round; never use it as the cumulative stop threshold.
+- The conveyor starts reserve as soon as a thread is free and no committed item is left to start (running, waiting on a card, done or blocked), then the next days' candidates, then the approved reservoir items the human tapped on the new-work card — the reservoir only when the day's direction names it. Execution stops at `day_end_at`, on the human's stop, or when only human work remains (rule 31); a plan with a direction asks the direction card again first while at least 15 minutes are left (rule 32). `day_stop_hours` stays the threshold for human-declared hours (legacy plans without `day_end_at`: the previous Pontaj stop rule). For incremental plans, `gross_daily_hours` is only the remaining budget of this round; never use it as the cumulative stop threshold.
 - Never treat the sum of all high estimates as mandatory hours; reserve rows are possibilities up to the real stop rule.
 - Set every selected item's `planned_due_date` to the planning date.
 
@@ -428,7 +441,7 @@ Run only on the packed `committed` queue, and only on items whose `source_type` 
 
 ## Phase 7 — Present the proposal
 
-Use this order for every project:
+Open with «Direcția zilei: <the human's words>» (rule 32). Then use this order for every project:
 
 1. **Deadline health** — deadline, working days, aggregate remaining low/high hours, gross capacity, feasibility, and overload. Right under it, **Borne** — every open milestone in date order: «<title> · <due_date> · <mini|major> · N zile · leagă #… (X/N gata)», the sum of remaining low/high hours of the items it names against the working days left to it, and, when that sum does not fit, the same «cere N× ritmul de acum» figure `/borne` uses. A missed milestone is printed first and labelled «RATATĂ — spune-mi dacă o muți sau o marchezi atinsă», and a milestone within 7 working days that names nothing in today's committed queue gets an explicit line saying so, so the day cannot quietly ignore the nearest threshold. No open milestone: print «Borne: niciuna — /borne le pune» once, not per item. Then launch UI coverage on `pre_launch` projects: «UI: X/Y unități required la ready_for_production/shipped» — or «required_for_launch netriat: 0/N unități marcate» when the flagging session has not happened (rule 27). Feasibility on such a project can never read plain `on_track` while the coverage gate fails; qualify it «on_track (blocat de UI coverage pentru lansare)».
 2. **Pregătire lansare** — outcomes by status, current evidence and blockers, plus the diff from the previous snapshot. Keep the section track and the non-UI track separate; never blend them into one percentage.
@@ -529,6 +542,7 @@ Store these keys inside `velocity_snapshot` alongside the selected velocity row:
   "clock_hours": 10,
   "max_threads": 4,
   "card_batches": ["12:00", "15:00", "18:00"],
+  "direction": "Bug-urile de securitate 1348–1352 · card: „Pe ce lucrăm azi?” → „Bug-urile de securitate”, 2026-11-05T08:05Z",
   "agent_calibration": {
     "planning_date": "2026-11-04",
     "agent_correction_factor": 0.14,
@@ -681,6 +695,7 @@ After commit, query the new plan and both queue counts. Report version, planning
 - [ ] Only confirmed human hours consumed human capacity or calibrated effort; conversation estimates and unspecified history remained separate, and an existing availability declaration was reused without a redundant question.
 - [ ] Agent-executed items used the agent calibration (`agent-pace.mjs`, `--calibration-basis agent_measured`) when it was usable, recomputed for this plan against raw estimates and never reused from an earlier snapshot; the queue was packed in agent hours (`agent_daily_hours`) at the conveyor parallelism with a 1.5× queue, raw estimates were stored in `velocity_snapshot.raw_estimates`, and the proposal showed clock hours and agent hours side by side.
 - [ ] The clock contract is explicit: the proposal shows the end time and thread count, and the applied plan stores `day_end_at`, `max_threads` and `card_batches` (rule 31).
+- [ ] A new day started with the «Pe ce lucrăm azi?» card built from the live tracker; the committed queue came only from the human's direction, the reservoir was used only when the direction named it, and the applied plan stores `direction` (rule 32).
 - [ ] Each source type used its own calibration; feature/hour fallback was not applied to bugs, tests, or To-Dos.
 - [ ] A 2–9 item sample used the provisional factor from the view, never the lower raw factor.
 - [ ] Daily hours came from the profile.
