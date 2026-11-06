@@ -41,7 +41,8 @@ const queues = {
 
 // 12:25 local, the moment the coordinator stopped on 4.11: committed and reserve
 // are running or waiting on cards, so the conveyor reaches into the next days
-// instead of ending the day. The reservoir does not start on the list alone:
+// instead of ending the day. Threads waiting on cards are still open and keep
+// their slots, so only one slot of four is free. The reservoir does not start on the list alone:
 // its next concrete work goes on one card first (choice of 4.11.2026).
 const midday = conveyorNext({
   now: '2026-11-04T10:25:00Z',
@@ -52,7 +53,8 @@ const midday = conveyorNext({
 });
 assert.equal(midday.continue, true);
 assert.equal(midday.max_threads, 4);
-assert.equal(midday.slots_free, 3);
+assert.equal(midday.slots_free, 1);
+assert.equal(midday.open_threads, 3);
 assert.deepEqual(midday.start.map((item) => [item.stable_key, item.conveyor_source]), [
   ['todo:230', 'next_days'],
 ]);
@@ -91,13 +93,27 @@ const tapped = {
   ...queues,
   reservoir: [{ ...queues.reservoir[0], confirmed_by: 'card 04.11 12:41 „Da, toate”' }, queues.reservoir[1]],
 };
-const afterTap = conveyorNext({
+// Four threads are open, so it waits for one of them to be resolved.
+const tappedFull = conveyorNext({
   now: '2026-11-04T10:42:00Z',
   day_end_at: day.day_end_at,
   running: ['feature:615', 'todo:230'],
   waiting_on_human: ['feature:614', 'todo:248'],
   queues: tapped,
 });
+assert.deepEqual(tappedFull.start, []);
+assert.equal(tappedFull.slots_free, 0);
+assert.equal(tappedFull.reason, 'threads_busy');
+// todo:248's thread merged and was resolved; only the human's verdict is left.
+const afterTap = conveyorNext({
+  now: '2026-11-04T10:50:00Z',
+  day_end_at: day.day_end_at,
+  running: ['feature:615', 'todo:230'],
+  waiting_on_human: ['feature:614'],
+  human_pending_keys: ['todo:248'],
+  queues: tapped,
+});
+assert.equal(afterTap.slots_free, 1);
 assert.deepEqual(afterTap.start.map((item) => [item.stable_key, item.conveyor_source]), [
   ['reservoir:ui-audit:/cluburi', 'reservoir'],
 ]);
@@ -182,6 +198,34 @@ assert.deepEqual(lastMinutes.start.map((item) => item.stable_key), ['todo:231'])
 assert.deepEqual(lastMinutes.too_long_for_clock_keys, ['todo:230']);
 assert.equal(lastMinutes.next_wake_in_minutes, 23);
 
+// Motion, 6.11.2026: four threads open, all waiting on the owner's cards, and
+// work still queued. No fifth thread starts and the day does not end: the next
+// tap or resolved thread frees a slot.
+const motionQueues = { committed: ['ui:3288', 'ui:3290', 'ui:3326', 'ui:3332', 'todo:310'].map((key) => ({ stable_key: key, estimate_hours_low: 0.5 })) };
+const allWaiting = conveyorNext({
+  now: '2026-11-06T12:05:00Z',
+  day_end_at: '2026-11-06T15:18:46Z',
+  waiting_on_human: ['ui:3288', 'ui:3290', 'ui:3326', 'ui:3332'],
+  queues: motionQueues,
+});
+assert.deepEqual(allWaiting.start, []);
+assert.equal(allWaiting.open_threads, 4);
+assert.equal(allWaiting.slots_free, 0);
+assert.equal(allWaiting.continue, true);
+assert.equal(allWaiting.reason, 'threads_waiting_on_cards');
+assert.equal(allWaiting.send_day_end_report, false);
+assert.equal(allWaiting.next_wake_in_minutes, 30);
+assert.equal(allWaiting.next_card_batch.at_local, '2026-11-06 15:00');
+const oneResolved = conveyorNext({
+  now: '2026-11-06T12:20:00Z',
+  day_end_at: '2026-11-06T15:18:46Z',
+  waiting_on_human: ['ui:3290', 'ui:3326', 'ui:3332'],
+  done_keys: ['ui:3288'],
+  queues: motionQueues,
+});
+assert.deepEqual(oneResolved.start.map((item) => item.stable_key), ['todo:310']);
+assert.equal(oneResolved.reason, 'slots_filled');
+
 // The day ends early only when everything left needs the human; then one card with all of it.
 const humanOnly = conveyorNext({
   now: '2026-11-04T12:00:00Z',
@@ -193,6 +237,16 @@ const humanOnly = conveyorNext({
 assert.equal(humanOnly.continue, false);
 assert.equal(humanOnly.reason, 'only_human_work_left');
 assert.equal(humanOnly.send_day_end_report, true);
+const humanPendingOnly = conveyorNext({
+  now: '2026-11-04T12:00:00Z',
+  day_end_at: day.day_end_at,
+  human_pending_keys: ['feature:614'],
+  done_keys: ['feature:615', 'todo:248', 'todo:230', 'reservoir:ui-audit:/cluburi'],
+  queues,
+});
+assert.equal(humanPendingOnly.open_threads, 0);
+assert.equal(humanPendingOnly.reason, 'only_human_work_left');
+assert.equal(humanPendingOnly.next_card_batch.at_local, '2026-11-04 15:00');
 
 const ended = conveyorNext({ now: '2026-11-04T18:30:00Z', day_end_at: day.day_end_at, queues });
 assert.equal(ended.continue, false);

@@ -156,15 +156,18 @@ function idleReason(humanCount, tooLongCount) {
   return 'no_executable_work';
 }
 
-// What the coordinator starts now. A thread that finished its agent part and
-// waits for a merge or verdict card frees its slot: the card is batched, the
-// thread does not hold the conveyor.
+// What the coordinator starts now. max_threads counts open threads, not
+// working ones: a thread that waits for a merge or verdict card keeps its slot
+// until it is resolved (Motion, 6.11.2026: „4 punct, până nu ajunge resolved nu
+// deschidem alta”). Items whose thread is already resolved but still need the
+// human go in human_pending_keys and hold no slot.
 export function conveyorNext({
   now,
   day_end_at: dayEnd,
   max_threads: threadsInput,
   running = [],
   waiting_on_human: waiting = [],
+  human_pending_keys: humanPending = [],
   done_keys: done = [],
   blocked_keys: blocked = [],
   queues = {},
@@ -187,9 +190,11 @@ export function conveyorNext({
 
   const runningKeys = keySet(running, 'running');
   const waitingKeys = keySet(waiting, 'waiting_on_human');
+  const humanPendingKeys = keySet(humanPending, 'human_pending_keys');
+  const openKeys = new Set([...runningKeys, ...waitingKeys]);
   const proposedKeys = keySet(proposed, 'proposed_keys');
   const excluded = new Set([
-    ...runningKeys, ...waitingKeys, ...keySet(done, 'done_keys'), ...keySet(blocked, 'blocked_keys'),
+    ...runningKeys, ...waitingKeys, ...humanPendingKeys, ...keySet(done, 'done_keys'), ...keySet(blocked, 'blocked_keys'),
     ...keySet(declined, 'declined_keys'),
   ]);
   const remainingHours = Math.max(0, (endMs - nowMs) / HOUR_MS);
@@ -201,6 +206,8 @@ export function conveyorNext({
     max_threads: threads,
     running_count: runningKeys.size,
     waiting_on_human_count: waitingKeys.size,
+    open_threads: openKeys.size,
+    human_pending_count: humanPendingKeys.size,
   };
 
   if (stopRequested) {
@@ -210,7 +217,7 @@ export function conveyorNext({
     return { ...base, continue: false, reason: 'day_end_reached', start: [], send_day_end_report: true };
   }
 
-  const slots = Math.max(0, threads - runningKeys.size);
+  const slots = Math.max(0, threads - openKeys.size);
   const start = [];
   const humanOnly = [];
   const tooLongForClock = [];
@@ -264,9 +271,13 @@ export function conveyorNext({
   const newWorkCard = !awaitingCard.length && backlog === 0 && cardCandidates.length
     ? { post: 'now', question: NEW_WORK_QUESTION, items: cardCandidates.slice(0, NEW_WORK_CARD_ITEMS) }
     : null;
-  const idle = runningKeys.size === 0 && start.length === 0;
+  // Work is queued but every slot is held by a thread waiting on a card: the
+  // day goes on and the next tap or resolved thread frees a slot.
+  const heldByCards = runningKeys.size === 0 && start.length === 0 && backlog > 0;
+  const idle = runningKeys.size === 0 && start.length === 0 && !heldByCards;
   const awaitingNewWork = idle && Boolean(newWorkCard || awaitingCard.length);
-  const idleWhy = idleReason(waitingKeys.size + humanOnly.length, tooLongForClock.length);
+  const humanWaiting = waitingKeys.size + humanPendingKeys.size;
+  const idleWhy = idleReason(humanWaiting + humanOnly.length, tooLongForClock.length);
   const askDirection = idle && !awaitingNewWork && !noNewWork
     && Boolean(String(direction ?? '').trim())
     && idleWhy !== 'remaining_items_exceed_clock'
@@ -286,11 +297,11 @@ export function conveyorNext({
       too_long_for_clock_keys: tooLongForClock,
       unapproved_reservoir_keys: unapproved,
       next_wake_in_minutes: Math.max(1, Math.ceil((Date.parse(directionBatch.at) - nowMs) / 60000)),
-      next_card_batch: waitingKeys.size ? directionBatch : null,
+      next_card_batch: humanWaiting ? directionBatch : null,
       send_day_end_report: false,
     };
   }
-  const batch = waitingKeys.size || awaitingNewWork ? nextCardBatch({ now, day_end_at: dayEnd, batches }) : null;
+  const batch = humanWaiting || awaitingNewWork ? nextCardBatch({ now, day_end_at: dayEnd, batches }) : null;
   const wakeMinutes = awaitingNewWork
     ? Math.max(1, Math.ceil((Date.parse(batch.at) - nowMs) / 60000))
     : Math.max(1, Math.min(WAKE_MINUTES, Math.ceil(remainingHours * 60)));
@@ -299,7 +310,8 @@ export function conveyorNext({
     continue: !idle || awaitingNewWork,
     reason: awaitingNewWork ? 'awaiting_new_work_card'
       : idle ? idleWhy
-        : start.length ? 'slots_filled' : 'threads_busy',
+        : heldByCards ? 'threads_waiting_on_cards'
+          : start.length ? 'slots_filled' : 'threads_busy',
     slots_free: slots,
     start,
     new_work_card: newWorkCard,
@@ -309,7 +321,7 @@ export function conveyorNext({
     too_long_for_clock_keys: tooLongForClock,
     unapproved_reservoir_keys: unapproved,
     next_wake_in_minutes: idle && !awaitingNewWork ? null : wakeMinutes,
-    next_card_batch: waitingKeys.size ? batch : null,
+    next_card_batch: humanWaiting ? batch : null,
     send_day_end_report: idle && !awaitingNewWork,
   };
 }
