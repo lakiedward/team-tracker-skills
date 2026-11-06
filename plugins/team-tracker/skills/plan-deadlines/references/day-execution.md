@@ -36,8 +36,9 @@ a board-ului, cu regulile și plafonul lui de runde.
 
 ## Banda
 
-- Coordonatorul ține cel mult `max_threads` fire pornite în același timp. Implicit sunt 4;
-  instrucțiunile proiectului pot alege între 1 și 8. Nu porni toate itemele deodată:
+- Coordonatorul ține cel mult `max_threads` fire deschise în același timp. Implicit sunt 4;
+  instrucțiunile proiectului pot alege între 1 și 8. Un fir e deschis până e închis
+  (resolved), nu doar cât lucrează. Nu porni toate itemele deodată:
   capacitatea planului e calculată pe numărul acesta de fire (`conveyor_parallelism` din
   [calibrare](agent-calibration.md)).
 - Ordinea surselor: `committed` → `reserve` → `next_days` → `reservoir`. `next_days`
@@ -47,13 +48,21 @@ a board-ului, cu regulile și plafonul lui de runde.
   [cardul de muncă nouă](#cardul-de-muncă-nouă).
 - Rulează `day-clock.mjs` cu `"mode":"conveyor"` în trei momente: la aplicare, de fiecare
   dată când un fir își termină partea, și la fiecare trezire. Inputul conține `now`,
-  `day_end_at`, `max_threads`, `running`, `waiting_on_human`, `done_keys`, `blocked_keys`,
+  `day_end_at`, `max_threads`, `running`, `waiting_on_human`, `human_pending_keys`,
+  `done_keys`, `blocked_keys`,
   `queues`, plus `proposed_keys`, `declined_keys` și `no_new_work` pentru cardul de muncă
   nouă, iar pe un plan cu direcție `direction` și `direction_card_pending`. Pornește exact
   itemele din `start`, în ordinea dată. Dacă rezultatul are `new_work_card` sau
   `direction_card`, pune cardul pe loc.
-- Un fir care a deschis PR-ul și așteaptă un card de merge sau un verdict eliberează
-  locul. Itemul lui trece în `waiting_on_human`, iar firul nu ține banda ocupată.
+- Un fir care a deschis PR-ul și așteaptă un card de merge sau un verdict își păstrează
+  locul până e închis. Itemul lui stă în `waiting_on_human` și ocupă un fir. Pe 6.11.2026
+  omul a cerut asta la Motion: „4 punct, până nu ajunge resolved nu deschidem alta”.
+  Când toate locurile sunt ținute de fire care așteaptă carduri, `reason` e
+  `threads_waiting_on_cards`: nu porni al cincilea fir și nu încheia ziua. Locul se
+  eliberează la următorul tap care închide un fir.
+- Un fir se închide când partea agentului e gata (merge, verificare, dovezi, Pontaj). Dacă
+  după închidere a rămas doar ceva al omului, de exemplu verdictul sau „Marchează livrat”,
+  trece itemul în `human_pending_keys`: nu mai ocupă fir și merge în lotul de carduri.
 - Itemele omului nu ocupă fire: `executor: "human"`, verdict, test pe telefon, decizie,
   domeniu. Merg în lotul de carduri.
 - Spre final, pornește doar ce încape: un item cu `estimate_hours_low` mai mare decât
