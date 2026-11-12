@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { conveyorNext, conveyorPlanRow, dayEndAt, nextCardBatch } from './day-clock.mjs';
+import { conveyorNext, conveyorPlanRow, dayEndAt, dayStart, nextCardBatch } from './day-clock.mjs';
 
 // Motion, 4.11.2026: plan v41 applied at 10:22 local for 10 hours.
 const day = dayEndAt({ applied_at: '2026-11-04T08:22:05Z', hours: 10 });
@@ -22,6 +22,9 @@ const lateBatch = nextCardBatch({ now: '2026-11-04T16:30:00Z', day_end_at: '2026
 assert.equal(lateBatch.at, '2026-11-04T18:22:05.000Z', 'after 18:00 the cards go with the day-end report');
 assert.equal(lateBatch.with_day_end_report, true);
 
+// The human's Start tap (12.11.2026): without it the conveyor starts nothing.
+const STARTED = 'card cmsg_start · Start · 2026-11-04T08:22:05Z';
+
 const queues = {
   committed: [
     { stable_key: 'feature:614', estimate_hours_low: 0.5 },
@@ -32,12 +35,62 @@ const queues = {
     { stable_key: 'todo:248', estimate_hours_low: 0.25 },
     { stable_key: 'bug:1309', estimate_hours_low: 0.5, dependency_ready: false },
   ],
-  next_days: [{ stable_key: 'todo:230', estimate_hours_low: 1 }],
+  next_days: [{ stable_key: 'todo:230', estimate_hours_low: 1, confirmed_by: 'card 04.11 12:20 „Da, toate”' }],
   reservoir: [
     { stable_key: 'reservoir:ui-audit:/cluburi', estimate_hours_low: 0.5, approved_by: 'setările proiectului, 04.11' },
     { stable_key: 'reservoir:inventat', estimate_hours_low: 0.25 },
   ],
 };
+
+// Culcush, 12.11.2026: the plan was applied and four threads started at once.
+// The human: „nu porni niciodată până nu zic start”. An applied plan without the
+// Start tap starts nothing and asks once.
+const applied = conveyorNext({ now: '2026-11-04T08:22:05Z', day_end_at: day.day_end_at, queues });
+assert.equal(applied.continue, true);
+assert.equal(applied.reason, 'awaiting_start_card');
+assert.deepEqual(applied.start, []);
+assert.deepEqual(applied.start_card, { post: 'now', question: 'Pornesc lucrul pe planul de azi?', options: ['Start', 'Nu încă'] });
+assert.equal(applied.new_work_card, null);
+assert.equal(applied.next_wake_in_minutes, null, 'the tap wakes the coordinator');
+assert.equal(applied.send_day_end_report, false);
+const startWaiting = conveyorNext({ now: '2026-11-04T08:40:00Z', day_end_at: day.day_end_at, start_card_pending: true, queues });
+assert.equal(startWaiting.start_card, null, 'one Start card at a time');
+assert.deepEqual(startWaiting.start, []);
+assert.equal(
+  conveyorNext({ started_by: '  ', now: '2026-11-04T08:40:00Z', day_end_at: day.day_end_at, queues }).reason,
+  'awaiting_start_card',
+  'a blank tap is no tap',
+);
+assert.equal(
+  conveyorNext({ now: '2026-11-04T18:30:00Z', day_end_at: day.day_end_at, queues }).reason,
+  'day_end_reached',
+  'an unstarted plan still ends with the day',
+);
+
+// The clock runs from the Start tap, not from the apply moment.
+const started = dayStart({ started_at: '2026-11-04T09:05:00Z', hours: 10, started_by: STARTED });
+assert.equal(started.day_end_at, '2026-11-04T19:05:00.000Z');
+assert.equal(started.day_end_local, '2026-11-04 21:05');
+assert.equal(started.started_at, '2026-11-04T09:05:00.000Z');
+assert.equal(started.started_by, STARTED);
+assert.throws(() => dayStart({ started_at: '2026-11-04T09:05:00Z', hours: 10, started_by: '' }), /Start tap/);
+
+// After Start, the plan the human saw runs; the next days' candidates did not
+// appear on that plan, so they go on the new-work card like the reservoir.
+const unseen = conveyorNext({
+  started_by: STARTED,
+  now: '2026-11-04T10:25:00Z',
+  day_end_at: day.day_end_at,
+  running: ['feature:615'],
+  waiting_on_human: ['feature:614', 'todo:248'],
+  queues: { ...queues, next_days: [{ stable_key: 'todo:230', title: 'Fișa Google Play', estimate_hours_low: 1 }] },
+});
+assert.deepEqual(unseen.start, []);
+assert.deepEqual(unseen.new_work_card.items.map((item) => [item.stable_key, item.conveyor_source]), [
+  ['todo:230', 'next_days'],
+  ['reservoir:ui-audit:/cluburi', 'reservoir'],
+]);
+assert.equal(unseen.new_work_card.items[0].approved_by, undefined, 'a tracker item needs no list approval');
 
 // 12:25 local, the moment the coordinator stopped on 4.11: committed and reserve
 // are running or waiting on cards, so the conveyor reaches into the next days
@@ -45,6 +98,7 @@ const queues = {
 // their slots, so only one slot of four is free. The reservoir does not start on the list alone:
 // its next concrete work goes on one card first (choice of 4.11.2026).
 const midday = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T10:25:00Z',
   day_end_at: day.day_end_at,
   running: ['feature:615'],
@@ -64,6 +118,7 @@ assert.deepEqual(midday.new_work_card, {
   items: [{
     stable_key: 'reservoir:ui-audit:/cluburi',
     title: 'reservoir:ui-audit:/cluburi',
+    conveyor_source: 'reservoir',
     estimate_hours_low: 0.5,
     estimate_hours_high: 0.5,
     approved_by: 'setările proiectului, 04.11',
@@ -77,6 +132,7 @@ assert.equal(midday.send_day_end_report, false);
 
 // While the card waits, the item is neither started nor proposed again.
 const pending = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T10:40:00Z',
   day_end_at: day.day_end_at,
   running: ['feature:615', 'todo:230'],
@@ -95,6 +151,7 @@ const tapped = {
 };
 // Four threads are open, so it waits for one of them to be resolved.
 const tappedFull = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T10:42:00Z',
   day_end_at: day.day_end_at,
   running: ['feature:615', 'todo:230'],
@@ -106,6 +163,7 @@ assert.equal(tappedFull.slots_free, 0);
 assert.equal(tappedFull.reason, 'threads_busy');
 // todo:248's thread merged and was resolved; only the human's verdict is left.
 const afterTap = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T10:50:00Z',
   day_end_at: day.day_end_at,
   running: ['feature:615', 'todo:230'],
@@ -124,6 +182,7 @@ const reservoirOnly = Array.from({ length: 6 }, (_, index) => ({
   stable_key: `reservoir:tests:${index}`, title: `Teste lipsă ${index}`, estimate_hours_low: 0.5, approved_by: 'setări',
 }));
 const planLeft = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T09:00:00Z',
   day_end_at: day.day_end_at,
   max_threads: 1,
@@ -132,6 +191,7 @@ const planLeft = conveyorNext({
 assert.deepEqual(planLeft.start.map((item) => item.stable_key), ['bug:1']);
 assert.equal(planLeft.new_work_card, null, 'bug:2 still waits for a thread');
 const lastPlanItem = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T09:30:00Z',
   day_end_at: day.day_end_at,
   max_threads: 1,
@@ -148,6 +208,7 @@ assert.deepEqual(
 // With the plan done and the card unanswered, the day does not end: the tap wakes
 // the coordinator, and the next wake is the next card batch or the end.
 const unanswered = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T10:30:00Z',
   day_end_at: day.day_end_at,
   proposed_keys: ['reservoir:tests:0'],
@@ -161,12 +222,14 @@ assert.equal(unanswered.next_wake_in_minutes, 150, '12:30 local wakes at the 15:
 
 // „Nu, nimic nou azi” and items the human left out are not proposed again.
 const noNewWork = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T10:30:00Z', day_end_at: day.day_end_at, no_new_work: true, queues: { reservoir: reservoirOnly },
 });
 assert.equal(noNewWork.continue, false);
 assert.equal(noNewWork.reason, 'no_executable_work');
 assert.equal(noNewWork.new_work_card, null);
 const declined = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T10:30:00Z',
   day_end_at: day.day_end_at,
   declined_keys: ['reservoir:tests:0', 'reservoir:tests:1'],
@@ -177,11 +240,12 @@ assert.deepEqual(declined.new_work_card.items.map((item) => item.stable_key), [
 ]);
 
 // Slots are filled in conveyor order and never beyond max_threads.
-const morning = conveyorNext({ now: '2026-11-04T08:30:00Z', day_end_at: day.day_end_at, max_threads: 2, queues });
+const morning = conveyorNext({ started_by: STARTED, now: '2026-11-04T08:30:00Z', day_end_at: day.day_end_at, max_threads: 2, queues });
 assert.deepEqual(morning.start.map((item) => item.stable_key), ['feature:614', 'feature:615']);
 assert.equal(morning.reason, 'slots_filled');
 
 const busy = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T08:30:00Z', day_end_at: day.day_end_at, max_threads: 1, running: ['feature:614'], queues,
 });
 assert.equal(busy.continue, true);
@@ -190,9 +254,10 @@ assert.deepEqual(busy.start, []);
 
 // Near the end only items that can still finish are started, and the wake lands on the end.
 const lastMinutes = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T18:00:00Z',
   day_end_at: day.day_end_at,
-  queues: { next_days: [{ stable_key: 'todo:230', estimate_hours_low: 1 }, { stable_key: 'todo:231', estimate_hours_low: 0.25 }] },
+  queues: { reserve: [{ stable_key: 'todo:230', estimate_hours_low: 1 }, { stable_key: 'todo:231', estimate_hours_low: 0.25 }] },
 });
 assert.deepEqual(lastMinutes.start.map((item) => item.stable_key), ['todo:231']);
 assert.deepEqual(lastMinutes.too_long_for_clock_keys, ['todo:230']);
@@ -203,6 +268,7 @@ assert.equal(lastMinutes.next_wake_in_minutes, 23);
 // tap or resolved thread frees a slot.
 const motionQueues = { committed: ['ui:3288', 'ui:3290', 'ui:3326', 'ui:3332', 'todo:310'].map((key) => ({ stable_key: key, estimate_hours_low: 0.5 })) };
 const allWaiting = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-06T12:05:00Z',
   day_end_at: '2026-11-06T15:18:46Z',
   waiting_on_human: ['ui:3288', 'ui:3290', 'ui:3326', 'ui:3332'],
@@ -217,6 +283,7 @@ assert.equal(allWaiting.send_day_end_report, false);
 assert.equal(allWaiting.next_wake_in_minutes, 30);
 assert.equal(allWaiting.next_card_batch.at_local, '2026-11-06 15:00');
 const oneResolved = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-06T12:20:00Z',
   day_end_at: '2026-11-06T15:18:46Z',
   waiting_on_human: ['ui:3290', 'ui:3326', 'ui:3332'],
@@ -228,6 +295,7 @@ assert.equal(oneResolved.reason, 'slots_filled');
 
 // The day ends early only when everything left needs the human; then one card with all of it.
 const humanOnly = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T12:00:00Z',
   day_end_at: day.day_end_at,
   waiting_on_human: ['feature:614'],
@@ -238,6 +306,7 @@ assert.equal(humanOnly.continue, false);
 assert.equal(humanOnly.reason, 'only_human_work_left');
 assert.equal(humanOnly.send_day_end_report, true);
 const humanPendingOnly = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-04T12:00:00Z',
   day_end_at: day.day_end_at,
   human_pending_keys: ['feature:614'],
@@ -248,14 +317,14 @@ assert.equal(humanPendingOnly.open_threads, 0);
 assert.equal(humanPendingOnly.reason, 'only_human_work_left');
 assert.equal(humanPendingOnly.next_card_batch.at_local, '2026-11-04 15:00');
 
-const ended = conveyorNext({ now: '2026-11-04T18:30:00Z', day_end_at: day.day_end_at, queues });
+const ended = conveyorNext({ started_by: STARTED, now: '2026-11-04T18:30:00Z', day_end_at: day.day_end_at, queues });
 assert.equal(ended.continue, false);
 assert.equal(ended.reason, 'day_end_reached');
 
-const stopped = conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues, stop_requested: true });
+const stopped = conveyorNext({ started_by: STARTED, now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues, stop_requested: true });
 assert.equal(stopped.reason, 'stop_requested');
 
-const dry = conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: {} });
+const dry = conveyorNext({ started_by: STARTED, now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: {} });
 assert.equal(dry.reason, 'no_executable_work');
 
 // Betora, 5.11.2026: the day the human chose ran out at 15:50 local with 2h on
@@ -263,6 +332,7 @@ assert.equal(dry.reason, 'no_executable_work');
 // instead of ending the day or reaching for the reservoir (choice of 5.11.2026).
 const betoraDay = { day_end_at: '2026-11-05T16:02:00Z', direction: 'Bug-urile de securitate 1348–1352' };
 const directionDone = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-05T13:50:00Z', ...betoraDay, done_keys: ['bug:1348'], queues: { committed: [{ stable_key: 'bug:1348' }] },
 });
 assert.equal(directionDone.continue, true);
@@ -273,18 +343,20 @@ assert.deepEqual(directionDone.direction_card, {
 assert.equal(directionDone.send_day_end_report, false);
 assert.equal(directionDone.next_wake_in_minutes, 130, '15:50 local wakes at the 18:00 batch; the tap wakes it sooner');
 const directionWaiting = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-05T14:00:00Z', ...betoraDay, direction_card_pending: true, waiting_on_human: ['bug:1348'], queues: {},
 });
 assert.equal(directionWaiting.reason, 'awaiting_direction_card', 'merge cards waiting do not end a directed day');
 assert.equal(directionWaiting.direction_card, null, 'one direction card at a time');
-const directionDeclined = conveyorNext({ now: '2026-11-05T14:00:00Z', ...betoraDay, no_new_work: true, queues: {} });
+const directionDeclined = conveyorNext({ started_by: STARTED, now: '2026-11-05T14:00:00Z', ...betoraDay, no_new_work: true, queues: {} });
 assert.equal(directionDeclined.continue, false);
 assert.equal(directionDeclined.reason, 'no_executable_work');
 assert.equal(directionDeclined.send_day_end_report, true);
-const directionLate = conveyorNext({ now: '2026-11-05T15:50:00Z', ...betoraDay, queues: {} });
+const directionLate = conveyorNext({ started_by: STARTED, now: '2026-11-05T15:50:00Z', ...betoraDay, queues: {} });
 assert.equal(directionLate.reason, 'no_executable_work', 'under 15 minutes left the day closes');
 assert.equal(directionLate.direction_card, null);
 const directionTapped = conveyorNext({
+  started_by: STARTED,
   now: '2026-11-05T14:00:00Z',
   ...betoraDay,
   queues: { reservoir: [{ stable_key: 'reservoir:tests:0', estimate_hours_low: 0.25, approved_by: 'setările proiectului' }] },
@@ -293,13 +365,18 @@ assert.equal(directionTapped.reason, 'awaiting_new_work_card', 'a reservoir the 
 assert.equal(directionTapped.direction_card, null);
 assert.equal(dry.direction_card, null, 'a plan without a direction keeps the old ending');
 
-assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, max_threads: 9 }));
-assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { filler: [] } }));
-assert.throws(() => conveyorNext({ now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { committed: [{}] } }));
+assert.throws(() => conveyorNext({ started_by: STARTED, now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, max_threads: 9 }));
+assert.throws(() => conveyorNext({ started_by: STARTED, now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { filler: [] } }));
+assert.throws(() => conveyorNext({ started_by: STARTED, now: '2026-11-04T09:00:00Z', day_end_at: day.day_end_at, queues: { committed: [{}] } }));
 
 // What the conveyor takes beyond the approved queue becomes a reserve row of
 // the current plan, so Focus shows it as „Luat de bandă” (choice of 4.11.2026).
 const [nextDay] = midday.start;
+assert.throws(
+  () => conveyorPlanRow({ plan_id: 187, next_sequence: 13, now: '2026-11-04T10:25:00Z', item: { ...nextDay, confirmed_by: '', source_type: 'todo', source_id: 230, title: 'x' } }),
+  /new-work card/,
+  'no next-days row without the tap',
+);
 const [reservoirEntry] = afterTap.start;
 const nextDayRow = conveyorPlanRow({
   plan_id: 187,
@@ -332,7 +409,7 @@ assert.deepEqual(nextDayRow.values, {
   dependencies: [],
   required_for_deadline: false,
   queue_role: 'reserve',
-  scope_reason: 'why_now=Următorul în clasament; change_kind=data; queue_role=reserve; conveyor_source=next_days',
+  scope_reason: 'why_now=Următorul în clasament; change_kind=data; queue_role=reserve; conveyor_source=next_days; approved_by=card: card 04.11 12:20 „Da, toate”',
   launch_outcome_keys: [],
 });
 const reservoirRow = conveyorPlanRow({

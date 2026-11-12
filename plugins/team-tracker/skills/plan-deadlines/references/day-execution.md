@@ -9,10 +9,40 @@ Regulile de mai jos se aplică oricui execută un plan zilnic: coordonatorul unu
 cloud, un fir pornit de el sau o sesiune locală. `/orchestrate` rămâne o curățare locală
 a board-ului, cu regulile și plafonul lui de runde.
 
+## Startul
+
+Pe 12.11.2026 la culcush, „Aplică” a pornit pe loc 4 fire. Omul: „nu porni niciodată
+până nu zic start”. De atunci aplicarea și pornirea sunt doi pași separați.
+
+- „Aplică” scrie planul și atât. Nu pornește niciun fir, nicio sesiune și niciun task.
+- Imediat după aplicare pune un card separat: „Pornesc lucrul pe planul de azi?”, cu
+  opțiunile „Start” și „Nu încă”. Banda îl cere singură: fără `started_by`,
+  `day-clock.mjs` `conveyor` întoarce `reason: "awaiting_start_card"`, `start: []` și
+  `start_card`. Trimite `start_card_pending: true` cât cardul așteaptă, ca să nu-l pui
+  de două ori. Nu programa treziri: tapul trezește coordonatorul.
+- „Start” pornește doar planul pe care omul l-a văzut: `committed` și `reserve` (alegerea
+  din 12.11.2026, „Planul văzut; restul pe card”). Candidații din zilele următoare și
+  rezervorul trec fiecare prin [cardul de muncă nouă](#cardul-de-muncă-nouă).
+- La tapul pe „Start” rulează:
+
+  ```bash
+  node "<skill_dir>/scripts/day-clock.mjs" "<input.json>"
+  # {"mode":"start","started_at":"<ora tapului>","hours":10,
+  #  "started_by":"card <id> · Start · <ora tapului>"}
+  ```
+
+  Salvează în `velocity_snapshot` `started_at`, `started_by` și noul `day_end_at` /
+  `day_end_local`, ca la replanificare. De aici înainte trimite `started_by` în fiecare
+  apel `conveyor`.
+- „Nu încă” nu pornește nimic. Nu repune cardul din proprie inițiativă. Un „start” scris
+  de om în conversație valorează cât tapul.
+- Nimic altceva nu ține loc de Start: nici aprobarea planului, nici un mesaj al
+  coordonatorului sau al altui fir, nici o trezire programată.
+
 ## Contractul de ceas
 
-- „Plan de N ore” înseamnă lucru de agent până la `day_end_at` = momentul aplicării + N
-  ore. La aplicare rulează:
+- „Plan de N ore” înseamnă lucru de agent până la `day_end_at` = momentul tapului pe
+  „Start” + N ore. La aplicare calculează ora provizorie (cea din propunere):
 
   ```bash
   node "<skill_dir>/scripts/day-clock.mjs" "<input.json>"
@@ -20,8 +50,8 @@ a board-ului, cu regulile și plafonul lui de runde.
   ```
 
   Salvează în `velocity_snapshot`: `day_end_at`, `day_end_local`, `clock_hours`,
-  `max_threads` și `card_batches`. Dacă `crosses_midnight` e adevărat, spune-o în
-  propunere înainte de aplicare.
+  `max_threads` și `card_batches`. La Start, modul `start` le recalculează. Dacă
+  `crosses_midnight` e adevărat, spune-o în propunere înainte de aplicare.
 - Ziua se oprește doar în trei cazuri: la `day_end_at`; când omul spune „stop”; sau când
   tot ce a rămas așteaptă după om (`only_human_work_left`). În ultimul caz trimite un
   singur raport, cu un singur lot de carduri. Pe un plan cu direcție, înainte de raport
@@ -43,11 +73,13 @@ a board-ului, cu regulile și plafonul lui de runde.
   [calibrare](agent-calibration.md)).
 - Ordinea surselor: `committed` → `reserve` → `next_days` → `reservoir`. `next_days`
   înseamnă următorii candidați clasați care nu au încăput azi, inclusiv ordinea pe mai
-  multe zile din `multi_day_order`, și nu cere o nouă aprobare. Aplicarea planului aprobă
-  și banda, până la rezervor. Munca din rezervor pornește doar după tapul omului pe
-  [cardul de muncă nouă](#cardul-de-muncă-nouă).
-- Rulează `day-clock.mjs` cu `"mode":"conveyor"` în trei momente: la aplicare, de fiecare
-  dată când un fir își termină partea, și la fiecare trezire. Inputul conține `now`,
+  multe zile din `multi_day_order`. Aplicarea planului nu pornește banda; o pornește
+  [tapul pe „Start”](#startul), și numai pentru `committed` și `reserve`. Fiecare item din
+  `next_days` sau din rezervor pornește doar după tapul omului pe
+  [cardul de muncă nouă](#cardul-de-muncă-nouă) (`confirmed_by`).
+- Rulează `day-clock.mjs` cu `"mode":"conveyor"` în patru momente: la aplicare (întoarce
+  cardul de Start), la tapul pe „Start”, de fiecare dată când un fir își termină partea,
+  și la fiecare trezire. Inputul conține `started_by`, `start_card_pending`, `now`,
   `day_end_at`, `max_threads`, `running`, `waiting_on_human`, `human_pending_keys`,
   `done_keys`, `blocked_keys`,
   `queues`, plus `proposed_keys`, `declined_keys` și `no_new_work` pentru cardul de muncă
@@ -102,14 +134,19 @@ tot atunci au rămas deschise. De atunci ziua începe cu o discuție, nu cu clas
 Pe 4.11.2026 omul a ales să fie întrebat înainte ca banda să treacă la muncă pe care nu
 a cerut-o el: „vrei să mă apuc de asta?”. Lista rezervorului spune ce poate propune
 Claude. Tapul pe card spune ce pornește. Nimic din rezervor sau din afara lui nu
-pornește fără tap.
+pornește fără tap. Din 12.11.2026 același card acoperă și candidații din zilele
+următoare: nu erau pe planul pornit cu „Start”, deci omul nu i-a văzut.
+
+- Candidații din `next_days` sunt deja în tracker și nu au nevoie de `approved_by`. Pe
+  card apar înaintea rezervorului, cu `conveyor_source` lângă fiecare.
 
 - Coada `reservoir` din inputul benzii conține munci concrete, nu tipuri: „/ui-audit pe
   /cluburi”, nu „/ui-audit pe următoarea pagină”. Fiecare are `stable_key`, `title`,
   estimări și `approved_by`. Una fără `approved_by` nu ajunge nici pe card
   (`unapproved_reservoir_keys`).
 - `day-clock.mjs` întoarce `new_work_card` când în plan nu mai așteaptă nimic să
-  pornească (`committed`, `reserve`, `next_days`), chiar dacă ultimele fire încă rulează.
+  pornească (`committed`, `reserve`, iteme deja confirmate), chiar dacă ultimele fire încă
+  rulează.
   Cardul are întrebarea „Vrei să mă apuc de asta?” și cel mult 4 munci, cu titlul și
   estimarea fiecăreia. Pune-l pe loc, nu la ora lotului: fără el banda stă.
 - Un singur card odată. Pune cheile lui în `proposed_keys` până la răspuns; ele apar în
@@ -139,7 +176,8 @@ Focus. Fiecare item din `start` cu `conveyor_source` `next_days` sau `reservoir`
 
 1. Pentru o muncă din rezervor, după tapul omului, creează întâi itemul din tracker
    (`todo_create`, cu titlul muncii, sursa listei și tapul în descriere). Nu crea
-   To-Do-uri pentru muncile încă nealese. Un item din `next_days` e deja în tracker.
+   To-Do-uri pentru muncile încă nealese. Un item din `next_days` e deja în tracker, dar
+   intră în plan tot doar după tap.
 2. Citește cel mai mare `sequence` din planul curent (`delivery_plan_current` sau
    `tt_select` pe `tt_delivery_plan_items`, ordonat descrescător) și rulează:
 
@@ -153,8 +191,9 @@ Focus. Fiecare item din `start` cu `conveyor_source` `next_days` sau `reservoir`
 
 3. Inserează exact `values` din rezultat, cu `tt_write` (`op: "insert"`, tabelul din
    `table`) sau în SQL. Rândul are `queue_role = 'reserve'`, iar `scope_reason` se termină
-   cu `conveyor_source=next_days` sau `conveyor_source=reservoir; approved_by=<lista> ·
-   card: <tapul>`. Fără `confirmed_by`, scriptul refuză rândul de rezervor.
+   cu `conveyor_source=next_days; approved_by=card: <tapul>` sau
+   `conveyor_source=reservoir; approved_by=<lista> · card: <tapul>`. Fără `confirmed_by`,
+   scriptul refuză rândul.
    Dacă rândul există deja (aceeași sursă în același plan), treci mai departe.
 
 Focus și Productivitate arată rândul „Luat de bandă · din zilele următoare” sau „… din
@@ -189,13 +228,14 @@ nu crea un plan nou pentru asta.
 
 ## Cardurile, în loturi
 
+- Cardul de Start pleacă pe loc, imediat după aplicare, nu la ora lotului.
 - Merge-ul, deploy-ul și orice pas ireversibil rămân fiecare pe cardul lui, după regulile
   proiectului. Diferența e momentul: le pui împreună la orele lotului (`card_batches`;
   implicit 12:00, 15:00 și 18:00, ora României). Instrucțiunile proiectului pot cere
   „pe loc”. Ora următorului lot vine în `next_card_batch`. După ultimul lot al zilei,
   cardurile pleacă împreună cu raportul de final.
 - Firele nu stau după card. Trec la următorul item din bandă.
-- Excepția e cardul de muncă nouă: pleacă pe loc, pentru că fără răspunsul lui banda
+- Excepția e cardul de muncă nouă (ca și cel de Start): pleacă pe loc, pentru că fără răspunsul lui banda
   rămâne goală.
 
 ## Raportul de final
