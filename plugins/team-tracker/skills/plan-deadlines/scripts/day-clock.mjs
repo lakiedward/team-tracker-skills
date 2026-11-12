@@ -4,8 +4,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// A plan of N hours is a clock contract: it runs until the moment it was applied
-// plus N hours, and the conveyor keeps threads busy until then. The queue's size
+// A plan of N hours is a clock contract: it runs until the moment the human
+// tapped Start plus N hours, and the conveyor keeps threads busy until then.
+// Applying a plan starts nothing (choice of 12.11.2026: „nu porni niciodată
+// până nu zic start”). The queue's size
 // no longer decides when the day ends; an empty queue is refilled from the next
 // source in CONVEYOR_ORDER.
 
@@ -83,6 +85,9 @@ function nextLocalDate(date) {
   return new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
 }
 
+const START_QUESTION = 'Pornesc lucrul pe planul de azi?';
+export const START_OPTIONS = ['Start', 'Nu încă'];
+
 export function dayEndAt({ applied_at: appliedAt, hours }) {
   const start = instant(appliedAt, 'applied_at');
   const clockHours = Number(hours);
@@ -98,6 +103,16 @@ export function dayEndAt({ applied_at: appliedAt, hours }) {
     crosses_midnight: zonedParts(start).date !== zonedParts(end).date,
     time_zone: TIME_ZONE,
   };
+}
+
+// The human's Start tap opens the day: the clock is recomputed from that moment
+// and the tap is stored as started_by, which the conveyor needs before it
+// starts anything.
+export function dayStart({ started_at: startedAt, hours, started_by: startedBy }) {
+  const by = String(startedBy ?? '').trim();
+  if (!by) throw new Error('started_by must name the Start tap (card, option, time)');
+  const clock = dayEndAt({ applied_at: startedAt, hours });
+  return { ...clock, started_at: clock.applied_at, started_by: by };
 }
 
 // The next fixed moment at which merge/publish cards are put to the human
@@ -139,16 +154,21 @@ const NEW_WORK_QUESTION = 'Vrei să mă apuc de asta?';
 const DIRECTION_MIN_HOURS = 0.25;
 const directionQuestion = (endLocal) => `Am terminat ce ai ales. Pe ce mai lucrăm până la ${endLocal.slice(11)}?`;
 
-function cardItem(item, key) {
+function cardItem(item, key, role) {
   const title = String(item.title ?? '').trim();
   return {
     stable_key: key,
     title: title || key,
+    conveyor_source: role,
     estimate_hours_low: Number(item.estimate_hours_low ?? DEFAULT_ITEM_HOURS),
     estimate_hours_high: Number(item.estimate_hours_high ?? item.estimate_hours_low ?? DEFAULT_ITEM_HOURS),
-    approved_by: String(item.approved_by).trim(),
+    ...(role === 'reservoir' ? { approved_by: String(item.approved_by).trim() } : {}),
   };
 }
+
+// Sources the human did not see on the plan he started: each concrete item
+// waits for his tap on the new-work card.
+const CARD_SOURCES = new Set(['next_days', 'reservoir']);
 
 function idleReason(humanCount, tooLongCount) {
   if (humanCount) return 'only_human_work_left';
@@ -178,6 +198,8 @@ export function conveyorNext({
   no_new_work: noNewWork = false,
   direction = null,
   direction_card_pending: directionPending = false,
+  started_by: startedBy = '',
+  start_card_pending: startPending = false,
 }) {
   const nowMs = instant(now, 'now');
   const endMs = instant(dayEnd, 'day_end_at');
@@ -216,6 +238,22 @@ export function conveyorNext({
   if (remainingHours <= EPSILON) {
     return { ...base, continue: false, reason: 'day_end_reached', start: [], send_day_end_report: true };
   }
+  // An applied plan is not a started day. Nothing runs until the human taps
+  // Start; the tap wakes the coordinator, so there is no wake to schedule.
+  if (!String(startedBy ?? '').trim()) {
+    return {
+      ...base,
+      continue: true,
+      reason: 'awaiting_start_card',
+      start: [],
+      start_card: startPending ? null : { post: 'now', question: START_QUESTION, options: START_OPTIONS },
+      new_work_card: null,
+      direction_card: null,
+      next_wake_in_minutes: null,
+      next_card_batch: null,
+      send_day_end_report: false,
+    };
+  }
 
   const slots = Math.max(0, threads - openKeys.size);
   const start = [];
@@ -248,13 +286,14 @@ export function conveyorNext({
         continue;
       }
       // The list approves what may be proposed; the human's tap on the new-work
-      // card approves what starts (choice of 4.11.2026). Nothing from the
-      // reservoir runs on the list alone.
-      if (role === 'reservoir' && !String(item.confirmed_by ?? '').trim()) {
+      // card approves what starts (choice of 4.11.2026). Start covers only the
+      // plan the human saw (12.11.2026): the next days' candidates and the
+      // reservoir each wait for their own tap.
+      if (CARD_SOURCES.has(role) && !String(item.confirmed_by ?? '').trim()) {
         excluded.add(key);
         if (noNewWork) continue;
         if (proposedKeys.has(key)) awaitingCard.push(key);
-        else cardCandidates.push(cardItem(item, key));
+        else cardCandidates.push(cardItem(item, key, role));
         continue;
       }
       if (start.length < slots) {
@@ -290,6 +329,7 @@ export function conveyorNext({
       reason: 'awaiting_direction_card',
       slots_free: slots,
       start,
+      start_card: null,
       new_work_card: null,
       direction_card: directionPending ? null : { post: 'now', question: directionQuestion(base.day_end_local) },
       awaiting_card_keys: awaitingCard,
@@ -314,6 +354,7 @@ export function conveyorNext({
           : start.length ? 'slots_filled' : 'threads_busy',
     slots_free: slots,
     start,
+    start_card: null,
     new_work_card: newWorkCard,
     direction_card: null,
     awaiting_card_keys: awaitingCard,
@@ -351,8 +392,8 @@ export function conveyorPlanRow({ plan_id: planId, next_sequence: nextSequence, 
   const approvedBy = String(item.approved_by ?? '').trim();
   const confirmedBy = String(item.confirmed_by ?? '').trim();
   if (source === 'reservoir' && !approvedBy) throw new Error('a reservoir entry needs approved_by');
-  if (source === 'reservoir' && !confirmedBy) {
-    throw new Error('a reservoir entry starts only after the human tapped it on the new-work card (confirmed_by)');
+  if (!confirmedBy) {
+    throw new Error(`a ${source} entry starts only after the human tapped it on the new-work card (confirmed_by)`);
   }
   if (!PLAN_SOURCE_TYPES.has(item.source_type) || item.source_id == null) {
     throw new Error(source === 'reservoir'
@@ -383,7 +424,7 @@ export function conveyorPlanRow({ plan_id: planId, next_sequence: nextSequence, 
     `conveyor_source=${source}`,
     // Focus labels approved_by „Aprobat prin”; the tap goes in the same field so
     // the row shows both approvals without a new key.
-    ...(source === 'reservoir' ? [`approved_by=${`${approvedBy} · card: ${confirmedBy}`.replace(/;/g, ',')}`] : []),
+    `approved_by=${(source === 'reservoir' ? `${approvedBy} · card: ${confirmedBy}` : `card: ${confirmedBy}`).replace(/;/g, ',')}`,
   ].filter(Boolean).join('; ');
   return {
     table: 'tt_delivery_plan_items',
@@ -412,8 +453,10 @@ export function conveyorPlanRow({ plan_id: planId, next_sequence: nextSequence, 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   try {
     const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-    const modes = { day_end: dayEndAt, conveyor: conveyorNext, card_batch: nextCardBatch, plan_row: conveyorPlanRow };
-    if (!modes[input.mode]) throw new Error('mode must be day_end, conveyor, card_batch or plan_row');
+    const modes = {
+      day_end: dayEndAt, start: dayStart, conveyor: conveyorNext, card_batch: nextCardBatch, plan_row: conveyorPlanRow,
+    };
+    if (!modes[input.mode]) throw new Error('mode must be day_end, start, conveyor, card_batch or plan_row');
     const result = modes[input.mode](input);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
