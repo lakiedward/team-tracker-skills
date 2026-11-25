@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync, lstatSync } from '
 import { resolve, extname, isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { SUPABASE_URL, DEFAULT_BUCKET, objectPath } from './upload-slides.mjs';
+import { DEFAULT_BUCKET, objectPath, resolveSupabaseOrigin, supabaseFetch } from './upload-slides.mjs';
 import { isMainModule } from './asset-inventory.mjs';
 import { contained } from './project-context.mjs';
 import { validatePost } from './validate-post.mjs';
@@ -15,9 +15,9 @@ const mime = path => ({'.png':'image/png','.webp':'image/webp','.jpg':'image/jpe
 const encodePath = path => path.split('/').map(encodeURIComponent).join('/');
 function headers(key) { if(!key)throw new Error('SUPABASE_SERVICE_ROLE_KEY lipsește; nu scriu nimic.');return {apikey:key,Authorization:`Bearer ${key}`}; }
 async function checked(response,label){if(!response.ok)throw Object.assign(new Error(`${label}: HTTP ${response.status}`),{httpStatus:response.status});return response;}
-async function rpc(name,body,key,fetchImpl){const response=await fetchImpl(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{method:'POST',headers:{...headers(key),'Content-Type':'application/json'},body:JSON.stringify(body)});await checked(response,name);const text=await response.text();return text?JSON.parse(text):null;}
+async function rpc(name,body,key,fetchImpl){const response=await fetchImpl(`/rest/v1/rpc/${name}`,{method:'POST',headers:{...headers(key),'Content-Type':'application/json'},body:JSON.stringify(body)});await checked(response,name);const text=await response.text();return text?JSON.parse(text):null;}
 async function upload(path,bytes,key,fetchImpl){
- const url=`${SUPABASE_URL}/storage/v1/object/${DEFAULT_BUCKET}/${encodePath(path)}`;
+ const url=`/storage/v1/object/${DEFAULT_BUCKET}/${encodePath(path)}`;
  const result=await fetchImpl(url,{method:'POST',headers:{...headers(key),'Content-Type':mime(path),'x-upsert':'false'},body:bytes});
  if(!result.ok){const body=await result.text();if(result.status!==409&&!(result.status===400&&/Duplicate|already exists/i.test(body)))await checked(result,'upload');}
  const response=await checked(await fetchImpl(url,{headers:headers(key)}),'verify upload');
@@ -40,9 +40,12 @@ function verifySources(post,context,root){
  if(manifest.background?.sha256)verify('assets/background.png',manifest.background.sha256);
  for(const slide of post.slides)if(slide.asset){const asset=manifest.assets.find(item=>item.path===slide.asset);if(!asset)throw new Error('slide asset is not from project manifest');if(slide.source_asset?.sha256&&slide.source_asset.sha256!==asset.sha256)throw new Error('slide source hash differs from project asset');}
 }
-async function revision(postId,version,key,fetchImpl){const response=await checked(await fetchImpl(`${SUPABASE_URL}/rest/v1/tt_marketing_post_versions?post_id=eq.${postId}&version=eq.${version}&select=status`,{headers:headers(key)}),'read revision');const rows=await response.json();return rows.length===1?rows[0]:null;}
-export async function recoverGeneration({postId,version,key=process.env.SUPABASE_SERVICE_ROLE_KEY},{fetchImpl=fetch}={}){
+async function revision(postId,version,key,fetchImpl){const response=await checked(await fetchImpl(`/rest/v1/tt_marketing_post_versions?post_id=eq.${postId}&version=eq.${version}&select=status`,{headers:headers(key)}),'read revision');const rows=await response.json();return rows.length===1?rows[0]:null;}
+export async function recoverGeneration({postId,version,key=process.env.SUPABASE_SERVICE_ROLE_KEY},{fetchImpl=fetch,getOrigin=resolveSupabaseOrigin}={}){
  headers(key);if(!Number.isSafeInteger(postId)||postId<=0||!Number.isSafeInteger(version)||version<=0)throw new Error('positive post and version required');
+ return recoverVersion(postId,version,key,supabaseFetch(fetchImpl,getOrigin()));
+}
+async function recoverVersion(postId,version,key,fetchImpl){
  const existing=await revision(postId,version,key,fetchImpl);
  if(existing?.status==='generated')return {post_id:postId,version,status:'generated',recovered:true};
  if(existing?.status!=='generating')throw new Error('revision is not active; inspect its saved status');
@@ -53,8 +56,9 @@ export async function recoverGeneration({postId,version,key=process.env.SUPABASE
 
 export function snapshotBrief(post) { return post.slides.slice().sort((a,b)=>a.order_index-b.order_index).map(slide => ({...slide,n:slide.order_index+1})); }
 
-export async function publishGeneration({postFile,contextDir,renderDir,projectId,expectedVersion,key=process.env.SUPABASE_SERVICE_ROLE_KEY},{fetchImpl=fetch}={}) {
+export async function publishGeneration({postFile,contextDir,renderDir,projectId,expectedVersion,key=process.env.SUPABASE_SERVICE_ROLE_KEY},{fetchImpl=fetch,getOrigin=resolveSupabaseOrigin}={}) {
  headers(key);
+ fetchImpl=supabaseFetch(fetchImpl,getOrigin());
  const post=JSON.parse(readFileSync(postFile,'utf8'));
  const context=JSON.parse(readFileSync(contained(contextDir,'context.json'),'utf8'));
  const validation=validatePost(post,{assetsDir:resolve(contextDir,'assets')});
@@ -80,7 +84,7 @@ export async function publishGeneration({postFile,contextDir,renderDir,projectId
  const records=entries.map(({path,bytes})=>({path,sha256:sha(bytes)}));
  const snapshotId=sha(JSON.stringify(records));
  const prefix=`${projectId}/contexts/${snapshotId}`;
- const identityResponse=await checked(await fetchImpl(`${SUPABASE_URL}/rest/v1/tt_marketing_posts?id=eq.${post.post_id}&select=project_id,portfolio_project,version`,{headers:headers(key)}),'read post identity');
+ const identityResponse=await checked(await fetchImpl(`/rest/v1/tt_marketing_posts?id=eq.${post.post_id}&select=project_id,portfolio_project,version`,{headers:headers(key)}),'read post identity');
  const identities=await identityResponse.json();const identity=identities[0];
  if(identities.length!==1||identity.project_id!==projectId||identity.portfolio_project!==context.project.slug||identity.version!==expectedVersion)throw new Error('post project or expected version does not match the source context');
  for(const item of entries)await upload(`${prefix}/${item.path}`,item.bytes,key,fetchImpl);
@@ -91,11 +95,11 @@ export async function publishGeneration({postFile,contextDir,renderDir,projectId
    if(!Number.isSafeInteger(version)||version<=expectedVersion)throw Object.assign(new Error('uncertain start response; inspect revision before retrying'),{uncertain:true});
    for(const png of pngs){
      const path=objectPath(projectId,post.post_id,version,png.order);await upload(path,png.bytes,key,fetchImpl);
-     const url=`${SUPABASE_URL}/rest/v1/tt_marketing_slides?post_id=eq.${post.post_id}&version=eq.${version}&order_index=eq.${png.order}`;
+     const url=`/rest/v1/tt_marketing_slides?post_id=eq.${post.post_id}&version=eq.${version}&order_index=eq.${png.order}`;
      const response=await checked(await fetchImpl(url,{method:'PATCH',headers:{...headers(key),'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({image_path:path,rendered_at:new Date().toISOString()})}),'record slide');
      const rows=await response.json();if(rows.length!==1)throw new Error('slide update did not affect exactly one row');
    }
-   finishing=true;const result=await recoverGeneration({postId:post.post_id,version,key},{fetchImpl});
+   finishing=true;const result=await recoverVersion(post.post_id,version,key,fetchImpl);
    return {...result,slides:pngs.length};
  }catch(error){
    if(version===undefined||error.uncertain||(finishing&&!error.httpStatus))throw new Error(`${error.message}; state may be committed: inspect post ${post.post_id}${version?` version ${version}; retry recover --post ${post.post_id} --version ${version}`:' before retrying start'}`);
@@ -104,8 +108,9 @@ export async function publishGeneration({postFile,contextDir,renderDir,projectId
  }
 }
 
-export async function restoreContext({manifest,out,key=process.env.SUPABASE_SERVICE_ROLE_KEY},{fetchImpl=fetch}={}) {
+export async function restoreContext({manifest,out,key=process.env.SUPABASE_SERVICE_ROLE_KEY},{fetchImpl=fetch,getOrigin=resolveSupabaseOrigin}={}) {
  headers(key);const snapshot=manifest.snapshot;if(!snapshot?.prefix||!Array.isArray(snapshot.files))throw new Error('legacy version has no source snapshot');
+ fetchImpl=supabaseFetch(fetchImpl,getOrigin());
  if(!/^\d+\/contexts\/[a-f0-9]{64}$/.test(snapshot.prefix))throw new Error('invalid snapshot prefix');
  const names=new Set();
  for(const file of snapshot.files){safeRelative(file.path);if(!/^[a-f0-9]{64}$/.test(file.sha256||'')||names.has(file.path))throw new Error('invalid or duplicate snapshot entry');names.add(file.path);}
@@ -114,7 +119,7 @@ export async function restoreContext({manifest,out,key=process.env.SUPABASE_SERV
  if(lstatSync(out).isSymbolicLink())throw new Error('restore destination is a symlink');
  for(const file of snapshot.files){
    if(typeof file.path!=='string'||file.path.includes('\\')||isAbsolute(file.path)||file.path.split('/').some(part=>part==='..'||part===''))throw new Error('invalid snapshot file path');
-   const response=await checked(await fetchImpl(`${SUPABASE_URL}/storage/v1/object/${DEFAULT_BUCKET}/${encodePath(`${snapshot.prefix}/${file.path}`)}`,{headers:headers(key)}),'restore');
+   const response=await checked(await fetchImpl(`/storage/v1/object/${DEFAULT_BUCKET}/${encodePath(`${snapshot.prefix}/${file.path}`)}`,{headers:headers(key)}),'restore');
    const bytes=Buffer.from(await response.arrayBuffer());if(sha(bytes)!==file.sha256)throw new Error(`snapshot hash mismatch: ${file.path}`);
    let parent=resolve(out);
    for(const part of file.path.split('/').slice(0,-1)){

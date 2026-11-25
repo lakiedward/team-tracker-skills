@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_BUCKET,
   MISSING_KEY_MESSAGE,
-  SUPABASE_URL,
   listSlidePngs,
   objectPath,
   objectUrl,
   parseArgs,
+  resolveSupabaseOrigin,
   uploadAll,
 } from './upload-slides.mjs';
 
@@ -42,23 +42,38 @@ writeFileSync(join(dir, 'slide-02.html'), '<html></html>');
 writeFileSync(join(dir, 'notes.txt'), 'nu e slide');
 
 const KEY = 'sb-secret-test-key-DO-NOT-LOG';
+const ORIGIN = 'https://fixture.supabase.co';
 
 // Un fetch fals care înregistrează apelurile și răspunde după un scenariu.
 function fakeFetch(plan = {}) {
   const calls = [];
   const impl = async (url, init) => {
-    calls.push({ url, method: init.method, headers: init.headers, bodyLength: init.body ? init.body.length : 0 });
+    calls.push({ url, method: init.method, headers: init.headers, redirect: init.redirect, bodyLength: init.body ? init.body.length : 0 });
     const decide = plan[init.method] || (() => 200);
     const status = decide(url, calls.length);
     return { ok: status >= 200 && status < 300, status, text: async () => `body-${status}` };
   };
-  return { impl, calls };
+  return { impl, calls, getOrigin: () => ORIGIN };
 }
 
 test('objectPath și objectUrl', () => {
   assert.equal(objectPath(11, 12, 2, 0), '11/posts/12/v2/slide-01.png');
   assert.equal(objectPath('11', '12', '3', 9), '11/posts/12/v3/slide-10.png');
-  assert.equal(objectUrl('marketing-assets', '11/posts/12/v2/slide-01.png'), `${SUPABASE_URL}/storage/v1/object/marketing-assets/11/posts/12/v2/slide-01.png`);
+  assert.equal(objectUrl('marketing-assets', '11/posts/12/v2/slide-01.png', ORIGIN), `${ORIGIN}/storage/v1/object/marketing-assets/11/posts/12/v2/slide-01.png`);
+});
+
+test('origin is configured, normalized, project-pinned and never echoed in errors', () => {
+  assert.equal(resolveSupabaseOrigin({ SUPABASE_URL: `${ORIGIN}/`, VITE_SUPABASE_URL: 'unused' }, 'fixture'), ORIGIN);
+  assert.equal(resolveSupabaseOrigin({ VITE_SUPABASE_URL: ORIGIN }, 'fixture'), ORIGIN);
+  assert.throws(() => resolveSupabaseOrigin({}), /Configurează SUPABASE_URL/);
+  for (const value of ['${VITE_SUPABASE_URL}', 'https://other.supabase.co', 'https://fixture.supabase.co.example',
+    'https://fixture.supabase.co:444', 'http://fixture.supabase.co', `${ORIGIN}/other`,
+    `${ORIGIN}/?key=fake`, `${ORIGIN}/#fragment`, 'https://user:fake@fixture.supabase.co']) {
+    assert.throws(
+      () => resolveSupabaseOrigin({ SUPABASE_URL: value }, 'fixture'),
+      (error) => !error.message.includes(value),
+    );
+  }
 });
 
 test('parseArgs', () => {
@@ -86,8 +101,8 @@ test('fără cheie: aruncă înainte de orice fetch, cu exitCode 2', async () =>
 });
 
 test('uploadAll: URL-uri, metode, antete, lungimi și rezultat', async () => {
-  const { impl, calls } = fakeFetch();
-  const result = await uploadAll({ dir, project: 11, post: 12, version: 2, key: KEY }, { fetchImpl: impl });
+  const { impl, calls, getOrigin } = fakeFetch();
+  const result = await uploadAll({ dir, project: 11, post: 12, version: 2, key: KEY }, { fetchImpl: impl, getOrigin });
   assert.deepEqual(result, {
     bucket: DEFAULT_BUCKET,
     uploaded: [
@@ -97,7 +112,8 @@ test('uploadAll: URL-uri, metode, antete, lungimi și rezultat', async () => {
   });
   assert.equal(calls.length, 4, 'POST + GET per slide');
   const [post1, get1, post3, get3] = calls;
-  assert.equal(post1.url, `${SUPABASE_URL}/storage/v1/object/marketing-assets/11/posts/12/v2/slide-01.png`);
+  assert.equal(post1.url, `${ORIGIN}/storage/v1/object/marketing-assets/11/posts/12/v2/slide-01.png`);
+  assert.ok(calls.every((call) => call.redirect === 'error'));
   assert.equal(post1.method, 'POST');
   assert.equal(post1.headers.Authorization, `Bearer ${KEY}`);
   assert.equal(post1.headers.apikey, KEY);
@@ -115,8 +131,8 @@ test('uploadAll: URL-uri, metode, antete, lungimi și rezultat', async () => {
 });
 
 test('uploadAll respectă --only și --bucket', async () => {
-  const { impl, calls } = fakeFetch();
-  const result = await uploadAll({ dir, project: 1, post: 2, version: 3, bucket: 'alt', only: new Set([2]), key: KEY }, { fetchImpl: impl });
+  const { impl, calls, getOrigin } = fakeFetch();
+  const result = await uploadAll({ dir, project: 1, post: 2, version: 3, bucket: 'alt', only: new Set([2]), key: KEY }, { fetchImpl: impl, getOrigin });
   assert.equal(result.bucket, 'alt');
   assert.deepEqual(result.uploaded.map((u) => u.order_index), [2]);
   assert.equal(calls.length, 2);
@@ -124,18 +140,18 @@ test('uploadAll respectă --only și --bucket', async () => {
 });
 
 test('răspuns non-2xx la upload aruncă și numește slide-ul, fără cheie în mesaj', async () => {
-  const { impl, calls } = fakeFetch({ POST: (url) => (url.endsWith('slide-03.png') ? 403 : 200) });
+  const { impl, calls, getOrigin } = fakeFetch({ POST: (url) => (url.endsWith('slide-03.png') ? 403 : 200) });
   await assert.rejects(
-    uploadAll({ dir, project: 11, post: 12, version: 2, key: KEY }, { fetchImpl: impl }),
+    uploadAll({ dir, project: 11, post: 12, version: 2, key: KEY }, { fetchImpl: impl, getOrigin }),
     (error) => /slide-03\.png: upload eșuat \(HTTP 403\)/.test(error.message) && !error.message.includes(KEY),
   );
   assert.equal(calls.length, 3, 'POST+GET pentru slide-01, POST eșuat pentru slide-03');
 });
 
 test('verificarea GET non-200 aruncă numind slide-ul', async () => {
-  const { impl } = fakeFetch({ GET: () => 404 });
+  const { impl, getOrigin } = fakeFetch({ GET: () => 404 });
   await assert.rejects(
-    uploadAll({ dir, project: 11, post: 12, version: 2, key: KEY }, { fetchImpl: impl }),
+    uploadAll({ dir, project: 11, post: 12, version: 2, key: KEY }, { fetchImpl: impl, getOrigin }),
     /slide-01\.png: verificarea după upload a eșuat \(HTTP 404\)/,
   );
 });
@@ -155,6 +171,16 @@ test('CLI fără SUPABASE_SERVICE_ROLE_KEY iese cu 2 și mesajul exact', () => {
   assert.equal(result.status, 2);
   assert.ok(result.stderr.includes(MISSING_KEY_MESSAGE), result.stderr);
   assert.equal(result.stdout, '');
+});
+
+test('CLI without either origin fails without echoing the key', () => {
+  const env = { ...process.env, SUPABASE_SERVICE_ROLE_KEY: KEY };
+  delete env.SUPABASE_URL;
+  delete env.VITE_SUPABASE_URL;
+  const result = spawnSync(process.execPath, [SCRIPT, '--dir', dir, '--project', '11', '--post', '12', '--version', '2'], { env, encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Configurează SUPABASE_URL/);
+  assert.ok(!result.stderr.includes(KEY));
 });
 
 (async () => {

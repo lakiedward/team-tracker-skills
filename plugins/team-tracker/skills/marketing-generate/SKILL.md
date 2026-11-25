@@ -77,7 +77,10 @@ Randează-l cu `--templates <context/sources/custom-templates>`; adaugă fișier
 
 ## 5. Salvare după inspecția vizuală AI
 
-SUPABASE_SERVICE_ROLE_KEY trebuie să existe înainte de orice scriere externă; nu o afișa.
+Configurează mediul procesului cu originea proiectului Team Tracker (`SUPABASE_URL` sau
+`VITE_SUPABASE_URL`) și cheia existentă `SUPABASE_SERVICE_ROLE_KEY`. În Devin folosește
+binding-urile de secrete la rulare; nu afișa valorile și nu le pune în comenzi, fișierele
+pluginului sau chat. Dacă lipsește o setare, oprește-te înainte de orice scriere externă.
 
 ```sh
 node scripts/generation-io.mjs publish --post <post.json> --context <context-dir> --dir <render-dir> --project <project_id> --expected-version <versiunea-citita>
