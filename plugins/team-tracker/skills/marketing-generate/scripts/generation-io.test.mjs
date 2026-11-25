@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { publishGeneration, restoreContext, recoverGeneration } from './generation-io.mjs';
+import { resolveSupabaseOrigin } from './upload-slides.mjs';
 
+const ORIGIN = 'https://fixture.supabase.co';
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = value => new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
 function fixture(t){
@@ -24,6 +26,8 @@ function fixture(t){
 function network({finishLost=false,finishPending=false,patchError=false,startLost=false,wrongProject=false}={}){
  const objects=new Map(),calls=[];let snapshot,status='generating',fails=0,finishes=0;
  const fetchImpl=async(url,options={})=>{
+  assert.equal(new URL(url).origin,ORIGIN);
+  assert.equal(options.redirect,'error');
   calls.push({url,options});
   if(url.includes('/storage/v1/object/')){
    if(options.method==='POST'){assert.equal(options.headers['x-upsert'],'false');if(objects.has(url))return new Response('{"error":"Duplicate"}',{status:400});objects.set(url,Buffer.from(options.body));return json({});}
@@ -37,8 +41,14 @@ function network({finishLost=false,finishPending=false,patchError=false,startLos
   if(url.includes('/tt_marketing_slides?'))return patchError?new Response('',{status:500}):json([{id:1}]);
   throw new Error(`Unexpected URL ${url}`);
  };
- return {fetchImpl,objects,calls,get snapshot(){return snapshot;},get status(){return status;},get fails(){return fails;},get finishes(){return finishes;}};
+ return {fetchImpl,getOrigin:()=>ORIGIN,objects,calls,get snapshot(){return snapshot;},get status(){return status;},get fails(){return fails;},get finishes(){return finishes;}};
 }
+
+test('an invalid configured origin blocks storage and RPC calls',async t=>{
+ const f=fixture(t),net=network();
+ await assert.rejects(publishGeneration(f.options,{fetchImpl:net.fetchImpl,getOrigin:()=>resolveSupabaseOrigin({SUPABASE_URL:'https://wrong.example'})}),/originea HTTPS/);
+ assert.equal(net.calls.length,0);
+});
 
 test('publication saves immutable source context and restores the exact bytes',async t=>{
  const f=fixture(t),net=network();const result=await publishGeneration(f.options,net);

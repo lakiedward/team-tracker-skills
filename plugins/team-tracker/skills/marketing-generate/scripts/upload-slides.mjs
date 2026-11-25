@@ -11,17 +11,38 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SUPABASE_URL = 'https://ntjzghsbrzkvpkniotaj.supabase.co';
 export const DEFAULT_BUCKET = 'marketing-assets';
 export const MISSING_KEY_MESSAGE = 'SUPABASE_SERVICE_ROLE_KEY lipsește; nu urc nimic.';
 const SLIDE_PNG = /^slide-(\d{2})\.png$/;
+const TEAM_TRACKER_PROJECT_REF = 'ntjzghsbrzkvpkniotaj';
+
+export function resolveSupabaseOrigin(env = process.env, projectRef = TEAM_TRACKER_PROJECT_REF) {
+  const value = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+  if (!value) throw new Error('Configurează SUPABASE_URL sau VITE_SUPABASE_URL pentru proiectul Team Tracker.');
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('URL-ul Supabase configurat nu este valid.');
+  }
+  const [ref, ...domain] = url.hostname.split('.');
+  if (url.protocol !== 'https:' || ref !== projectRef || domain.join('.') !== 'supabase.co'
+      || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('URL-ul Supabase trebuie să fie originea HTTPS a proiectului Team Tracker.');
+  }
+  return url.origin;
+}
+
+export function supabaseFetch(fetchImpl, origin) {
+  return (path, options) => fetchImpl(`${origin}${path}`, { ...options, redirect: 'error' });
+}
 
 export function objectPath(project, post, version, orderIndex) {
   const nn = String(Number(orderIndex) + 1).padStart(2, '0');
   return `${project}/posts/${post}/v${version}/slide-${nn}.png`;
 }
 
-export function objectUrl(bucket, path, baseUrl = SUPABASE_URL) {
+export function objectUrl(bucket, path, baseUrl = resolveSupabaseOrigin()) {
   return `${baseUrl}/storage/v1/object/${bucket}/${path}`;
 }
 
@@ -81,8 +102,8 @@ async function readBodyText(response) {
 }
 
 // Urcă și verifică fiecare slide. `fetchImpl` este injectabil ca să poată fi testat fără rețea.
-export async function uploadAll(opts, { fetchImpl = globalThis.fetch, log = () => {} } = {}) {
-  const { dir, project, post, version, bucket = DEFAULT_BUCKET, only = null, key, baseUrl = SUPABASE_URL } = opts;
+export async function uploadAll(opts, { fetchImpl = globalThis.fetch, log = () => {}, getOrigin = resolveSupabaseOrigin } = {}) {
+  const { dir, project, post, version, bucket = DEFAULT_BUCKET, only = null, key } = opts;
   if (!key) {
     const error = new Error(MISSING_KEY_MESSAGE);
     error.exitCode = 2;
@@ -93,15 +114,17 @@ export async function uploadAll(opts, { fetchImpl = globalThis.fetch, log = () =
   const slides = listSlidePngs(dir).filter((slide) => !only || only.has(slide.orderIndex));
   if (slides.length === 0) throw new Error(`niciun slide-NN.png de urcat în ${dir}${only ? ' (verifică --only)' : ''}`);
 
+  const origin = getOrigin();
   const uploaded = [];
   for (const slide of slides) {
     const path = objectPath(project, post, version, slide.orderIndex);
-    const url = objectUrl(bucket, path, baseUrl);
+    const url = objectUrl(bucket, path, origin);
     const body = readFileSync(slide.file);
     log(`${slide.name} → ${bucket}/${path} (${body.length} B)`);
 
     const put = await fetchImpl(url, {
       method: 'POST',
+      redirect: 'error',
       headers: { ...authHeaders(key), 'Content-Type': 'image/png', 'x-upsert': 'true' },
       body,
     });
@@ -109,7 +132,7 @@ export async function uploadAll(opts, { fetchImpl = globalThis.fetch, log = () =
       throw new Error(`${slide.name}: upload eșuat (HTTP ${put.status}) ${await readBodyText(put)}`.trim());
     }
 
-    const check = await fetchImpl(url, { method: 'GET', headers: authHeaders(key) });
+    const check = await fetchImpl(url, { method: 'GET', headers: authHeaders(key), redirect: 'error' });
     if (check.status !== 200) {
       throw new Error(`${slide.name}: verificarea după upload a eșuat (HTTP ${check.status}) ${await readBodyText(check)}`.trim());
     }
@@ -125,7 +148,7 @@ export function isMainModule(metaUrl, argv1 = process.argv[1]) {
 }
 
 const USAGE = `Utilizare: node upload-slides.mjs --dir <out> --project <id> --post <id> --version <n> [--bucket ${DEFAULT_BUCKET}] [--only 3,5]
-  Cheia se citește din variabila de mediu SUPABASE_SERVICE_ROLE_KEY (niciodată din argumente).`;
+  URL-ul se citește din SUPABASE_URL sau VITE_SUPABASE_URL; cheia din SUPABASE_SERVICE_ROLE_KEY (niciodată din argumente).`;
 
 async function main() {
   let args;
